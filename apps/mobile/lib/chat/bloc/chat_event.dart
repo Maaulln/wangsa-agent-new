@@ -77,3 +77,13 @@ final class SessionDeleted extends ChatEvent {
   @override
   List<Object?> get props => [sessionId];
 }
+
+/// Alamat API backend diubah dari Pengaturan.
+final class ApiBaseUrlChanged extends ChatEvent {
+  final String newUrl;
+
+  const ApiBaseUrlChanged(this.newUrl);
+
+  @override
+  List<Object?> get props => [newUrl];
+}

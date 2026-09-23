@@ -20,7 +20,11 @@ import 'models.dart';
 class WangsaApiClient {
   static const int maxMessageLength = 4000;
 
-  final String baseUrl;
+  String baseUrl;
+
+  void updateBaseUrl(String newUrl) {
+    baseUrl = _trimTrailingSlash(newUrl);
+  }
   http.Client _httpClient;
 
   /// Batas tunggu untuk permintaan biasa, misalnya memuat Agent.

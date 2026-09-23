@@ -30,6 +30,8 @@ class AppConfig {
     this.wakeWordAccessKey,
   });
 
+
+
   /// Melempar [FormatException] bila berkas konfigurasi tidak layak
   /// dipakai. Sengaja gagal keras: aplikasi yang berjalan dengan alamat
   /// API kosong hanya akan menampilkan galat jaringan yang membingungkan,

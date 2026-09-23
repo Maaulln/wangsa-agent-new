@@ -40,6 +40,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<SessionsRequested>(_onSessionsRequested);
     on<SessionSelected>(_onSessionSelected);
     on<SessionDeleted>(_onSessionDeleted);
+    on<ApiBaseUrlChanged>(_onApiBaseUrlChanged);
+  }
+
+  Future<void> _onApiBaseUrlChanged(ApiBaseUrlChanged event, Emitter<ChatState> emit) async {
+    apiClient.updateBaseUrl(event.newUrl);
+    _sessionId = null;
+    emit(state.copyWith(status: ChatStatus.loading, turns: const [], clearError: true));
+    add(const ChatOpened());
   }
 
   Future<void> _onOpened(ChatOpened event, Emitter<ChatState> emit) async {

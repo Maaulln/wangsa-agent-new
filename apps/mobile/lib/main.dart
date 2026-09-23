@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/wangsa_api_client.dart';
 import 'chat/bloc/chat_bloc.dart';
@@ -44,12 +45,16 @@ String get configUrl {
 /// (dulu `http://localhost:5173/config.json`) — agen dijangkau langsung
 /// lewat plugin REST `wangsa_mobile` di gateway Hermes, default port 9901
 /// (lihat WANGSA_MOBILE_PORT di plugins/platforms/wangsa_mobile).
-AppConfig get fallbackConfig => AppConfig(
-  apiBaseUrl: 'http://$_defaultHost:9901',
-  defaultAgentId: 'belum-diatur',
-  wakeWord: 'Halo Wangsa',
-  wakeWordAccessKey: 'sherpa-onnx-offline',
-);
+AppConfig get fallbackConfig {
+  const envApiUrl = String.fromEnvironment('WANGSA_API_BASE_URL');
+  const envAgentId = String.fromEnvironment('WANGSA_DEFAULT_AGENT_ID');
+  return AppConfig(
+    apiBaseUrl: envApiUrl.isNotEmpty ? envApiUrl : 'http://$_defaultHost:9901',
+    defaultAgentId: envAgentId.isNotEmpty ? envAgentId : 'wangsa',
+    wakeWord: 'Halo Wangsa',
+    wakeWordAccessKey: 'sherpa-onnx-offline',
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,7 +100,12 @@ Future<void> main() async {
   // langsung pakai AppConfig dari dart-define/fallback. ConfigLoader tetap
   // ada untuk kompatibilitas siapa pun yang masih memanggilnya langsung,
   // tapi startup tidak lagi menunggu jaringan untuk konfigurasi dasar.
-  final result = ConfigLoadResult(config: fallbackConfig);
+  final prefs = await SharedPreferences.getInstance();
+  final savedApiUrl = prefs.getString('wangsa_custom_api_url');
+  final activeConfig = savedApiUrl != null && savedApiUrl.trim().isNotEmpty
+      ? fallbackConfig.copyWith(apiBaseUrl: savedApiUrl.trim())
+      : fallbackConfig;
+  final result = ConfigLoadResult(config: activeConfig);
 
   // Dibuat sekali di sini, bukan di dalam WangsaApp.build() — build() bisa
   // dipanggil ulang (mis. saat hot reload), dan ChatPage hanya

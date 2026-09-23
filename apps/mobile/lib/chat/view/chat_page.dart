@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -80,6 +79,7 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late AppConfig _activeConfig = widget.config;
   final _draftController = TextEditingController();
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -656,12 +656,18 @@ class _ChatPageState extends State<ChatPage>
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => SettingsPage(
-                                config: widget.config,
+                                config: _activeConfig,
                                 configProblem: widget.configProblem,
                                 agentId: context.read<ChatBloc>().agentId,
                                 voiceInput: widget.voiceInput,
                                 themeController: widget.themeController,
                                 llmSettings: widget.llmSettings,
+                                onApiBaseUrlChanged: (newUrl) {
+                                  setState(() {
+                                    _activeConfig = _activeConfig.copyWith(apiBaseUrl: newUrl);
+                                  });
+                                  context.read<ChatBloc>().add(ApiBaseUrlChanged(newUrl));
+                                },
                               ),
                             ),
                           );
@@ -897,7 +903,7 @@ class _ChatPageState extends State<ChatPage>
               shrinkWrap: true,
               padding: EdgeInsets.zero,
               itemCount: filtered.length,
-              separatorBuilder: (_, __) => Divider(
+              separatorBuilder: (_, _) => Divider(
                 height: 1,
                 color: scheme.outlineVariant.withValues(alpha: 0.2),
               ),
