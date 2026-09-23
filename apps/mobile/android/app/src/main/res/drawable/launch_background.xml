@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cadangan untuk Android di bawah 5.0. Hanya warna latar, karena ukuran
+     item di layer-list baru didukung Android 6.0 dan logo vektor akan
+     melar memenuhi layar. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+</layer-list>

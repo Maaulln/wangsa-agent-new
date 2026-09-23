@@ -1,0 +1,204 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+/// Agent publik persis seperti yang diberikan API: hanya id, nama, dan
+/// tujuan.
+///
+/// Sengaja bukan Proposal. Permukaan pengguna akhir tidak boleh punya
+/// Blueprint, workspace, atau status governance untuk ditampilkan,
+/// bahkan karena kecelakaan. Lihat `docs/API.md`, bagian Public Agent
+/// endpoints.
+class PublicAgent {
+  final String id;
+  final String name;
+  final String purpose;
+
+  const PublicAgent({required this.id, required this.name, required this.purpose});
+
+  factory PublicAgent.fromJson(Map<String, dynamic> json) => PublicAgent(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        purpose: json['purpose'] as String,
+      );
+}
+
+/// Balasan satu giliran percakapan.
+///
+/// [sessionId] harus disimpan pemanggil dan dikirim balik pada pesan
+/// berikutnya (lihat [WangsaApiClient.sendMessage]) — tanpa itu server
+/// menganggap setiap pesan sebagai percakapan baru dan Agent kehilangan
+/// konteks.
+class AgentReply {
+  final String response;
+  final String sessionId;
+
+  /// Gambar yang dikirim Agent bersama balasan ini (mis. screenshot,
+  /// hasil image_gen). Kosong pada sebagian besar balasan — hanya terisi
+  /// bila server menyertakan kunci `images`. Lihat [ReplyImage].
+  final List<ReplyImage> images;
+
+  /// Dokumen atau audio yang dikirim Agent bersama balasan ini (mis. PDF,
+  /// CSV, hasil text_to_speech). Kosong pada sebagian besar balasan —
+  /// hanya terisi bila server menyertakan kunci `files`. Lihat [ReplyFile].
+  final List<ReplyFile> files;
+
+  const AgentReply({
+    required this.response,
+    required this.sessionId,
+    this.images = const [],
+    this.files = const [],
+  });
+
+  factory AgentReply.fromJson(Map<String, dynamic> json) {
+    final rawImages = json['images'];
+    final rawFiles = json['files'];
+    return AgentReply(
+      response: json['response'] as String,
+      sessionId: json['sessionId'] as String? ?? '',
+      images: rawImages is List
+          ? [
+              for (final item in rawImages)
+                if (item is Map<String, dynamic>) ReplyImage.fromJson(item),
+            ]
+          : const [],
+      files: rawFiles is List
+          ? [
+              for (final item in rawFiles)
+                if (item is Map<String, dynamic>) ReplyFile.fromJson(item),
+            ]
+          : const [],
+    );
+  }
+}
+
+/// Satu gambar yang dikirim Agent lewat balasan.
+///
+/// Server mengirim salah satu dari dua bentuk (lihat
+/// `_encode_local_image` dan `send_image()` di
+/// `plugins/platforms/wangsa_mobile/adapter.py`): [bytes] untuk gambar
+/// lokal Agent (base64 di JSON, simetris dengan cara klien mengirim
+/// [ChatImage] ke server), atau [url] untuk gambar dari tautan jarak jauh
+/// yang cukup diambil langsung oleh klien lewat `Image.network`. Salah
+/// satu dari keduanya selalu ada; keduanya null berarti berkas gagal
+/// diuraikan dan pratinjau ditampilkan sebagai lambang rusak.
+class ReplyImage {
+  final Uint8List? bytes;
+  final String? url;
+  final String mimeType;
+  final String filename;
+  final String? caption;
+
+  const ReplyImage({
+    this.bytes,
+    this.url,
+    this.mimeType = 'image/png',
+    this.filename = 'gambar.png',
+    this.caption,
+  });
+
+  factory ReplyImage.fromJson(Map<String, dynamic> json) {
+    final data = json['data'];
+    Uint8List? decoded;
+    if (data is String && data.isNotEmpty) {
+      try {
+        decoded = base64Decode(data);
+      } catch (_) {
+        decoded = null;
+      }
+    }
+    return ReplyImage(
+      bytes: decoded,
+      url: json['url'] as String?,
+      mimeType: json['mimeType'] as String? ?? 'image/png',
+      filename: json['filename'] as String? ?? 'gambar.png',
+      caption: json['caption'] as String?,
+    );
+  }
+}
+
+/// Satu dokumen atau audio yang dikirim Agent lewat balasan (bukan
+/// gambar — lihat [ReplyImage] untuk itu).
+///
+/// [kind] adalah `"document"` (PDF, CSV, berkas apa pun) atau `"audio"`
+/// (hasil text_to_speech) — lihat `_encode_local_file` di
+/// `plugins/platforms/wangsa_mobile/adapter.py`. Klien memakainya untuk
+/// memilih antara kartu berkas (bisa dibagikan) atau pemutar audio.
+/// [bytes] null berarti berkas gagal diuraikan di server (mis. lebih
+/// besar dari batas ukuran) — kartu tetap tampil dengan lambang rusak.
+class ReplyFile {
+  final Uint8List? bytes;
+  final String mimeType;
+  final String filename;
+  final String kind;
+  final String? caption;
+
+  const ReplyFile({
+    this.bytes,
+    this.mimeType = 'application/octet-stream',
+    this.filename = 'berkas',
+    this.kind = 'document',
+    this.caption,
+  });
+
+  bool get isAudio => kind == 'audio';
+
+  factory ReplyFile.fromJson(Map<String, dynamic> json) {
+    final data = json['data'];
+    Uint8List? decoded;
+    if (data is String && data.isNotEmpty) {
+      try {
+        decoded = base64Decode(data);
+      } catch (_) {
+        decoded = null;
+      }
+    }
+    return ReplyFile(
+      bytes: decoded,
+      mimeType: json['mimeType'] as String? ?? 'application/octet-stream',
+      filename: json['filename'] as String? ?? 'berkas',
+      kind: json['kind'] as String? ?? 'document',
+      caption: json['caption'] as String?,
+    );
+  }
+}
+
+/// Daftar model dari deployment — persis seperti yang diberikan
+/// `GET /api/v1/agents/:agentId/models`: provider yang sedang aktif,
+/// model yang sedang aktif, dan id model yang bisa dipilih di provider itu.
+class ModelOptions {
+  final String provider;
+  final String current;
+  final List<String> models;
+
+  const ModelOptions({
+    required this.provider,
+    required this.current,
+    required this.models,
+  });
+
+  factory ModelOptions.fromJson(Map<String, dynamic> json) {
+    final raw = json['models'];
+    return ModelOptions(
+      provider: json['provider'] as String? ?? '',
+      current: json['current'] as String? ?? '',
+      models: raw is List ? [for (final m in raw) m.toString()] : const [],
+    );
+  }
+}
+
+/// Satu gambar yang dilampirkan ke pesan.
+///
+/// [bytes] adalah isi berkas yang sudah dibaca ke memori (oleh pemilih
+/// gambar), [mimeType] mis. `image/jpeg`, dan [filename] nama untuk
+/// ditampilkan/diteruskan ke server.
+class ChatImage {
+  final List<int> bytes;
+  final String mimeType;
+  final String filename;
+
+  const ChatImage({
+    required this.bytes,
+    this.mimeType = 'image/jpeg',
+    this.filename = 'gambar.jpg',
+  });
+}

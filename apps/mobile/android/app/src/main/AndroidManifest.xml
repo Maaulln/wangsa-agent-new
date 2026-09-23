@@ -1,0 +1,104 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Dibutuhkan lapisan suara (lib/voice/): mikrofon untuk kata pemicu
+         dan dikte, notifikasi untuk layanan latar depan yang wajib
+         ditampilkan Android selama layanan itu hidup (lihat
+         apps/mobile/PRD.md butir 7). WAKE_LOCK mencegah CPU tertidur
+         selagi layanan itu aktif. INTERNET dipakai Porcupine untuk
+         memvalidasi AccessKey sekali di awal — build debug/profile
+         sudah memilikinya lewat manifest masing-masing (lihat
+         android/app/src/debug/AndroidManifest.xml), tapi build
+         utama/rilis belum punya sama sekali sampai baris ini.
+
+         FOREGROUND_SERVICE_SPECIAL_USE (bukan
+         FOREGROUND_SERVICE_MICROPHONE): dibuktikan lewat pengujian
+         langsung di HP sungguhan (Android 15/API 35) bahwa
+         foregroundServiceType "microphone" ditolak SecurityException
+         bahkan saat aplikasi sedang aktif di layar depan —
+         android.permission.FOREGROUND_SERVICE_MICROPHONE ternyata masih
+         mewajibkan salah satu izin tambahan yang hanya diberikan ke app
+         asisten default/istimewa (CAPTURE_AUDIO_HOTWORD dkk, lihat
+         validateForegroundServiceType di ActiveServices.java), bukan
+         cuma app biasa yang minta RECORD_AUDIO. "specialUse" tidak
+         kena gerbang izin itu selama RECORD_AUDIO run-time sudah
+         diberikan pengguna — mikrofon tetap ditahan layanan yang sama,
+         cuma jenis FGS-nya yang beda. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <!-- Notifikasi full-screen ala Siri (lihat voice_summoner.dart): wajib
+         dideklarasikan sejak Android 14 agar notifikasi kategori panggilan
+         boleh memakai fullScreenIntent dan muncul di atas layar kunci. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <application
+        android:label="wangsa_mobile"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!-- flutter_foreground_task: nama layanan ini baku, jangan diubah
+             (dipakai plugin sendiri, bukan digenerate). foregroundServiceType
+             "specialUse" (bukan "microphone" — lihat komentar izin di atas
+             untuk alasannya, dibuktikan lewat pengujian di HP sungguhan)
+             wajib dideklarasikan sejak Android 14 agar layanan ini boleh
+             menahan akses mikrofon selagi berjalan di latar belakang —
+             inilah yang membuat wake word bisa tetap mendengar saat layar
+             mati (lihat apps/mobile/PRD.md butir 7). Sengaja TIDAK memakai
+             android:stopWithTask="true": layanan ini harus tetap hidup
+             walau aplikasi tidak sedang dibuka, bukan hanya saat berada di
+             latar belakang sementara. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="voice-wake-word-listening" />
+        </service>
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ menyembunyikan mesin TTS dari aplikasi kecuali
+             dideklarasikan di sini; tanpa ini flutter_tts tidak menemukan
+             Google TTS dan speak() diam saja. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+    </queries>
+</manifest>

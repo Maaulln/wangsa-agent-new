@@ -1,0 +1,300 @@
+import 'dart:convert';
+
+import 'package:bloc_test/bloc_test.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:wangsa_mobile/api/models.dart';
+import 'package:wangsa_mobile/api/wangsa_api_client.dart';
+import 'package:wangsa_mobile/chat/bloc/chat_bloc.dart';
+
+WangsaApiClient clientYangMenjawab(http.Response Function(http.Request) jawab) => WangsaApiClient(
+      baseUrl: 'https://api.wangsa.test',
+      httpClient: MockClient((request) async => jawab(request)),
+    );
+
+http.Response agentOk() => http.Response(
+      jsonEncode({
+        'success': true,
+        'data': {'id': 'agent-1', 'name': 'Asisten Akademik', 'purpose': 'Membantu tugas'},
+      }),
+      200,
+    );
+
+http.Response balasanOk(String teks) => http.Response(
+      jsonEncode({
+        'success': true,
+        'data': {'response': teks},
+      }),
+      200,
+    );
+
+http.Response tidakDitemukan() => http.Response(
+      jsonEncode({
+        'success': false,
+        'error': {'code': 'NOT_FOUND', 'message': 'Not found.'},
+      }),
+      404,
+    );
+
+void main() {
+  group('ChatBloc saat dibuka', () {
+    blocTest<ChatBloc, ChatState>(
+      'memuat Agent lalu siap dipakai',
+      build: () => ChatBloc(
+        apiClient: clientYangMenjawab((_) => agentOk()),
+        agentId: 'agent-1',
+      ),
+      act: (bloc) => bloc.add(const ChatOpened()),
+      expect: () => [
+        isA<ChatState>().having((s) => s.status, 'status', ChatStatus.loading),
+        isA<ChatState>()
+            .having((s) => s.status, 'status', ChatStatus.ready)
+            .having((s) => s.agent?.name, 'nama agent', 'Asisten Akademik'),
+      ],
+    );
+
+    blocTest<ChatBloc, ChatState>(
+      'Agent yang tidak ada memberi satu keadaan tidak ditemukan',
+      build: () => ChatBloc(
+        apiClient: clientYangMenjawab((_) => tidakDitemukan()),
+        agentId: 'agent-1',
+      ),
+      act: (bloc) => bloc.add(const ChatOpened()),
+      expect: () => [
+        isA<ChatState>().having((s) => s.status, 'status', ChatStatus.loading),
+        isA<ChatState>().having((s) => s.status, 'status', ChatStatus.notFound),
+      ],
+    );
+  });
+
+  group('ChatBloc saat mengirim pesan', () {
+    blocTest<ChatBloc, ChatState>(
+      'menambahkan giliran pengguna lalu giliran Agent',
+      build: () => ChatBloc(
+        apiClient: clientYangMenjawab(
+          (request) => request.method == 'POST' ? balasanOk('Ada dua tugas.') : agentOk(),
+        ),
+        agentId: 'agent-1',
+      ),
+      act: (bloc) async {
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const MessageSubmitted('Tugas apa?'));
+      },
+      skip: 2,
+      expect: () => [
+        isA<ChatState>()
+            .having((s) => s.turns.length, 'jumlah giliran', 1)
+            .having((s) => s.turns.last.content, 'isi', 'Tugas apa?')
+            .having((s) => s.isSending, 'sedang mengirim', isTrue),
+        isA<ChatState>()
+            .having((s) => s.turns.length, 'jumlah giliran', 2)
+            .having((s) => s.turns.last.role, 'peran', TurnRole.agent)
+            .having((s) => s.turns.last.content, 'isi', 'Ada dua tugas.')
+            .having((s) => s.isSending, 'sedang mengirim', isFalse),
+      ],
+    );
+
+    blocTest<ChatBloc, ChatState>(
+      'kegagalan kirim menampilkan galat dan tidak menambah giliran Agent',
+      build: () => ChatBloc(
+        apiClient: clientYangMenjawab(
+          (request) => request.method == 'POST'
+              ? http.Response(
+                  jsonEncode({
+                    'success': false,
+                    'error': {'code': 'RUNTIME_ERROR', 'message': 'Agent sedang bermasalah.'},
+                  }),
+                  502,
+                )
+              : agentOk(),
+        ),
+        agentId: 'agent-1',
+      ),
+      act: (bloc) async {
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const MessageSubmitted('Halo'));
+      },
+      skip: 3,
+      expect: () => [
+        isA<ChatState>()
+            .having((s) => s.turns.length, 'jumlah giliran', 1)
+            .having((s) => s.errorMessage, 'galat', 'Agent sedang bermasalah.')
+            .having((s) => s.isSending, 'sedang mengirim', isFalse),
+      ],
+    );
+
+    blocTest<ChatBloc, ChatState>(
+      'MessageCancelled menghentikan tanpa menunggu, dan balasan yang '
+      'telat datang tidak menimpa state lagi',
+      build: () => ChatBloc(
+        apiClient: WangsaApiClient(
+          baseUrl: 'https://api.wangsa.test',
+          httpClient: MockClient((request) async {
+            if (request.method != 'POST') return agentOk();
+            // Simulasi balasan server yang lambat — cukup lambat supaya
+            // MessageCancelled pasti sempat diproses lebih dulu.
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            return balasanOk('Telat.');
+          }),
+        ),
+        agentId: 'agent-1',
+      ),
+      act: (bloc) async {
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const MessageSubmitted('Halo'));
+        bloc.add(const MessageCancelled());
+      },
+      skip: 2,
+      wait: const Duration(milliseconds: 50),
+      expect: () => [
+        isA<ChatState>()
+            .having((s) => s.turns.length, 'jumlah giliran', 1)
+            .having((s) => s.isSending, 'sedang mengirim', isTrue),
+        isA<ChatState>()
+            .having((s) => s.turns.length, 'jumlah giliran', 1)
+            .having((s) => s.isSending, 'sedang mengirim', isFalse),
+      ],
+    );
+
+    blocTest<ChatBloc, ChatState>(
+      'pesan kosong diabaikan',
+      build: () => ChatBloc(
+        apiClient: clientYangMenjawab((_) => agentOk()),
+        agentId: 'agent-1',
+      ),
+      act: (bloc) async {
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const MessageSubmitted('   '));
+      },
+      skip: 2,
+      expect: () => <ChatState>[],
+    );
+
+    test(
+      'mengirim model efektif (pilihan pengguna) ke setiap pesan',
+      () async {
+        late Map<String, dynamic> terkirim;
+        final bloc = ChatBloc(
+          apiClient: clientYangMenjawab((request) {
+            if (request.method == 'POST') {
+              terkirim = jsonDecode(request.body) as Map<String, dynamic>;
+              return balasanOk('ok');
+            }
+            return agentOk();
+          }),
+          agentId: 'agent-1',
+        );
+        addTearDown(bloc.close);
+
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const ModelSelected('model-b'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const MessageSubmitted('Halo'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(terkirim['model'], 'model-b');
+        expect(terkirim.containsKey('llm'), isFalse);
+      },
+    );
+
+    test(
+      'tanpa pilihan, model aktif server yang dikirim',
+      () async {
+        late Map<String, dynamic> terkirim;
+        final bloc = ChatBloc(
+          apiClient: WangsaApiClient(
+            baseUrl: 'https://api.wangsa.test',
+            httpClient: MockClient((request) async {
+              if (request.method == 'POST') {
+                terkirim = jsonDecode(request.body) as Map<String, dynamic>;
+                return balasanOk('ok');
+              }
+              if (request.url.path.endsWith('/models')) {
+                return http.Response(
+                  jsonEncode({
+                    'success': true,
+                    'data': {
+                      'provider': 'prov',
+                      'current': 'model-a',
+                      'models': ['model-a', 'model-b'],
+                    },
+                  }),
+                  200,
+                );
+              }
+              return agentOk();
+            }),
+          ),
+          agentId: 'agent-1',
+        );
+        addTearDown(bloc.close);
+
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(bloc.state.models, ['model-a', 'model-b']);
+        expect(bloc.state.effectiveModel, 'model-a');
+
+        bloc.add(const MessageSubmitted('Halo'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(terkirim['model'], 'model-a');
+      },
+    );
+
+    test(
+      'ModelSelected(null) kembali ke bawaan server',
+      () async {
+        final bloc = ChatBloc(
+          apiClient: clientYangMenjawab((_) => agentOk()),
+          agentId: 'agent-1',
+        );
+        addTearDown(bloc.close);
+
+        bloc.add(const ModelSelected('model-b'));
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.effectiveModel, 'model-b');
+
+        bloc.add(const ModelSelected(null));
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.selectedModel, isNull);
+      },
+    );
+
+    test(
+      'pesan gambar tanpa teks tetap terkirim dengan lampiran',
+      () async {
+        late Map<String, dynamic> terkirim;
+        final bloc = ChatBloc(
+          apiClient: clientYangMenjawab((request) {
+            if (request.method == 'POST') {
+              terkirim = jsonDecode(request.body) as Map<String, dynamic>;
+              return balasanOk('ok');
+            }
+            return agentOk();
+          }),
+          agentId: 'agent-1',
+        );
+        addTearDown(bloc.close);
+
+        bloc.add(const ChatOpened());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(
+          MessageSubmitted(
+            '   ',
+            images: const [ChatImage(bytes: [1, 2, 3])],
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(terkirim['images'], hasLength(1));
+        expect(bloc.state.turns.first.imageCount, 1);
+      },
+    );
+  });
+}

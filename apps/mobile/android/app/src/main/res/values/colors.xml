@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Latar dan logo layar pembuka tema terang: background #FAFAFA, logo #09090B -->
+    <color name="splash_background">#FAFAFA</color>
+    <color name="splash_logo">#09090B</color>
+</resources>

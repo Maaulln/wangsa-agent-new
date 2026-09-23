@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Layar pembuka untuk Android 11 ke bawah. Android 12 ke atas memakai
+     windowSplashScreen* di values-v31/styles.xml. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+
+    <item
+        android:width="480dp"
+        android:height="480dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_splash_logo" />
+</layer-list>

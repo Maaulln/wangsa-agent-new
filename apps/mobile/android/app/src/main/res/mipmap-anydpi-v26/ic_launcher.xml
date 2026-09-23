@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ikon adaptif, dipakai Android 8.0 (API 26) ke atas. Sistem yang
+     memotong bentuknya sesuai tema peluncur ponsel — lingkaran, persegi
+     membulat, atau bentuk lain — bukan aplikasi ini. Untuk Android di
+     bawah 8.0, sistem jatuh ke berkas res/mipmap-*dpi/ic_launcher.png,
+     yang untuk sekarang masih ikon bawaan Flutter. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/splash_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
