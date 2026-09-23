@@ -48,6 +48,15 @@ class _FakeVoiceInput implements VoiceInput {
   Future<void> speakReply(String text) async {}
 
   @override
+  Future<void> readAloud(String text) async {}
+
+  @override
+  Future<void> stopSpeaking() async {}
+
+  @override
+  bool get isSpeaking => false;
+
+  @override
   Future<void> endConversation() async {}
 
   @override

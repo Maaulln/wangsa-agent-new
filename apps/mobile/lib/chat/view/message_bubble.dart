@@ -7,8 +7,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../bloc/chat_bloc.dart';
 import 'widgets/code_block.dart';
+import 'widgets/reasoning_disclosure.dart';
 import 'widgets/reply_file_list.dart';
 import 'widgets/reply_image_gallery.dart';
+import 'widgets/tool_call_card.dart';
 
 /// Giliran pengguna tetap gelembung (dipindahkan dari rancangan Yardan:
 /// sudut lebih membulat pada sisi lawan bicara, bayangan tipis). Giliran
@@ -25,13 +27,18 @@ import 'widgets/reply_image_gallery.dart';
 /// dirender, tampil sebagai tanda baca mentah atau hilang begitu saja.
 class MessageBubble extends StatelessWidget {
   final Turn turn;
+  final void Function(String text)? onSpeak;
 
-  const MessageBubble({super.key, required this.turn});
+  const MessageBubble({
+    super.key,
+    required this.turn,
+    this.onSpeak,
+  });
 
   @override
   Widget build(BuildContext context) {
     final fromUser = turn.role == TurnRole.user;
-    return fromUser ? _UserBubble(turn: turn) : _AgentAnswer(turn: turn);
+    return fromUser ? _UserBubble(turn: turn) : _AgentAnswer(turn: turn, onSpeak: onSpeak);
   }
 }
 
@@ -112,13 +119,13 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
-/// Balasan Agent: markdown polos rata kiri, hampir selebar layar (tidak
-/// dibatasi 80% seperti gelembung pengguna — tidak ada kotak yang perlu
-/// disisakan ruang di sampingnya), plus baris tombol aksi di bawahnya.
+/// Balasan Agent: proses penalaran, kartu alat, gambar, markdown polos rata kiri,
+/// file attachments, plus baris tombol aksi di bawahnya.
 class _AgentAnswer extends StatelessWidget {
   final Turn turn;
+  final void Function(String text)? onSpeak;
 
-  const _AgentAnswer({required this.turn});
+  const _AgentAnswer({required this.turn, this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
@@ -132,55 +139,55 @@ class _AgentAnswer extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (turn.thought.isNotEmpty)
+              ReasoningDisclosure(thought: turn.thought),
+            if (turn.toolCalls.isNotEmpty) ...[
+              for (final tc in turn.toolCalls)
+                ToolCallCard(toolCall: tc),
+              const SizedBox(height: 4),
+            ],
             if (turn.images.isNotEmpty) ...[
               ReplyImageGallery(images: turn.images),
               if (turn.content.isNotEmpty) const SizedBox(height: 8),
             ],
-            MarkdownBody(
-              data: turn.content,
-              // Balasan LLM sering memisah paragraf dengan satu baris baru,
-              // bukan baris kosong ganda ala markdown baku — tanpa ini,
-              // baris-baris itu akan menyatu jadi satu paragraf panjang.
-              softLineBreak: true,
-              // Blok kode berpagar (```) dapat kartu sendiri dengan label
-              // bahasa dan tombol salin — lihat widgets/code_block.dart.
-              // `code` inline (satu kata di antara backtick tunggal) TIDAK
-              // ikut builder ini, tetap gaya pil kecil dari styleSheet.code
-              // di bawah.
-              builders: {'pre': CodeBlockBuilder()},
-              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
-                  .copyWith(
-                    p: baseStyle,
-                    strong: baseStyle.copyWith(fontWeight: FontWeight.bold),
-                    em: baseStyle.copyWith(fontStyle: FontStyle.italic),
-                    listBullet: baseStyle,
-                    code: baseStyle.copyWith(
-                      fontFamily: 'monospace',
-                      backgroundColor: scheme.onSurface.withValues(alpha: 0.1),
+            if (turn.content.isNotEmpty)
+              MarkdownBody(
+                data: turn.content,
+                softLineBreak: true,
+                builders: {'pre': CodeBlockBuilder()},
+                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                    .copyWith(
+                      p: baseStyle,
+                      strong: baseStyle.copyWith(fontWeight: FontWeight.bold),
+                      em: baseStyle.copyWith(fontStyle: FontStyle.italic),
+                      listBullet: baseStyle,
+                      code: baseStyle.copyWith(
+                        fontFamily: 'monospace',
+                        backgroundColor: scheme.onSurface.withValues(alpha: 0.1),
+                      ),
+                      blockquote: baseStyle.copyWith(
+                        color: scheme.onSurface.withValues(alpha: 0.75),
+                      ),
+                      h1: baseStyle.copyWith(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      h2: baseStyle.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      h3: baseStyle.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    blockquote: baseStyle.copyWith(
-                      color: scheme.onSurface.withValues(alpha: 0.75),
-                    ),
-                    h1: baseStyle.copyWith(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    h2: baseStyle.copyWith(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    h3: baseStyle.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-            ),
+              ),
             if (turn.files.isNotEmpty) ...[
               const SizedBox(height: 8),
               ReplyFileList(files: turn.files),
             ],
             const SizedBox(height: 6),
-            _ActionRow(text: turn.content),
+            _ActionRow(text: turn.content, onSpeak: onSpeak),
           ],
         ),
       ),
@@ -188,21 +195,13 @@ class _AgentAnswer extends StatelessWidget {
   }
 }
 
-/// Ikon aksi ala Claude/ChatGPT di bawah tiap balasan. Hanya Salin dan
-/// Bagikan yang sungguhan berfungsi — keduanya murni fitur klien, tidak
-/// butuh apa pun dari backend. Suka/tidak suka dan bacakan (TTS) diberi
-/// info "belum tersedia" saat diketuk alih-alih diam, mengikuti pola yang
-/// sama dengan tombol lampiran di composer: bukan tombol pura-pura yang
-/// diam saja, tapi juga tidak berpura-pura berfungsi. Wangsa tidak punya
-/// endpoint untuk menyimpan umpan balik (lihat docs/API.md), dan tombol
-/// Bacakan per gelembung belum ada: TTS baru hidup untuk percakapan suara
-/// berkelanjutan (lihat README.md) — jadi menu titik-tiga ala Claude yang isinya semua
-/// hal semacam itu tidak ditambahkan sama sekali di sini, daripada berisi
-/// item yang tidak satu pun nyata.
+/// Ikon aksi ala Claude/ChatGPT di bawah tiap balasan. Salin, Bagikan,
+/// dan Bacakan (TTS) berfungsi nyata dengan haptic feedback.
 class _ActionRow extends StatelessWidget {
   final String text;
+  final void Function(String text)? onSpeak;
 
-  const _ActionRow({required this.text});
+  const _ActionRow({required this.text, this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +215,7 @@ class _ActionRow extends StatelessWidget {
           tooltip: 'Salin',
           color: scheme.onSurfaceVariant,
           onTap: () async {
+            unawaited(HapticFeedback.lightImpact());
             await Clipboard.setData(ClipboardData(text: text));
             if (!context.mounted) return;
             ScaffoldMessenger.of(context)
@@ -229,26 +229,41 @@ class _ActionRow extends StatelessWidget {
           icon: Icons.thumb_up_outlined,
           tooltip: 'Suka',
           color: scheme.onSurfaceVariant,
-          onTap: () => _notAvailableYet(context, 'Umpan balik'),
+          onTap: () {
+            unawaited(HapticFeedback.lightImpact());
+            _notAvailableYet(context, 'Umpan balik');
+          },
         ),
         _ActionIcon(
           icon: Icons.thumb_down_outlined,
           tooltip: 'Tidak suka',
           color: scheme.onSurfaceVariant,
-          onTap: () => _notAvailableYet(context, 'Umpan balik'),
+          onTap: () {
+            unawaited(HapticFeedback.lightImpact());
+            _notAvailableYet(context, 'Umpan balik');
+          },
         ),
         _ActionIcon(
           icon: Icons.volume_up_outlined,
           tooltip: 'Bacakan',
           color: scheme.onSurfaceVariant,
-          onTap: () => _notAvailableYet(context, 'Balasan suara'),
+          onTap: () {
+            unawaited(HapticFeedback.lightImpact());
+            if (onSpeak != null && text.trim().isNotEmpty) {
+              onSpeak!(text);
+            } else {
+              _notAvailableYet(context, 'Balasan suara');
+            }
+          },
         ),
         _ActionIcon(
           icon: Icons.share_outlined,
           tooltip: 'Bagikan',
           color: scheme.onSurfaceVariant,
-          onTap: () =>
-              unawaited(SharePlus.instance.share(ShareParams(text: text))),
+          onTap: () {
+            unawaited(HapticFeedback.lightImpact());
+            unawaited(SharePlus.instance.share(ShareParams(text: text)));
+          },
         ),
       ],
     );
@@ -278,12 +293,10 @@ class _ActionIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: onTap,
-      tooltip: tooltip,
       icon: Icon(icon, size: 18),
+      tooltip: tooltip,
       color: color,
       visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      padding: EdgeInsets.zero,
       splashRadius: 18,
     );
   }

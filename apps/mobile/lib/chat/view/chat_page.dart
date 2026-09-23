@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -48,39 +49,28 @@ class PendingImage {
 /// teks lalu ikon), dan lapisan suara (termasuk `VoiceOrb`) sudah lewat
 /// token `WangsaTheme`, sehingga keduanya otomatis mengikuti mode
 /// gelap/terang sistem. Yang TIDAK dipindahkan adalah mesin suaranya:
-/// layar ini tetap hanya mengenal kontrak [VoiceInput], sehingga wake
-/// word Porcupine milik Irawan tetap yang menyala di baliknya.
+/// `NativeVoiceInput` tetap dipakai, hanya dibungkus antarmuka
+/// `VoiceInput` supaya layar ini bisa diuji tanpa menyentuh perangkat
+/// keras mikrofon (lihat `test/chat/chat_page_test.dart`).
 class ChatPage extends StatefulWidget {
+  final VoiceInput voiceInput;
   final AppConfig config;
   final String? configProblem;
-
-  /// Satu instance dipegang bersama sepanjang umur aplikasi (lihat
-  /// main.dart) — layar chat memegangnya, dan mengopernya lagi ke
-  /// [SettingsPage] saat pengguna membuka layar itu, supaya sakelar
-  /// "dengar di latar belakang" di sana mengendalikan mesin yang sama,
-  /// bukan instance baru.
-  final VoiceInput voiceInput;
-
-  /// Diteruskan apa adanya ke [SettingsPage] — lihat catatan di
-  /// theme_controller.dart soal kenapa ini perlu ada sama sekali.
   final ThemeController themeController;
-
-  /// Diteruskan apa adanya ke [SettingsPage] untuk formulir kunci API
-  /// LLM (BYOK).
   final LlmSettingsController llmSettings;
 
-  /// Penyuntikan pemilih gambar untuk test — produksi memakai galeri
-  /// sistem lewat `image_picker`. Mengembalikan null bila pengguna
-  /// membatalkan.
+  /// Hook pengujian: menggantikan `ImagePicker().pickImage()` bawaan
+  /// supaya tes widget bisa menyuntikkan gambar tanpa menyentuh kamera/
+  /// galeri sungguhan perangkat.
   final Future<PendingImage?> Function()? pickImage;
 
   const ChatPage({
     super.key,
-    required this.config,
     required this.voiceInput,
+    required this.config,
+    this.configProblem,
     required this.themeController,
     required this.llmSettings,
-    this.configProblem,
     this.pickImage,
   });
 
@@ -90,57 +80,47 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _draftController = TextEditingController();
   final _scrollController = ScrollController();
-  late final AnimationController _waveController;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
   StreamSubscription<VoiceEvent>? _voiceSubscription;
   VoiceStatus _voiceStatus = VoiceStatus.off;
-
-  /// Lapisan suara sedang menimpa layar chat. Terpisah dari [_voiceStatus]
-  /// dengan sengaja: status "idle" (siaga kata pemicu) tidak boleh
-  /// menampilkan lapisan ini, hanya "listening"/"processing", atau saat
-  /// ada galat yang perlu dibaca pengguna.
-  bool _voiceOverlayOpen = false;
+  double _soundLevel = 0.0;
   String? _voiceError;
 
-  /// Level volume mikrofon terkini, 0.0-1.0 — lihat `SoundLevelChanged`
-  /// di voice_input.dart. Cuma dipakai `VoiceOrb`, direset ke 0 setiap
-  /// sesi dengar berakhir supaya orb tidak "membeku" di ukuran terakhir.
-  double _soundLevel = 0;
+  /// Lapisan suara sedang menimpa layar chat. Dibuka waktu tombol mikrofon
+  /// ditekan atau kata pemicu terdengar, ditutup waktu ucapan selesai
+  /// dikirim atau tombol Batal ditekan.
+  bool _voiceOverlayOpen = false;
 
-  bool get _isListening => _voiceStatus == VoiceStatus.listening;
+  late final AnimationController _waveController;
+
+  static const List<Map<String, String>> _slashCommands = [
+    {'command': '/status', 'desc': 'Status runtime & gateway agent'},
+    {'command': '/model', 'desc': 'Ganti atau cek model AI aktif'},
+    {'command': '/new', 'desc': 'Mulai sesi percakapan baru'},
+    {'command': '/reset', 'desc': 'Reset konteks percakapan saat ini'},
+    {'command': '/skills', 'desc': 'Daftar skill & kemampuan agent'},
+    {'command': '/mcp', 'desc': 'Status koneksi tool MCP'},
+  ];
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _waveController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    );
-    _voiceStatus = widget.voiceInput.status;
-    _voiceSubscription = widget.voiceInput.events.listen(_onVoiceEvent);
-  }
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _waveController.dispose();
-    _voiceSubscription?.cancel();
-    // Layar ini adalah satu-satunya pemilik VoiceInput (lihat main.dart),
-    // jadi ia juga yang bertanggung jawab melepaskannya.
-    widget.voiceInput.dispose();
-    _draftController.dispose();
-    _scrollController.dispose();
-    super.dispose();
+    _voiceStatus = widget.voiceInput.status;
+    WidgetsBinding.instance.addObserver(this);
+    _voiceSubscription = widget.voiceInput.events.listen(_onVoiceEvent);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // DESIGN.md §15/16: tidak ada animasi tanpa tujuan, dan pengguna yang
-    // meminta gerak berkurang di sistemnya harus benar-benar dituruti.
     if (MediaQuery.of(context).disableAnimations) {
       _waveController.stop();
     } else if (!_waveController.isAnimating) {
@@ -157,11 +137,21 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
-  /// Menerjemahkan kejadian dari lapisan suara menjadi perubahan pada
-  /// layar ini. Layar tidak pernah tahu ada Porcupine atau
-  /// `speech_to_text` di baliknya — hanya empat jenis [VoiceEvent] ini,
-  /// persis batas yang didokumentasikan di voice_input.dart.
+  @override
+  void dispose() {
+    _waveController.dispose();
+    _voiceSubscription?.cancel();
+    _draftController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    widget.voiceInput.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  bool get _isListening => _voiceStatus == VoiceStatus.listening;
+
   void _onVoiceEvent(VoiceEvent event) {
+    if (!mounted) return;
     switch (event) {
       case WakeWordDetected():
         setState(() {
@@ -169,11 +159,6 @@ class _ChatPageState extends State<ChatPage>
           _voiceError = null;
           _voiceStatus = widget.voiceInput.status;
         });
-        ScaffoldMessenger.maybeOf(context)
-          ?..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(content: Text('Wake word "${widget.config.wakeWord}" terdeteksi.')),
-          );
       case PartialTranscript(text: final text):
         setState(() {
           _voiceStatus = widget.voiceInput.status;
@@ -205,6 +190,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _toggleListening() async {
+    unawaited(HapticFeedback.lightImpact());
     setState(() => _voiceError = null);
     if (_isListening) {
       await widget.voiceInput.stop();
@@ -239,7 +225,47 @@ class _ChatPageState extends State<ChatPage>
 
   bool get _hasPendingImages => _pendingImages.isNotEmpty;
 
-  Future<void> _pickImage() async {
+  Future<void> _showAttachmentPicker() async {
+    if (widget.pickImage != null) {
+      await _pickImage(source: ImageSource.gallery);
+      return;
+    }
+    unawaited(HapticFeedback.lightImpact());
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Ambil Foto Kamera'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_pickImage(source: ImageSource.camera));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Pilih dari Galeri Foto'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_pickImage(source: ImageSource.gallery));
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage({ImageSource source = ImageSource.gallery}) async {
     if (_pendingImages.length >= _maxPendingImages) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -255,7 +281,7 @@ class _ChatPageState extends State<ChatPage>
         picked = await widget.pickImage!();
       } else {
         final xfile = await ImagePicker().pickImage(
-          source: ImageSource.gallery,
+          source: source,
           maxWidth: 2048,
           imageQuality: 85,
         );
@@ -278,6 +304,7 @@ class _ChatPageState extends State<ChatPage>
     }
     if (picked == null) return;
     if (!mounted) return;
+    unawaited(HapticFeedback.lightImpact());
     setState(() => _pendingImages.add(picked!));
   }
 
@@ -290,12 +317,14 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _removePendingImage(int index) {
+    unawaited(HapticFeedback.lightImpact());
     setState(() => _pendingImages.removeAt(index));
   }
 
   void _submit(BuildContext context) {
     final draft = _draftController.text;
     if (draft.trim().isEmpty && !_hasPendingImages) return;
+    unawaited(HapticFeedback.lightImpact());
     context.read<ChatBloc>().add(
           MessageSubmitted(
             draft,
@@ -314,8 +343,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   /// Pil model diketuk: lembar pilihan berisi model aktif server dan
-  /// daftar dari `GET .../models`. Pilihan disimpan di [ChatBloc]
-  /// ([ModelSelected]) dan dikirim bersama setiap pesan berikutnya.
+  /// daftar dari `GET .../models`.
   void _showModelPicker(BuildContext context, ChatState state) {
     if (state.models.isEmpty) {
       ScaffoldMessenger.of(context)
@@ -383,9 +411,6 @@ class _ChatPageState extends State<ChatPage>
   @override
   Widget build(BuildContext context) {
     return BlocListener<ChatBloc, ChatState>(
-      // Agent selesai menanggapi ucapan: berhasil, gagal, atau dibatalkan.
-      // Lapisan suara yang menentukan apakah balasannya dibacakan (hanya
-      // untuk percakapan suara), layar cukup melaporkan hasilnya.
       listenWhen: (before, after) => before.isSending && !after.isSending,
       listener: (_, state) {
         final last = state.turns.isEmpty ? null : state.turns.last;
@@ -399,9 +424,6 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Membacakan [text] lewat lapisan suara. Ia kembali setelah mikrofon
-  /// lanjutan menyala, jadi saat itu lapisan dibuka lagi supaya pengguna
-  /// tahu mikrofon sedang mendengar.
   Future<void> _speakReply(String text) async {
     await widget.voiceInput.speakReply(text);
     if (!mounted) return;
@@ -445,10 +467,6 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Header ala Gemini/Claude: hamburger di kiri membuka [_drawer], pensil
-  /// di kanan langsung memulai percakapan baru. Wordmark Wangsa sengaja
-  /// dikosongkan dulu di sini, bukan dihapus permanen — lihat catatan di
-  /// [_drawer] soal arah jangka panjangnya.
   Widget _header(BuildContext context, ChatState state) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
@@ -456,7 +474,10 @@ class _ChatPageState extends State<ChatPage>
       child: Row(
         children: [
           IconButton(
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            onPressed: () {
+              context.read<ChatBloc>().add(const SessionsRequested());
+              _scaffoldKey.currentState?.openDrawer();
+            },
             tooltip: 'Menu',
             icon: const Icon(Icons.menu_rounded, size: 24),
             color: scheme.onSurfaceVariant,
@@ -476,26 +497,48 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _startNewConversation(BuildContext context) {
+    unawaited(HapticFeedback.lightImpact());
     context.read<ChatBloc>().add(const ConversationCleared());
   }
 
-  /// Isi laci: satu aksi nyata di daftar atas (percakapan baru, mengosongkan
-  /// giliran di memori), dan bilah bawah TETAP — tidak ikut scroll, ala
-  /// ChatGPT — berisi jalan pintas ke Profil (avatar) dan Pengaturan
-  /// (gear). Keduanya langsung satu ketukan, sengaja TIDAK disembunyikan
-  /// di balik menu akun, karena Wangsa belum punya sistem akun untuk
-  /// membenarkan menu semacam itu. Kabut tipis di atas bilah bawah murni
-  /// dekoratif (`IgnorePointer`, tidak mencegat ketukan) supaya daftar
-  /// yang di-scroll melebur ke bilah bawah alih-alih terpotong tiba-tiba.
-  ///
-  /// BUKAN daftar riwayat percakapan/projek/plugin ala ChatGPT/Gemini —
-  /// itu arah yang diminta, tapi menuntut penyimpanan multi-percakapan di
-  /// backend yang belum ada. Menambahnya sebagai tombol di sini sekarang
-  /// berarti tombol yang berpura-pura berfungsi, jadi sengaja ditunda
-  /// sampai backend-nya nyata.
+  Map<String, List<SessionSummary>> _groupSessions(List<SessionSummary> sessions) {
+    final Map<String, List<SessionSummary>> groups = {
+      'Hari ini': [],
+      'Kemarin': [],
+      'Lebih lama': [],
+    };
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+
+    for (final s in sessions) {
+      DateTime? dt;
+      if (s.updatedAt.isNotEmpty) {
+        try {
+          dt = DateTime.parse(s.updatedAt).toLocal();
+        } catch (_) {}
+      }
+      if (dt == null) {
+        groups['Lebih lama']!.add(s);
+      } else {
+        final d = DateTime(dt.year, dt.month, dt.day);
+        if (d == today) {
+          groups['Hari ini']!.add(s);
+        } else if (d == yesterday) {
+          groups['Kemarin']!.add(s);
+        } else {
+          groups['Lebih lama']!.add(s);
+        }
+      }
+    }
+    return groups;
+  }
+
   Widget _drawer(BuildContext context, ChatState state) {
     final scheme = Theme.of(context).colorScheme;
     const bottomBarHeight = 72.0;
+    final sessionGroups = _groupSessions(state.sessions);
+
     return Drawer(
       backgroundColor: scheme.surface,
       child: SafeArea(
@@ -516,18 +559,25 @@ class _ChatPageState extends State<ChatPage>
                           }
                         : null,
                   ),
-                  // Placeholder ala sidebar ChatGPT — SEMUA di bawah ini
-                  // belum punya backend (lihat catatan di atas) dan
-                  // ditandai "Segera", bukan pura-pura berfungsi. Diketuk
-                  // hanya memunculkan info "belum tersedia".
-                  _drawerPlaceholder(context, Icons.collections_bookmark_outlined, 'Pustaka'),
-                  _drawerPlaceholder(context, Icons.folder_outlined, 'Proyek'),
-                  _drawerPlaceholder(context, Icons.schedule_outlined, 'Terjadwal'),
-                  _drawerPlaceholder(context, Icons.extension_outlined, 'Plugin'),
-                  _drawerSectionHeader(context, 'Disematkan'),
-                  _drawerEmptyNote(context, 'Belum ada percakapan yang disematkan'),
-                  _drawerSectionHeader(context, 'Terbaru'),
-                  _drawerEmptyNote(context, 'Riwayat percakapan segera hadir'),
+                  const Divider(height: 16),
+                  if (state.isLoadingSessions) ...[
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ] else if (state.sessions.isEmpty) ...[
+                    _drawerSectionHeader(context, 'Riwayat Percakapan'),
+                    _drawerEmptyNote(context, 'Belum ada riwayat percakapan'),
+                  ] else ...[
+                    for (final entry in sessionGroups.entries)
+                      if (entry.value.isNotEmpty) ...[
+                        _drawerSectionHeader(context, entry.key),
+                        for (final session in entry.value)
+                          _sessionRow(context, state, session),
+                      ],
+                  ],
                 ],
               ),
             ),
@@ -628,6 +678,77 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  Widget _sessionRow(
+    BuildContext context,
+    ChatState state,
+    SessionSummary session,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final isSelected = state.sessionId == session.sessionId;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        Navigator.of(context).pop();
+        context.read<ChatBloc>().add(SessionSelected(session.sessionId));
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: isSelected ? scheme.primaryContainer.withValues(alpha: 0.5) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 18,
+              color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    session.title.isNotEmpty ? session.title : 'Percakapan',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected ? scheme.onPrimaryContainer : scheme.onSurface,
+                    ),
+                  ),
+                  if (session.lastMessage.isNotEmpty)
+                    Text(
+                      session.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              tooltip: 'Hapus sesi',
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                context.read<ChatBloc>().add(SessionDeleted(session.sessionId));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _content(BuildContext context, ChatState state) {
     if (state.status == ChatStatus.loading ||
         state.status == ChatStatus.initial) {
@@ -638,11 +759,6 @@ class _ChatPageState extends State<ChatPage>
       );
     }
 
-    // ChatNotice sudah membawa blok "Memakai konfigurasi cadangan"
-    // (lihat widgets/chat_notice.dart) — dipertahankan dari layar lama
-    // ini, bukan bawaan Yardan, karena itu yang membuat kegagalan
-    // konfigurasi bisa dikenali dalam hitungan detik, bukan lewat
-    // penyelidikan panjang.
     if (state.status == ChatStatus.notFound) {
       return ChatNotice.notFound(extra: _fallbackConfigNotice());
     }
@@ -665,19 +781,6 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Daftar chat mengisi seluruh tinggi layar, bukan berhenti sebelum
-  /// komposer — komposer melayang DI ATASNYA lewat `Positioned`, dengan
-  /// kaca buram (`BackdropFilter`) supaya pesan yang lewat di baliknya
-  /// tetap terlihat samar-samar, bukan tertutup kotak solid. Padding
-  /// bawah daftar ([_composerReserve]) menyisakan ruang supaya pesan
-  /// terakhir tidak sungguhan tertutup komposer saat discroll ke ujung.
-  ///
-  /// 160, bukan sekadar tinggi composer satu baris (~126 — lihat
-  /// `_messageComposer`: padding luar 14 + kartu 18 + TextField ~24 +
-  /// jarak 10 + baris ikon ~48 + `SizedBox` 12 di bawahnya), supaya masih
-  /// ada napas walau composer tumbuh dua baris teks. Nilai yang lebih
-  /// kecil sebelumnya (100) membuat item terakhir separuh ketiban lapisan
-  /// buram, terlihat "bentrok" alih-alih berhenti bersih di atasnya.
   static const _composerReserve = 160.0;
 
   Widget _chatConversation(BuildContext context, ChatState state) {
@@ -720,7 +823,10 @@ class _ChatPageState extends State<ChatPage>
                           ),
                         );
                       }
-                      return MessageBubble(turn: state.turns[index]);
+                      return MessageBubble(
+                        turn: state.turns[index],
+                        onSpeak: (text) => widget.voiceInput.readAloud(text),
+                      );
                     },
                   ),
                 ),
@@ -749,6 +855,7 @@ class _ChatPageState extends State<ChatPage>
                     style: TextStyle(color: scheme.error),
                   ),
                 ),
+              _commandSuggester(context),
               _messageComposer(context, state),
               const SizedBox(height: 12),
             ],
@@ -758,15 +865,77 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Kartu dua baris ala Claude: teks di atas, ikon di bawah. `+`
-  /// membuka galeri sistem (gambar dikirim sebagai lampiran yang bisa
-  /// dilihat Agent), pil model membuka daftar dari `GET .../models`.
-  ///
-  /// Melayang sungguhan: `ClipRRect` + `BackdropFilter` mengaburkan apa
-  /// pun yang lewat di baliknya (daftar chat yang scroll penuh sampai ke
-  /// bawah layar, lihat [_chatConversation]), dan warna latarnya
-  /// tembus-pandang sebagian (`withValues(alpha: ...)`), bukan solid —
-  /// itu yang membedakan "melayang" dari "kotak putih menempel di bawah".
+  Widget _commandSuggester(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _draftController,
+      builder: (context, value, _) {
+        final text = value.text.trim();
+        if (!text.startsWith('/')) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        final filtered = _slashCommands
+            .where((c) => c['command']!.startsWith(text.toLowerCase()))
+            .toList();
+        if (filtered.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: 0.12),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: filtered.length,
+              separatorBuilder: (_, __) => Divider(
+                height: 1,
+                color: scheme.outlineVariant.withValues(alpha: 0.2),
+              ),
+              itemBuilder: (context, index) {
+                final item = filtered[index];
+                return ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  leading: Icon(Icons.bolt_rounded, size: 18, color: scheme.primary),
+                  title: Text(
+                    item['command']!,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                      fontSize: 13,
+                    ),
+                  ),
+                  subtitle: Text(
+                    item['desc']!,
+                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                  ),
+                  onTap: () {
+                    unawaited(HapticFeedback.lightImpact());
+                    _draftController.text = item['command']!;
+                    _draftController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: _draftController.text.length),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _messageComposer(BuildContext context, ChatState state) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
@@ -808,11 +977,6 @@ class _ChatPageState extends State<ChatPage>
                     ),
                     filled: false,
                     isCollapsed: true,
-                    // WangsaTheme mendaftarkan focusedBorder bergaris warna
-                    // primer secara global (lihat theme/wangsa_theme.dart) —
-                    // tanpa menimpa ketiganya di sini, cincin fokus itu tetap
-                    // muncul walau `border` sudah none, karena kartu composer
-                    // ini sudah punya bingkainya sendiri.
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -824,7 +988,7 @@ class _ChatPageState extends State<ChatPage>
                 Row(
                   children: [
                     IconButton(
-                      onPressed: state.isSending ? null : () => unawaited(_pickImage()),
+                      onPressed: state.isSending ? null : () => unawaited(_showAttachmentPicker()),
                       tooltip: 'Lampiran',
                       icon: const Icon(Icons.add_circle_outline_rounded),
                       color: scheme.onSurfaceVariant,
@@ -862,10 +1026,6 @@ class _ChatPageState extends State<ChatPage>
                           onPressed: canSend ? () => _submit(context) : null,
                           icon: const Icon(Icons.arrow_upward_rounded),
                           tooltip: 'Kirim',
-                          // Ungu (gaya bawaan IconButton.filled) cuma waktu
-                          // ada isi yang bisa dikirim — kosong berarti
-                          // tombolnya memang tidak melakukan apa-apa kalau
-                          // ditekan, jadi tidak boleh terlihat seolah aktif.
                           style: !canSend
                               ? IconButton.styleFrom(
                                   backgroundColor: scheme.surfaceContainerHighest,
@@ -887,8 +1047,6 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Strip pratinjau gambar yang menunggu dikirim — tiap miniatur bisa
-  /// dibuang lewat tombol silangnya sebelum pesan dikirim.
   Widget _pendingStrip(ColorScheme scheme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -947,34 +1105,21 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Pil `+` dan pil model belum menyambung ke apa pun — bukan tombol
-  /// palsu yang diam saat diketuk, tapi juga tidak berpura-pura berfungsi.
-  // Skala tipografi laci — satu ukuran per peran, dipakai SEMUA baris
-  // supaya konsisten: baris menu 15/w500 dengan ikon 22, judul bagian
-  // 13/w700, keterangan 13, label "Segera" 12. Sebelumnya "Percakapan baru"
-  // memakai ListTile bawaan (16, ikon 24) sedangkan sisanya masing-masing
-  // punya ukuran sendiri.
   static const _drawerRowHeight = 48.0;
   static const _drawerHorizontalPadding = 16.0;
 
-  /// Baris menu tunggal: dipakai "Percakapan baru" (aktif) dan semua
-  /// placeholder (redup, `onTap` null = tidak aktif tapi tetap bisa memberi
-  /// info lewat [onPlaceholderTap]).
   Widget _drawerRow(
     BuildContext context,
     IconData icon,
     String label, {
     VoidCallback? onTap,
-    bool placeholder = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    final enabled = onTap != null || placeholder;
-    final color = placeholder
-        ? scheme.onSurfaceVariant.withValues(alpha: 0.65)
-        : (enabled ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.38));
+    final enabled = onTap != null;
+    final color = enabled ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.38);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: onTap ?? (placeholder ? () => _notAvailableYet(context, label) : null),
+      onTap: onTap,
       child: SizedBox(
         height: _drawerRowHeight,
         child: Padding(
@@ -989,8 +1134,6 @@ class _ChatPageState extends State<ChatPage>
                   style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w500),
                 ),
               ),
-              if (placeholder)
-                Text('Segera', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
             ],
           ),
         ),
@@ -998,12 +1141,9 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  Widget _drawerPlaceholder(BuildContext context, IconData icon, String label) =>
-      _drawerRow(context, icon, label, placeholder: true);
-
   Widget _drawerSectionHeader(BuildContext context, String label) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(_drawerHorizontalPadding, 24, _drawerHorizontalPadding, 6),
+      padding: const EdgeInsets.fromLTRB(_drawerHorizontalPadding, 20, _drawerHorizontalPadding, 6),
       child: Text(
         label,
         style: TextStyle(
@@ -1028,36 +1168,15 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  void _notAvailableYet(BuildContext context, String what) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$what belum tersedia.')));
-  }
-
-  /// Lapisan suara: menimpa layar chat, bukan menggantikannya. Kedua
-  /// jalur masuk (tombol mikrofon dan kata pemicu) berakhir di sini.
-  /// Tidak ada kartu di sini dengan sengaja — orb, status, dan tombol
-  /// Batal melayang langsung di atas backdrop gelap, meniru panggung
-  /// gelap polos di referensi siri-orb smoothui.dev (lihat percakapan
-  /// soal desain orb). Karena backdrop-nya SELALU gelap (scrim, bukan
-  /// `scheme.surface`) terlepas dari mode terang/gelap aplikasi, warna
-  /// teks di sini SENGAJA ditulis literal terang, bukan lewat token
-  /// `scheme.onSurface`/dst yang justru gelap di tema terang — beda dari
-  /// pola di tempat lain layar ini yang selalu ikut token tema.
   Widget _voiceOverlay(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Positioned.fill(
       child: GestureDetector(
-        // Mengetuk area gelap membatalkan — perilaku standar lapisan
-        // modal, dan satu-satunya cara keluar selain tombol Batal saat
-        // pengguna berubah pikiran di tengah jalan.
         onTap: () => unawaited(_cancelVoiceOverlay()),
         child: Container(
           color: scheme.scrim.withValues(alpha: 0.82),
           alignment: Alignment.bottomCenter,
           child: GestureDetector(
-            // Menelan ketukan supaya isinya sendiri tidak ikut menutup
-            // lapisan saat disentuh.
             onTap: () {},
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 28, 24, 40),
@@ -1135,9 +1254,6 @@ class _ChatPageState extends State<ChatPage>
   }
 }
 
-/// Pil kecil di baris ikon composer, meniru penunjuk model di aplikasi
-/// Claude. Menampilkan model efektif ([ChatState.effectiveModel]) bila
-/// sudah dimuat dari server, kalau tidak nama Agent yang sedang aktif.
 class _ModelPill extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -1147,9 +1263,6 @@ class _ModelPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // Nama Agent bisa panjang (mis. kalimat tujuan, bukan nama pendek),
-    // jadi pil ini dibatasi lebarnya secara eksplisit — Text.overflow
-    // saja tidak cukup di dalam Row yang tidak membatasi lebar anaknya.
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 130),
       child: InkWell(
@@ -1185,3 +1298,4 @@ class _ModelPill extends StatelessWidget {
     );
   }
 }
+

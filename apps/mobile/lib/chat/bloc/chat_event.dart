@@ -39,10 +39,7 @@ final class ModelSelected extends ChatEvent {
   List<Object?> get props => [model];
 }
 
-/// Pengguna menekan "Percakapan baru". Hanya mengosongkan giliran yang
-/// ada di memori — belum ada penyimpanan riwayat percakapan di backend
-/// untuk dihapus atau diarsipkan, jadi ini murni mulai dari kosong lagi
-/// dengan Agent yang sama.
+/// Pengguna menekan "Percakapan baru".
 final class ConversationCleared extends ChatEvent {
   const ConversationCleared();
 }
@@ -54,4 +51,29 @@ final class ConversationCleared extends ChatEvent {
 /// bukan mengantre di belakangnya.
 final class MessageCancelled extends ChatEvent {
   const MessageCancelled();
+}
+
+/// Memuat riwayat sesi untuk drawer.
+final class SessionsRequested extends ChatEvent {
+  const SessionsRequested();
+}
+
+/// Memilih/berpindah ke sesi lain dari drawer.
+final class SessionSelected extends ChatEvent {
+  final String sessionId;
+
+  const SessionSelected(this.sessionId);
+
+  @override
+  List<Object?> get props => [sessionId];
+}
+
+/// Menghapus sesi tertentu dari drawer.
+final class SessionDeleted extends ChatEvent {
+  final String sessionId;
+
+  const SessionDeleted(this.sessionId);
+
+  @override
+  List<Object?> get props => [sessionId];
 }

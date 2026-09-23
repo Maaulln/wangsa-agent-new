@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../api/models.dart';
 
@@ -44,7 +45,11 @@ class _ImageThumbnail extends StatelessWidget {
       onTap: provider == null
           ? null
           : () => Navigator.of(context).push(
-                _ImagePreviewRoute(provider: provider, caption: image.caption),
+                _ImagePreviewRoute(
+                  provider: provider,
+                  caption: image.caption,
+                  image: image,
+                ),
               ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
@@ -60,9 +65,6 @@ class _ImageThumbnail extends StatelessWidget {
               : Image(
                   image: provider,
                   fit: BoxFit.cover,
-                  // Gambar berbasis URL jarang gagal setelah diterima, tapi
-                  // bisa saja tautannya sudah kedaluwarsa — tampilkan
-                  // lambang rusak alih-alih layar merah galat Flutter.
                   errorBuilder: (context, error, stackTrace) => Icon(
                     Icons.broken_image_outlined,
                     color: scheme.onSurfaceVariant,
@@ -74,69 +76,128 @@ class _ImageThumbnail extends StatelessWidget {
   }
 }
 
-/// Layar penuh transparan (bukan [MaterialPageRoute] biasa) supaya latar
-/// percakapan tetap terlihat redup di baliknya, mengikuti pola pratinjau
-/// gambar yang umum di aplikasi pesan.
+/// Layar penuh transparan supaya latar percakapan tetap terlihat redup di baliknya.
 class _ImagePreviewRoute extends PageRouteBuilder<void> {
-  _ImagePreviewRoute({required ImageProvider provider, String? caption})
-      : super(
+  _ImagePreviewRoute({
+    required ImageProvider provider,
+    String? caption,
+    required ReplyImage image,
+  }) : super(
           opaque: false,
           barrierColor: Colors.black87,
           transitionDuration: const Duration(milliseconds: 180),
           pageBuilder: (context, animation, secondaryAnimation) =>
-              _ImagePreviewScreen(provider: provider, caption: caption),
+              _ImagePreviewScreen(provider: provider, caption: caption, image: image),
         );
 }
 
 class _ImagePreviewScreen extends StatelessWidget {
   final ImageProvider provider;
   final String? caption;
+  final ReplyImage image;
 
-  const _ImagePreviewScreen({required this.provider, this.caption});
+  const _ImagePreviewScreen({
+    required this.provider,
+    this.caption,
+    required this.image,
+  });
+
+  Future<void> _share() async {
+    if (image.bytes != null) {
+      final xfile = XFile.fromData(
+        image.bytes!,
+        name: image.filename,
+        mimeType: image.mimeType,
+      );
+      await SharePlus.instance.share(
+        ShareParams(files: [xfile], fileNameOverrides: [image.filename]),
+      );
+    } else if (image.url != null && image.url!.isNotEmpty) {
+      await SharePlus.instance.share(ShareParams(text: image.url!));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: SafeArea(
-          child: Stack(
-            children: [
-              Center(
-                child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 5,
-                  // Menelan ketukan di atas gambar itu sendiri supaya
-                  // pencet-cubit tidak ikut menutup layar — hanya ketukan
-                  // di area kosong di sekitarnya yang menutup.
-                  child: GestureDetector(
-                    onTap: () {},
-                    child: Image(image: provider),
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 5,
+                child: Image(image: provider),
+              ),
+            ),
+            // Header bar
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ),
-                ),
+                  Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.share_outlined, color: Colors.white),
+                          tooltip: 'Bagikan',
+                          onPressed: _share,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          tooltip: 'Tutup',
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
+            ),
+            if (caption != null && caption!.trim().isNotEmpty)
               Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-              if (caption != null && caption!.trim().isNotEmpty)
-                Positioned(
-                  left: 24,
-                  right: 24,
-                  bottom: 24,
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Text(
                     caption!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

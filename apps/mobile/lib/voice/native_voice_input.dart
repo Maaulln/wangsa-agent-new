@@ -48,6 +48,8 @@ class NativeVoiceInput implements VoiceInput {
   /// memegang mikrofon.
   bool deferAutoListen = false;
 
+  bool _isSpeakingManual = false;
+
   NativeVoiceInput({
     String? accessKey,
     String keywordAssetPath = 'assets/voice/keywords.txt',
@@ -81,6 +83,9 @@ class NativeVoiceInput implements VoiceInput {
 
   @override
   VoiceStatus get status => _status;
+
+  @override
+  bool get isSpeaking => _isSpeakingManual;
 
   /// Pembuatan mesin kata pemicu yang sedang berjalan, atau null. Membuat
   /// mesin butuh waktu (memuat model ONNX, sekitar satu detik), dan selama
@@ -262,6 +267,28 @@ class NativeVoiceInput implements VoiceInput {
   }
 
   @override
+  Future<void> readAloud(String text) async {
+    if (_disposed) return;
+    _speakToken++;
+    final spoken = speechText(text);
+    if (spoken.isEmpty) return;
+    _isSpeakingManual = true;
+    try {
+      await _tts.speak(spoken);
+    } finally {
+      _isSpeakingManual = false;
+    }
+  }
+
+  @override
+  Future<void> stopSpeaking() async {
+    if (_disposed) return;
+    _speakToken++;
+    _isSpeakingManual = false;
+    await _tts.stop();
+  }
+
+  @override
   Future<void> endConversation() async {
     if (_disposed || !_conversationActive) return;
     _speakToken++;
@@ -309,6 +336,7 @@ class NativeVoiceInput implements VoiceInput {
     // Lebih dulu, supaya speakReply yang sedang menunggu TTS tahu
     // percakapan sudah dihentikan dan tidak membuka mikrofon lagi.
     _conversationActive = false;
+    _isSpeakingManual = false;
     _speakToken++;
     await _tts.stop();
     await _speechEngine.cancel();
@@ -325,6 +353,7 @@ class NativeVoiceInput implements VoiceInput {
     if (_disposed) return;
     _disposed = true;
     _conversationActive = false;
+    _isSpeakingManual = false;
     await _tts.stop();
     await stopWakeWordWatch();
     await _speechEngine.cancel();

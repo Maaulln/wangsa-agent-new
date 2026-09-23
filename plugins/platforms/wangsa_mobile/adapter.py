@@ -68,6 +68,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from gateway.config import Platform
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -75,7 +76,6 @@ from gateway.platforms.base import (
     ProcessingOutcome,
     SendResult,
 )
-from gateway.config import Platform
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,27 @@ _DEFAULT_PORT = 9901
 _MAX_MESSAGE_LEN = 4000
 _MAX_BODY = 1_048_576  # 1MB
 
-_AGENT_ID_RE = re.compile(r"^/api/v1/agents/([^/]+)(/(messages|models))?/?$")
+_AGENT_ID_RE = re.compile(
+    r"^/api/v1/agents/([^/]+)(/(messages(/stream)?|models|sessions(/[^/]+)?))?/?$"
+)
+
+_THINK_RE = re.compile(
+    r"<(?:think|thinking|thought|reasoning|REASONING_SCRATCHPAD)>(.*?)</(?:think|thinking|thought|reasoning|REASONING_SCRATCHPAD)>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _extract_think_blocks(text: str) -> tuple[str, str]:
+    """Extract <think>...</think> blocks from text. Returns (thought_text, clean_text)."""
+    if not text:
+        return "", ""
+    thoughts = []
+    for m in _THINK_RE.finditer(text):
+        content = m.group(1).strip()
+        if content:
+            thoughts.append(content)
+    clean = _THINK_RE.sub("", text).strip()
+    return "\n\n".join(thoughts).strip(), clean
 
 
 def _reply_timeout() -> float:
@@ -101,6 +121,7 @@ def _reply_timeout() -> float:
     except (ValueError, TypeError):
         return 300.0
 
+
 # Fixed-window rate limiter constants for POST /messages.
 _RATE_LIMIT_MAX = 30
 _RATE_LIMIT_WINDOW = 60  # seconds
@@ -113,7 +134,9 @@ _MAX_IMAGES = 5
 # Outbound (agent -> mobile) image caps and buffering. See the module
 # docstring's "Outbound images" section for why buffering exists at all.
 _MAX_OUTBOUND_IMAGE_BYTES = 8 * 1024 * 1024  # 8MB raw, before base64 inflation
-_MAX_OUTBOUND_FILE_BYTES = 15 * 1024 * 1024  # 15MB raw — documents/audio, not previewed inline
+_MAX_OUTBOUND_FILE_BYTES = (
+    15 * 1024 * 1024
+)  # 15MB raw — documents/audio, not previewed inline
 _REPLY_COALESCE_SECONDS = 0.4
 
 
@@ -156,7 +179,9 @@ def resolve_bind_host() -> str:
 class _RateLimiter:
     """Small fixed-window per-key rate limiter (doesn't need a2a's machinery)."""
 
-    def __init__(self, max_requests: int = _RATE_LIMIT_MAX, window: float = _RATE_LIMIT_WINDOW):
+    def __init__(
+        self, max_requests: int = _RATE_LIMIT_MAX, window: float = _RATE_LIMIT_WINDOW
+    ):
         self.max_requests = max_requests
         self.window = window
         self._hits: Dict[str, list] = {}
@@ -217,8 +242,13 @@ def _decode_request_images(body: dict) -> tuple:
         if isinstance(item, dict):
             data_str = item.get("data", "")
             mime = str(
-                item.get("mimeType", item.get("mime_type",
-                    item.get("contentType", item.get("content_type", ""))))
+                item.get(
+                    "mimeType",
+                    item.get(
+                        "mime_type",
+                        item.get("contentType", item.get("content_type", "")),
+                    ),
+                )
                 or ""
             ).strip()
             filename = str(item.get("filename", item.get("name", "")) or "").strip()
@@ -256,7 +286,9 @@ def _decode_request_images(body: dict) -> tuple:
                 ext = ".webp"
             filename = f"mobile-image-{i}{ext}"
         try:
-            cached = cache_media_bytes(raw, filename=filename, mime_type=mime, default_kind="image")
+            cached = cache_media_bytes(
+                raw, filename=filename, mime_type=mime, default_kind="image"
+            )
         except ValueError as e:
             raise ValueError(f"images[{i}] rejected: {e}")
         if cached is None:
@@ -286,7 +318,9 @@ def _encode_local_image(path: str) -> Optional[dict]:
         if size <= 0 or size > _MAX_OUTBOUND_IMAGE_BYTES:
             logger.warning(
                 "wangsa_mobile: outbound image %s is %d bytes, skipping (cap %d)",
-                path, size, _MAX_OUTBOUND_IMAGE_BYTES,
+                path,
+                size,
+                _MAX_OUTBOUND_IMAGE_BYTES,
             )
             return None
         raw = p.read_bytes()
@@ -299,14 +333,16 @@ def _encode_local_image(path: str) -> Optional[dict]:
             "filename": p.name,
         }
     except Exception:
-        logger.debug("wangsa_mobile: failed to encode outbound image %s", path, exc_info=True)
+        logger.debug(
+            "wangsa_mobile: failed to encode outbound image %s", path, exc_info=True
+        )
         return None
 
 
 def _encode_local_file(path: str, kind: str) -> Optional[dict]:
     """Reads a local document/audio file the agent produced and returns a
     JSON-safe base64 payload, or None if it can't be read or exceeds the
-    size cap. ``kind`` is ``"document"`` or ``"audio"`` — the client uses it
+    size cap. ``kind`` is ``\"document\"`` or ``\"audio\"`` — the client uses it
     to pick a file-chip vs. an audio player, it's opaque to the server.
 
     Unlike ``_encode_local_image``, the mime type is trusted as-is (falls
@@ -325,7 +361,10 @@ def _encode_local_file(path: str, kind: str) -> Optional[dict]:
         if size <= 0 or size > _MAX_OUTBOUND_FILE_BYTES:
             logger.warning(
                 "wangsa_mobile: outbound %s %s is %d bytes, skipping (cap %d)",
-                kind, path, size, _MAX_OUTBOUND_FILE_BYTES,
+                kind,
+                path,
+                size,
+                _MAX_OUTBOUND_FILE_BYTES,
             )
             return None
         raw = p.read_bytes()
@@ -337,7 +376,9 @@ def _encode_local_file(path: str, kind: str) -> Optional[dict]:
             "kind": kind,
         }
     except Exception:
-        logger.debug("wangsa_mobile: failed to encode outbound %s %s", kind, path, exc_info=True)
+        logger.debug(
+            "wangsa_mobile: failed to encode outbound %s %s", kind, path, exc_info=True
+        )
         return None
 
 
@@ -350,7 +391,7 @@ class _WangsaMobileServer(ThreadingHTTPServer):
 
 
 class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
-    """HTTP handler for the two Wangsa mobile REST routes."""
+    """HTTP handler for the Wangsa mobile REST routes."""
 
     @property
     def adapter(self) -> "WangsaMobileAdapter":
@@ -368,29 +409,73 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _error(self, code: int, error_code: str, message: str) -> None:
-        self._json(code, {"success": False, "error": {"code": error_code, "message": message}})
+        self._json(
+            code, {"success": False, "error": {"code": error_code, "message": message}}
+        )
 
     def do_GET(self):  # noqa: N802
         m = _AGENT_ID_RE.match(self.path.split("?", 1)[0])
         if not m:
-            self._json(404, {"success": False, "error": {"code": "NOT_FOUND", "message": "not found"}})
+            self._json(
+                404,
+                {
+                    "success": False,
+                    "error": {"code": "NOT_FOUND", "message": "not found"},
+                },
+            )
             return
         agent_id = m.group(1)
         suffix = m.group(2) or ""
         if suffix == "/models":
             self._handle_models(agent_id)
             return
-        if suffix:
-            self._json(404, {"success": False, "error": {"code": "NOT_FOUND", "message": "not found"}})
+        if suffix == "/sessions":
+            sessions = self.adapter._list_sessions(agent_id)
+            self._json(200, {"success": True, "data": {"sessions": sessions}})
             return
-        self._json(200, {
-            "success": True,
-            "data": {
-                "id": agent_id,
-                "name": _default_agent_name(),
-                "purpose": _default_agent_purpose(),
+        if suffix:
+            self._json(
+                404,
+                {
+                    "success": False,
+                    "error": {"code": "NOT_FOUND", "message": "not found"},
+                },
+            )
+            return
+        self._json(
+            200,
+            {
+                "success": True,
+                "data": {
+                    "id": agent_id,
+                    "name": _default_agent_name(),
+                    "purpose": _default_agent_purpose(),
+                },
             },
-        })
+        )
+
+    def do_DELETE(self):  # noqa: N802
+        m = _AGENT_ID_RE.match(self.path.split("?", 1)[0])
+        if not m:
+            self._json(
+                404,
+                {
+                    "success": False,
+                    "error": {"code": "NOT_FOUND", "message": "not found"},
+                },
+            )
+            return
+        agent_id = m.group(1)
+        suffix = m.group(2) or ""
+        if suffix.startswith("/sessions/"):
+            session_id = suffix[len("/sessions/") :]
+            deleted = self.adapter._delete_session(agent_id, session_id)
+            self._json(200, {"success": True, "data": {"deleted": deleted}})
+            return
+        self._json(
+            404,
+            {"success": False, "error": {"code": "NOT_FOUND", "message": "not found"}},
+        )
 
     def _handle_models(self, agent_id: str) -> None:  # noqa: ARG002
         """Serve the model picker payload for the current provider.
@@ -402,7 +487,11 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         provider's model ids.
         """
         try:
-            from wangsa_cli.inventory import build_model_options_payload, load_picker_context
+            from wangsa_cli.inventory import (
+                build_model_options_payload,
+                load_picker_context,
+            )
+
             payload = build_model_options_payload(load_picker_context())
         except Exception:
             logger.debug("wangsa_mobile: model options build failed", exc_info=True)
@@ -421,18 +510,28 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             logger.debug("wangsa_mobile: model row extraction failed", exc_info=True)
             models = []
-        self._json(200, {
-            "success": True,
-            "data": {"provider": provider, "current": current, "models": models},
-        })
+        self._json(
+            200,
+            {
+                "success": True,
+                "data": {"provider": provider, "current": current, "models": models},
+            },
+        )
 
     def do_POST(self):  # noqa: N802
         adapter = self.adapter
         path = self.path.split("?", 1)[0]
         m = _AGENT_ID_RE.match(path)
-        if not m or (m.group(2) or "") != "/messages":
-            self._json(404, {"success": False, "error": {"code": "NOT_FOUND", "message": "not found"}})
+        if not m or (m.group(2) or "") not in ("/messages", "/messages/stream"):
+            self._json(
+                404,
+                {
+                    "success": False,
+                    "error": {"code": "NOT_FOUND", "message": "not found"},
+                },
+            )
             return
+        is_stream = (m.group(2) or "") == "/messages/stream"
         agent_id = m.group(1)
 
         # Bearer auth only on POST /messages; GET /agents/:id stays open.
@@ -444,6 +543,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 2 and parts[0].lower() == "bearer":
                 presented = parts[1].strip()
             import hmac as _hmac
+
             if not presented or not _hmac.compare_digest(presented, token):
                 self._error(401, "UNAUTHORIZED", "missing or invalid bearer token")
                 return
@@ -486,15 +586,25 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                 return
             model = raw_model.strip()
             if len(model) > _MAX_MODEL_LEN:
-                self._error(400, "VALIDATION_ERROR", f"model exceeds {_MAX_MODEL_LEN} characters")
+                self._error(
+                    400,
+                    "VALIDATION_ERROR",
+                    f"model exceeds {_MAX_MODEL_LEN} characters",
+                )
                 return
         if raw_provider is not None:
             if not isinstance(raw_provider, str) or not raw_provider.strip():
-                self._error(400, "VALIDATION_ERROR", "provider must be a non-empty string")
+                self._error(
+                    400, "VALIDATION_ERROR", "provider must be a non-empty string"
+                )
                 return
             provider = raw_provider.strip()
             if len(provider) > _MAX_PROVIDER_LEN:
-                self._error(400, "VALIDATION_ERROR", f"provider exceeds {_MAX_PROVIDER_LEN} characters")
+                self._error(
+                    400,
+                    "VALIDATION_ERROR",
+                    f"provider exceeds {_MAX_PROVIDER_LEN} characters",
+                )
                 return
 
         try:
@@ -507,7 +617,11 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             self._error(400, "VALIDATION_ERROR", "message must not be empty")
             return
         if len(message) > _MAX_MESSAGE_LEN:
-            self._error(400, "VALIDATION_ERROR", f"message exceeds {_MAX_MESSAGE_LEN} characters")
+            self._error(
+                400,
+                "VALIDATION_ERROR",
+                f"message exceeds {_MAX_MESSAGE_LEN} characters",
+            )
             return
 
         effective_session_id = session_id or uuid.uuid4().hex
@@ -520,12 +634,17 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                 return
 
         state, reply = adapter._dispatch_and_wait(
-            agent_id, thread_id, message,
-            media_urls=media_urls, media_types=media_types,
+            agent_id,
+            thread_id,
+            message,
+            media_urls=media_urls,
+            media_types=media_types,
         )
         reply_text = reply.get("text", "") if isinstance(reply, dict) else (reply or "")
         reply_images = reply.get("images") if isinstance(reply, dict) else None
         reply_files = reply.get("files") if isinstance(reply, dict) else None
+        reply_thought = reply.get("thought", "") if isinstance(reply, dict) else ""
+        reply_tools = reply.get("tool_calls") if isinstance(reply, dict) else None
 
         if state == "timeout":
             self._error(504, "RUNTIME_ERROR", "agent did not reply in time")
@@ -534,11 +653,50 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             self._error(502, "RUNTIME_ERROR", reply_text or "agent processing failed")
             return
 
-        response_data: Dict[str, Any] = {"response": reply_text, "sessionId": effective_session_id}
+        response_data: Dict[str, Any] = {
+            "response": reply_text,
+            "sessionId": effective_session_id,
+        }
         if reply_images:
             response_data["images"] = reply_images
         if reply_files:
             response_data["files"] = reply_files
+        if reply_thought:
+            response_data["thought"] = reply_thought
+        if reply_tools:
+            response_data["toolCalls"] = reply_tools
+
+        title = (
+            message[:36] + ("..." if len(message) > 36 else "")
+            if message
+            else "Pesan Media"
+        )
+        adapter._update_session(
+            agent_id, effective_session_id, title=title, last_message=reply_text[:60]
+        )
+
+        if is_stream:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            if reply_thought:
+                self.wfile.write(
+                    f"event: thought\ndata: {json.dumps({'text': reply_thought})}\n\n".encode(
+                        "utf-8"
+                    )
+                )
+            for t in reply_tools or []:
+                self.wfile.write(
+                    f"event: tool\ndata: {json.dumps(t)}\n\n".encode("utf-8")
+                )
+            self.wfile.write(
+                f"event: done\ndata: {json.dumps(response_data)}\n\n".encode("utf-8")
+            )
+            self.wfile.flush()
+            return
+
         self._json(200, {"success": True, "data": response_data})
 
 
@@ -550,7 +708,9 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         super().__init__(config=config, platform=platform)
 
         extra = getattr(config, "extra", {}) or {}
-        self.port = int(os.getenv("WANGSA_MOBILE_PORT") or extra.get("port", _DEFAULT_PORT))
+        self.port = int(
+            os.getenv("WANGSA_MOBILE_PORT") or extra.get("port", _DEFAULT_PORT)
+        )
         self.host = resolve_bind_host()
 
         self._httpd: Optional[_WangsaMobileServer] = None
@@ -576,6 +736,9 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         self._pending_reply_text: Dict[str, str] = {}
         self._pending_reply_images: Dict[str, list] = {}
         self._pending_reply_files: Dict[str, list] = {}
+        self._pending_reply_thoughts: Dict[str, list] = {}
+        self._pending_reply_tools: Dict[str, list] = {}
+        self._mobile_sessions: Dict[str, dict] = {}
         self._reply_timers: Dict[str, threading.Timer] = {}
 
     @property
@@ -589,6 +752,50 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         rationale as A2AAdapter.authorization_is_upstream."""
         return True
 
+    # ── Sessions ───────────────────────────────────────────────────────────
+
+    def _update_session(
+        self,
+        agent_id: str,
+        session_id: str,
+        title: str = "",
+        last_message: str = "",
+    ) -> None:
+        if not session_id:
+            return
+        with self._pending_lock:
+            existing = self._mobile_sessions.get(session_id)
+            now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            if existing is None:
+                self._mobile_sessions[session_id] = {
+                    "sessionId": session_id,
+                    "agentId": agent_id,
+                    "title": title or "Percakapan baru",
+                    "lastMessage": last_message,
+                    "updatedAt": now_iso,
+                    "turnCount": 1,
+                }
+            else:
+                if last_message:
+                    existing["lastMessage"] = last_message
+                existing["updatedAt"] = now_iso
+                existing["turnCount"] = existing.get("turnCount", 1) + 1
+
+    def _list_sessions(self, agent_id: str) -> list[dict]:
+        with self._pending_lock:
+            sessions = [
+                dict(s)
+                for s in self._mobile_sessions.values()
+                if s.get("agentId") == agent_id or not s.get("agentId")
+            ]
+        sessions.sort(key=lambda s: s.get("updatedAt", ""), reverse=True)
+        return sessions
+
+    def _delete_session(self, agent_id: str, session_id: str) -> bool:
+        with self._pending_lock:
+            removed = self._mobile_sessions.pop(session_id, None)
+            return removed is not None
+
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     async def connect(self, **_kwargs) -> bool:
@@ -598,10 +805,16 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             self._loop = None
 
         try:
-            self._httpd = _WangsaMobileServer((self.host, self.port), WangsaMobileRequestHandler, self)
+            self._httpd = _WangsaMobileServer(
+                (self.host, self.port), WangsaMobileRequestHandler, self
+            )
         except OSError as e:
-            logger.error("wangsa_mobile: could not bind %s:%s — %s", self.host, self.port, e)
-            self._set_fatal_error("bind_failed", f"wangsa_mobile bind failed: {e}", retryable=True)
+            logger.error(
+                "wangsa_mobile: could not bind %s:%s — %s", self.host, self.port, e
+            )
+            self._set_fatal_error(
+                "bind_failed", f"wangsa_mobile bind failed: {e}", retryable=True
+            )
             return False
 
         self._server_thread = threading.Thread(
@@ -616,7 +829,9 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         exposure = "localhost-only" if localhost_only() else "REMOTE (bearer auth)"
         logger.info(
             "wangsa_mobile: serving REST API on http://%s:%s (%s)",
-            self.host, self.port, exposure,
+            self.host,
+            self.port,
+            exposure,
         )
         return True
 
@@ -632,7 +847,16 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         with self._pending_lock:
             for fut in self._pending.values():
                 if not fut.done():
-                    fut.set_result(("failed", {"text": "[agent shutting down]", "images": [], "files": []}))
+                    fut.set_result((
+                        "failed",
+                        {
+                            "text": "[agent shutting down]",
+                            "images": [],
+                            "files": [],
+                            "thought": "",
+                            "tool_calls": [],
+                        },
+                    ))
             self._pending.clear()
             self._pending_order.clear()
             self._message_chat.clear()
@@ -641,6 +865,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             self._pending_reply_text.clear()
             self._pending_reply_images.clear()
             self._pending_reply_files.clear()
+            self._pending_reply_thoughts.clear()
+            self._pending_reply_tools.clear()
         for timer in timers:
             timer.cancel()
 
@@ -685,7 +911,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                     return True
         return False
 
-    # ── Outbound reply buffering (see module docstring) ─────────────────────
+    # ── Outbound reply buffering (see module docstring) ───────────────────
 
     def _buffer_text(self, chat_id: str, content: str) -> None:
         if not content:
@@ -707,15 +933,33 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             self._pending_reply_files.setdefault(chat_id, []).append(file)
         self._arm_fallback_resolve(chat_id)
 
+    def _buffer_thought(self, chat_id: str, thought: str) -> None:
+        if not thought:
+            return
+        with self._pending_lock:
+            self._pending_reply_thoughts.setdefault(chat_id, []).append(thought)
+        self._arm_fallback_resolve(chat_id)
+
+    def _buffer_tool(self, chat_id: str, tool_info: dict) -> None:
+        with self._pending_lock:
+            self._pending_reply_tools.setdefault(chat_id, []).append(tool_info)
+        self._arm_fallback_resolve(chat_id)
+
     def _pop_reply_buffer(self, chat_id: str) -> tuple:
         with self._pending_lock:
             text = self._pending_reply_text.pop(chat_id, "")
             images = self._pending_reply_images.pop(chat_id, [])
             files = self._pending_reply_files.pop(chat_id, [])
+            thoughts = self._pending_reply_thoughts.pop(chat_id, [])
+            tools = self._pending_reply_tools.pop(chat_id, [])
             timer = self._reply_timers.pop(chat_id, None)
         if timer is not None:
             timer.cancel()
-        return text, images, files
+        extracted_thought, clean_text = _extract_think_blocks(text)
+        if extracted_thought:
+            thoughts.insert(0, extracted_thought)
+        thought_str = "\n\n".join(t for t in thoughts if t.strip()).strip()
+        return clean_text, images, files, thought_str, tools
 
     def _arm_fallback_resolve(self, chat_id: str) -> None:
         """Safety net for reply paths that never reach on_processing_complete
@@ -731,34 +975,50 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             old = self._reply_timers.get(chat_id)
             if old is not None:
                 old.cancel()
-            timer = threading.Timer(_REPLY_COALESCE_SECONDS, self._fallback_resolve, args=(chat_id,))
+            timer = threading.Timer(
+                _REPLY_COALESCE_SECONDS, self._fallback_resolve, args=(chat_id,)
+            )
             timer.daemon = True
             self._reply_timers[chat_id] = timer
         timer.start()
 
     def _fallback_resolve(self, chat_id: str) -> None:
-        text, images, files = self._pop_reply_buffer(chat_id)
-        if not text and not images and not files:
+        text, images, files, thought, tools = self._pop_reply_buffer(chat_id)
+        if not text and not images and not files and not thought and not tools:
             return
-        self._resolve_oldest_for_chat(chat_id, "completed", {"text": text, "images": images, "files": files})
+        self._resolve_oldest_for_chat(
+            chat_id,
+            "completed",
+            {
+                "text": text,
+                "images": images,
+                "files": files,
+                "thought": thought,
+                "tool_calls": tools,
+            },
+        )
 
     # ── Dispatch ──────────────────────────────────────────────────────────
 
     def _apply_model_override(
-        self, chat_id: str, model: str, provider: Optional[str] = None,
+        self,
+        chat_id: str,
+        model: str,
+        provider: Optional[str] = None,
     ) -> Optional[str]:
         """Validate *model* against the catalog and persist a per-session
         override (same mechanism as the ``/model`` slash command).
 
         Returns an error string on validation failure, else None. The
         override holds only non-secret keys (model/provider); credentials
-        are re-resolved at runtime like every other session override.
+        are re-resolved at runtime like every other session override].
         Without a live gateway runner (unit tests) validation is skipped
         and the choice is accepted so dispatch can proceed.
         """
         target_provider: Optional[str] = provider
         try:
             from wangsa_cli.inventory import build_models_payload, load_picker_context
+
             payload = build_models_payload(load_picker_context())
         except Exception:
             logger.debug("wangsa_mobile: model catalog unavailable", exc_info=True)
@@ -767,7 +1027,11 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         current_provider = str(payload.get("provider") or "")
         if provider:
             row = next(
-                (r for r in rows if str(r.get("slug") or "").lower() == provider.lower()),
+                (
+                    r
+                    for r in rows
+                    if str(r.get("slug") or "").lower() == provider.lower()
+                ),
                 None,
             )
             if row is None:
@@ -793,6 +1057,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
 
         try:
             from gateway.run import _gateway_runner_ref
+
             runner = _gateway_runner_ref()
         except Exception:
             runner = None
@@ -810,11 +1075,14 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                 session_key = runner._session_key_for_source(source)
             except Exception:
                 from gateway.session import build_session_key
+
                 session_key = build_session_key(source)
             override: Dict[str, str] = {"model": model}
             if target_provider:
                 override["provider"] = target_provider
-            runner._session_state(session_key).conversation.model_override = dict(override)
+            runner._session_state(session_key).conversation.model_override = dict(
+                override
+            )
             try:
                 store = getattr(runner, "session_store", None)
                 if store is not None:
@@ -824,7 +1092,9 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                         pass
                     store.set_model_override(session_key, override)
             except Exception:
-                logger.debug("wangsa_mobile: persist model override failed", exc_info=True)
+                logger.debug(
+                    "wangsa_mobile: persist model override failed", exc_info=True
+                )
             try:
                 runner._evict_cached_agent(session_key)
             except Exception:
@@ -835,12 +1105,22 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         return None
 
     def _dispatch_and_wait(
-        self, agent_id: str, chat_id: str, message: str,
-        media_urls: Optional[list] = None, media_types: Optional[list] = None,
+        self,
+        agent_id: str,
+        chat_id: str,
+        message: str,
+        media_urls: Optional[list] = None,
+        media_types: Optional[list] = None,
     ) -> tuple:
-        """Runs on an HTTP worker thread. Returns (state, {"text", "images", "files"})."""
+        """Runs on an HTTP worker thread. Returns (state, payload_dict)."""
         if self._loop is None or self._message_handler is None:
-            return "failed", {"text": "agent gateway not ready", "images": [], "files": []}
+            return "failed", {
+                "text": "agent gateway not ready",
+                "images": [],
+                "files": [],
+                "thought": "",
+                "tool_calls": [],
+            }
 
         message_id = uuid.uuid4().hex
         fut = self._add_pending(message_id, chat_id)
@@ -864,7 +1144,13 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             asyncio.run_coroutine_threadsafe(self.handle_message(event), self._loop)
         except Exception as e:
             self._pop_pending(message_id)
-            return "failed", {"text": f"dispatch failed: {e}", "images": [], "files": []}
+            return "failed", {
+                "text": f"dispatch failed: {e}",
+                "images": [],
+                "files": [],
+                "thought": "",
+                "tool_calls": [],
+            }
 
         try:
             state, payload = fut.result(timeout=_reply_timeout())
@@ -872,15 +1158,27 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             # Leave the pending future registered — on_processing_complete()
             # or a late send() may still resolve it once the agent finishes;
             # disconnect()/normal GC will eventually clean it up if not.
-            return "timeout", {"text": "", "images": [], "files": []}
+            return "timeout", {
+                "text": "",
+                "images": [],
+                "files": [],
+                "thought": "",
+                "tool_calls": [],
+            }
         finally:
             pass
         self._pop_pending(message_id)
         if not isinstance(payload, dict):
-            payload = {"text": str(payload or ""), "images": [], "files": []}
+            payload = {
+                "text": str(payload or ""),
+                "images": [],
+                "files": [],
+                "thought": "",
+                "tool_calls": [],
+            }
         return state, payload
 
-    # ── Sending (the agent's reply path) ────────────────────────────────
+    # ── Sending (the agent's reply path) ──────────────────────────────────
 
     async def send(
         self,
@@ -918,10 +1216,14 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             return SendResult(success=True, message_id=message_id)
         image = _encode_local_image(image_path)
         if image is None:
-            logger.warning("wangsa_mobile: could not read outbound image %s", image_path)
+            logger.warning(
+                "wangsa_mobile: could not read outbound image %s", image_path
+            )
             if caption:
                 self._buffer_text(chat_id, caption)
-            return SendResult(success=False, message_id=message_id, error="image unreadable")
+            return SendResult(
+                success=False, message_id=message_id, error="image unreadable"
+            )
         if caption:
             image["caption"] = caption
         self._buffer_image(chat_id, image)
@@ -959,16 +1261,20 @@ class WangsaMobileAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Buffer a local document (PDF, CSV, generic MEDIA: output, ...)
         the agent produced this turn, base64-encoded for the JSON reply's
-        ``files`` array with ``kind: "document"``."""
+        ``files`` array with ``kind: \"document\"``."""
         message_id = uuid.uuid4().hex
         if not (metadata or {}).get("notify"):
             return SendResult(success=True, message_id=message_id)
         file = _encode_local_file(file_path, kind="document")
         if file is None:
-            logger.warning("wangsa_mobile: could not read outbound document %s", file_path)
+            logger.warning(
+                "wangsa_mobile: could not read outbound document %s", file_path
+            )
             if caption:
                 self._buffer_text(chat_id, caption)
-            return SendResult(success=False, message_id=message_id, error="file unreadable")
+            return SendResult(
+                success=False, message_id=message_id, error="file unreadable"
+            )
         if file_name:
             file["filename"] = file_name
         if caption:
@@ -987,22 +1293,69 @@ class WangsaMobileAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Buffer a local audio clip (TTS output, voice reply, ...) the
         agent produced this turn, base64-encoded for the JSON reply's
-        ``files`` array with ``kind: "audio"``."""
+        ``files`` array with ``kind: \"audio\"``."""
         message_id = uuid.uuid4().hex
         if not (metadata or {}).get("notify"):
             return SendResult(success=True, message_id=message_id)
         file = _encode_local_file(audio_path, kind="audio")
         if file is None:
-            logger.warning("wangsa_mobile: could not read outbound audio %s", audio_path)
+            logger.warning(
+                "wangsa_mobile: could not read outbound audio %s", audio_path
+            )
             if caption:
                 self._buffer_text(chat_id, caption)
-            return SendResult(success=False, message_id=message_id, error="audio unreadable")
+            return SendResult(
+                success=False, message_id=message_id, error="audio unreadable"
+            )
         if caption:
             file["caption"] = caption
         self._buffer_file(chat_id, file)
         return SendResult(success=True, message_id=message_id)
 
-    async def on_processing_complete(self, event: MessageEvent, outcome: ProcessingOutcome) -> None:
+    def format_tool_event(
+        self,
+        event: Any,
+        *,
+        mode: str = "all",
+        preview_max_len: int = 40,
+    ) -> Optional[str]:
+        from gateway.stream_events import ToolCallChunk
+
+        if isinstance(event, ToolCallChunk):
+            tool_name = getattr(event, "tool_name", "") or ""
+            preview = getattr(event, "preview", "") or ""
+            args = getattr(event, "args", {}) or {}
+            if not preview and args:
+                preview = f"{tool_name}({list(args.keys())})"
+            tool_entry = {
+                "tool": tool_name,
+                "preview": preview,
+                "status": "completed",
+            }
+            with self._pending_lock:
+                for c_id in list(self._pending_order.keys()):
+                    self._buffer_tool(c_id, tool_entry)
+                    break
+        return super().format_tool_event(
+            event, mode=mode, preview_max_len=preview_max_len
+        )
+
+    def render_message_event(self, event: Any, sink: Any) -> None:
+        from gateway.stream_events import Commentary
+
+        chat_id = getattr(sink, "chat_id", None)
+        if chat_id is None:
+            with self._pending_lock:
+                for c_id in list(self._pending_order.keys()):
+                    chat_id = c_id
+                    break
+        if isinstance(event, Commentary) and getattr(event, "text", "") and chat_id:
+            self._buffer_thought(chat_id, event.text)
+        super().render_message_event(event, sink)
+
+    async def on_processing_complete(
+        self, event: MessageEvent, outcome: ProcessingOutcome
+    ) -> None:
         """Flush this turn's buffered text/images/files and resolve the Future.
 
         This is the actual resolution point for a normal agent turn (see
@@ -1018,14 +1371,46 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         if outcome == ProcessingOutcome.FAILURE:
             if chat_id:
                 self._pop_reply_buffer(chat_id)
-            self._resolve_message(message_id, "failed", {"text": "[agent processing failed]", "images": [], "files": []})
+            self._resolve_message(
+                message_id,
+                "failed",
+                {
+                    "text": "[agent processing failed]",
+                    "images": [],
+                    "files": [],
+                    "thought": "",
+                    "tool_calls": [],
+                },
+            )
         elif outcome == ProcessingOutcome.CANCELLED:
             if chat_id:
                 self._pop_reply_buffer(chat_id)
-            self._resolve_message(message_id, "failed", {"text": "[cancelled]", "images": [], "files": []})
+            self._resolve_message(
+                message_id,
+                "failed",
+                {
+                    "text": "[cancelled]",
+                    "images": [],
+                    "files": [],
+                    "thought": "",
+                    "tool_calls": [],
+                },
+            )
         else:
-            text, images, files = self._pop_reply_buffer(chat_id) if chat_id else ("", [], [])
-            self._resolve_message(message_id, "completed", {"text": text, "images": images, "files": files})
+            text, images, files, thought, tools = (
+                self._pop_reply_buffer(chat_id) if chat_id else ("", [], [], "", [])
+            )
+            self._resolve_message(
+                message_id,
+                "completed",
+                {
+                    "text": text,
+                    "images": images,
+                    "files": files,
+                    "thought": thought,
+                    "tool_calls": tools,
+                },
+            )
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
         return None

@@ -22,6 +22,59 @@ class PublicAgent {
       );
 }
 
+/// Informasi satu pemanggilan alat/tool yang dijalankan AI saat memproses pesan.
+class ToolCallInfo {
+  final String tool;
+  final String preview;
+  final String status;
+
+  const ToolCallInfo({
+    required this.tool,
+    this.preview = '',
+    this.status = 'completed',
+  });
+
+  factory ToolCallInfo.fromJson(Map<String, dynamic> json) => ToolCallInfo(
+        tool: json['tool'] as String? ?? 'tool',
+        preview: json['preview'] as String? ?? '',
+        status: json['status'] as String? ?? 'completed',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'tool': tool,
+        'preview': preview,
+        'status': status,
+      };
+}
+
+/// Ringkasan sesi percakapan untuk drawer multi-session.
+class SessionSummary {
+  final String sessionId;
+  final String agentId;
+  final String title;
+  final String lastMessage;
+  final String updatedAt;
+  final int turnCount;
+
+  const SessionSummary({
+    required this.sessionId,
+    required this.agentId,
+    required this.title,
+    this.lastMessage = '',
+    this.updatedAt = '',
+    this.turnCount = 1,
+  });
+
+  factory SessionSummary.fromJson(Map<String, dynamic> json) => SessionSummary(
+        sessionId: json['sessionId'] as String? ?? '',
+        agentId: json['agentId'] as String? ?? '',
+        title: json['title'] as String? ?? 'Percakapan',
+        lastMessage: json['lastMessage'] as String? ?? '',
+        updatedAt: json['updatedAt'] as String? ?? '',
+        turnCount: (json['turnCount'] as num?)?.toInt() ?? 1,
+      );
+}
+
 /// Balasan satu giliran percakapan.
 ///
 /// [sessionId] harus disimpan pemanggil dan dikirim balik pada pesan
@@ -31,6 +84,8 @@ class PublicAgent {
 class AgentReply {
   final String response;
   final String sessionId;
+  final String thought;
+  final List<ToolCallInfo> toolCalls;
 
   /// Gambar yang dikirim Agent bersama balasan ini (mis. screenshot,
   /// hasil image_gen). Kosong pada sebagian besar balasan — hanya terisi
@@ -45,6 +100,8 @@ class AgentReply {
   const AgentReply({
     required this.response,
     required this.sessionId,
+    this.thought = '',
+    this.toolCalls = const [],
     this.images = const [],
     this.files = const [],
   });
@@ -52,9 +109,17 @@ class AgentReply {
   factory AgentReply.fromJson(Map<String, dynamic> json) {
     final rawImages = json['images'];
     final rawFiles = json['files'];
+    final rawTools = json['toolCalls'];
     return AgentReply(
-      response: json['response'] as String,
+      response: json['response'] as String? ?? '',
       sessionId: json['sessionId'] as String? ?? '',
+      thought: json['thought'] as String? ?? '',
+      toolCalls: rawTools is List
+          ? [
+              for (final item in rawTools)
+                if (item is Map<String, dynamic>) ToolCallInfo.fromJson(item),
+            ]
+          : const [],
       images: rawImages is List
           ? [
               for (final item in rawImages)

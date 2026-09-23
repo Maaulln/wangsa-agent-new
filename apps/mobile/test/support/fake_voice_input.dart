@@ -15,6 +15,9 @@ class FakeVoiceInput implements VoiceInput {
   int startListeningCalls = 0;
   int stopCalls = 0;
   final List<String> spokenReplies = [];
+  final List<String> readAloudTexts = [];
+  int stopSpeakingCalls = 0;
+  bool _isSpeaking = false;
   int endConversationCalls = 0;
   bool _conversationActive = false;
 
@@ -29,6 +32,9 @@ class FakeVoiceInput implements VoiceInput {
 
   @override
   VoiceStatus get status => _status;
+
+  @override
+  bool get isSpeaking => _isSpeaking;
 
   /// Test memakai ini untuk memicu kejadian seolah-olah datang dari mesin
   /// suara sungguhan, dan boleh menaikkan [status] mengikutinya supaya
@@ -69,6 +75,18 @@ class FakeVoiceInput implements VoiceInput {
   }
 
   @override
+  Future<void> readAloud(String text) async {
+    readAloudTexts.add(text);
+    _isSpeaking = true;
+  }
+
+  @override
+  Future<void> stopSpeaking() async {
+    stopSpeakingCalls++;
+    _isSpeaking = false;
+  }
+
+  @override
   Future<void> endConversation() async {
     endConversationCalls++;
     _conversationActive = false;
@@ -77,12 +95,14 @@ class FakeVoiceInput implements VoiceInput {
   @override
   Future<void> stop() async {
     stopCalls++;
+    _isSpeaking = false;
     _status = VoiceStatus.idle;
   }
 
   @override
   Future<void> dispose() async {
     disposed = true;
+    _isSpeaking = false;
     await _controller.close();
   }
 }

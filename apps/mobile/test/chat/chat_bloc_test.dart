@@ -297,4 +297,121 @@ void main() {
       },
     );
   });
+
+  group('ChatBloc sesi dan AI metadata', () {
+    test('memetakan thought dan toolCalls ke Turn Agent', () async {
+      final bloc = ChatBloc(
+        apiClient: clientYangMenjawab((request) {
+          if (request.method == 'POST') {
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'response': 'Hasil kalkulasi 42',
+                  'thought': 'Memikirkan rumus...',
+                  'toolCalls': [
+                    {'tool': 'calculator', 'preview': '40 + 2', 'status': 'completed'}
+                  ],
+                  'sessionId': 'sess-123',
+                },
+              }),
+              200,
+            );
+          }
+          return agentOk();
+        }),
+        agentId: 'agent-1',
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const ChatOpened());
+      await Future<void>.delayed(Duration.zero);
+      bloc.add(const MessageSubmitted('Hitung'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(bloc.state.turns, hasLength(2));
+      final agentTurn = bloc.state.turns.last;
+      expect(agentTurn.thought, 'Memikirkan rumus...');
+      expect(agentTurn.toolCalls, hasLength(1));
+      expect(agentTurn.toolCalls.first.tool, 'calculator');
+      expect(bloc.state.sessionId, 'sess-123');
+    });
+
+    test('SessionsRequested memuat daftar sesi ke state', () async {
+      final bloc = ChatBloc(
+        apiClient: WangsaApiClient(
+          baseUrl: 'https://api.wangsa.test',
+          httpClient: MockClient((request) async {
+            if (request.url.path.endsWith('/sessions')) {
+              return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'data': {
+                    'sessions': [
+                      {
+                        'sessionId': 'sess-1',
+                        'title': 'Sesi 1',
+                        'lastMessage': 'Halo',
+                        'updatedAt': '2025-01-01T00:00:00Z',
+                      }
+                    ]
+                  },
+                }),
+                200,
+              );
+            }
+            return agentOk();
+          }),
+        ),
+        agentId: 'agent-1',
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const SessionsRequested());
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(bloc.state.sessions, hasLength(1));
+      expect(bloc.state.sessions.first.sessionId, 'sess-1');
+      expect(bloc.state.sessions.first.title, 'Sesi 1');
+    });
+
+    test('SessionDeleted menghapus sesi dari state', () async {
+      final bloc = ChatBloc(
+        apiClient: WangsaApiClient(
+          baseUrl: 'https://api.wangsa.test',
+          httpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              return http.Response(jsonEncode({'success': true, 'data': {'deleted': true}}), 200);
+            }
+            if (request.url.path.endsWith('/sessions')) {
+              return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'data': {
+                    'sessions': [
+                      {'sessionId': 'sess-1', 'title': 'Sesi 1'},
+                      {'sessionId': 'sess-2', 'title': 'Sesi 2'},
+                    ]
+                  },
+                }),
+                200,
+              );
+            }
+            return agentOk();
+          }),
+        ),
+        agentId: 'agent-1',
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const SessionsRequested());
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state.sessions, hasLength(2));
+
+      bloc.add(const SessionDeleted('sess-1'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state.sessions, hasLength(1));
+      expect(bloc.state.sessions.first.sessionId, 'sess-2');
+    });
+  });
 }

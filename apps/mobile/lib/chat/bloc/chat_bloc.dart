@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -7,28 +9,25 @@ import '../../api/wangsa_api_client.dart';
 part 'chat_event.dart';
 part 'chat_state.dart';
 
-/// Satu-satunya pemegang keadaan percakapan.
+/// Mengelola status layar percakapan: memuat data Agent, mengirim pesan,
+/// dan mengumpulkan riwayat giliran (Turn).
 ///
-/// Sengaja tidak tahu apa-apa soal Proposal, Blueprint, workspace, atau
-/// persetujuan. Batas itu dijaga di backend, dan aplikasi ini tidak
-/// boleh menjadi celahnya. Lihat `apps/mobile/PRD.md` bagian di luar
-/// lingkup.
+/// BLoC ini HANYA tahu teks dan gambar — ia tidak tahu kata pemicu,
+/// mikrofon, maupun rekaman suara. Lapisan suara di luar (lapisan presenter
+/// di chat_page.dart) yang menerjemahkan suara menjadi teks sebelum
+/// diserahkan ke sini lewat [MessageSubmitted].
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final WangsaApiClient apiClient;
   final String agentId;
 
-  /// Menandai giliran kirim yang sedang berjalan. [cancelSend] menaikkan
-  /// nilainya; kalau balasan `sendMessage` yang tertunda akhirnya datang
-  /// (atau gagal karena kliennya baru saja ditutup) dan nilainya sudah
-  /// tidak cocok lagi, `_onMessageSubmitted` tahu giliran itu sudah
-  /// dibatalkan dan berhenti tanpa menimpa state dengan galat palsu.
+  /// Penanda pengiriman yang sedang aktif. Setiap pengiriman baru
+  /// menaikkan nilainya; jika pesan dibatalkan di tengah jalan, nilainya
+  /// dinaikkan lagi supaya balasan yang datang terlambat (mis. dari
+  /// koneksi yang baru putus) diabaikan dan tidak menimpa state.
   int _activeSendId = 0;
 
-  /// sessionId percakapan saat ini, dari balasan Agent pertama. Null berarti
-  /// pesan berikutnya memulai percakapan baru di server. Lihat
-  /// `WangsaApiClient.sendMessage` — tanpa nilai ini dikirim balik, server
-  /// memperlakukan setiap pesan sebagai percakapan baru dan Agent kehilangan
-  /// konteks.
+  /// ID sesi yang diterbitkan server pada balasan pertama. Dikirim balik
+  /// pada pesan berikutnya agar riwayat percakapan berlanjut di server.
   String? _sessionId;
 
   ChatBloc({required this.apiClient, required this.agentId})
@@ -38,17 +37,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ModelSelected>(_onModelSelected);
     on<ConversationCleared>(_onConversationCleared);
     on<MessageCancelled>(_onMessageCancelled);
+    on<SessionsRequested>(_onSessionsRequested);
+    on<SessionSelected>(_onSessionSelected);
+    on<SessionDeleted>(_onSessionDeleted);
   }
 
   Future<void> _onOpened(ChatOpened event, Emitter<ChatState> emit) async {
     emit(state.copyWith(status: ChatStatus.loading, clearError: true));
 
     final result = await apiClient.getAgent(agentId);
-
     if (!result.isSuccess) {
-      // API menjawab 404 yang sama persis untuk Agent yang tidak ada, yang
-      // belum dipublikasikan, yang masih menunggu, dan yang ditolak.
-      // Layar ini memang tidak tahu yang mana, dan itu justru maksudnya.
       final notFound = result.errorOrNull?.code == 'NOT_FOUND';
       emit(
         state.copyWith(
@@ -61,8 +59,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     emit(state.copyWith(status: ChatStatus.ready, agent: result.dataOrNull));
 
-    // Daftar model bukan fatal: gagal dimuat berarti pemilih model
-    // menampilkan keadaan kosong dan kirim tetap memakai bawaan server.
     final models = await apiClient.getModels(agentId);
     if (models.isSuccess && models.dataOrNull != null) {
       final options = models.dataOrNull!;
@@ -102,9 +98,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       images: event.images,
       sessionId: _sessionId,
     );
-    // Giliran ini sudah dibatalkan lewat cancelSend() selagi menunggu —
-    // state sudah diurus di sana, jangan timpa lagi dengan galat palsu
-    // dari koneksi yang memang sengaja diputus.
     if (sendId != _activeSendId) return;
     final reply = result.dataOrNull;
 
@@ -114,6 +107,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
       emit(
         state.copyWith(
+          sessionId: _sessionId,
           turns: [
             ...withUserTurn,
             Turn(
@@ -121,6 +115,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               content: reply.response,
               images: reply.images,
               files: reply.files,
+              thought: reply.thought,
+              toolCalls: reply.toolCalls,
             ),
           ],
           isSending: false,
@@ -140,7 +136,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   void _onConversationCleared(ConversationCleared event, Emitter<ChatState> emit) {
     if (state.isSending) return;
     _sessionId = null;
-    emit(state.copyWith(turns: const [], clearError: true));
+    emit(state.copyWith(turns: const [], clearSessionId: true, clearError: true));
   }
 
   void _onMessageCancelled(MessageCancelled event, Emitter<ChatState> emit) {
@@ -148,5 +144,37 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     _activeSendId++;
     apiClient.cancelInFlight();
     emit(state.copyWith(isSending: false));
+  }
+
+  Future<void> _onSessionsRequested(SessionsRequested event, Emitter<ChatState> emit) async {
+    emit(state.copyWith(isLoadingSessions: true));
+    final res = await apiClient.getSessions(agentId);
+    if (res.isSuccess && res.dataOrNull != null) {
+      emit(state.copyWith(sessions: res.dataOrNull!, isLoadingSessions: false));
+    } else {
+      emit(state.copyWith(isLoadingSessions: false));
+    }
+  }
+
+  void _onSessionSelected(SessionSelected event, Emitter<ChatState> emit) {
+    if (state.isSending) return;
+    _sessionId = event.sessionId;
+    emit(state.copyWith(sessionId: _sessionId, turns: const []));
+  }
+
+  Future<void> _onSessionDeleted(SessionDeleted event, Emitter<ChatState> emit) async {
+    final res = await apiClient.deleteSession(agentId, event.sessionId);
+    if (res.isSuccess) {
+      final updated = state.sessions.where((s) => s.sessionId != event.sessionId).toList();
+      final bool clearingCurrent = state.sessionId == event.sessionId;
+      if (clearingCurrent) {
+        _sessionId = null;
+      }
+      emit(state.copyWith(
+        sessions: updated,
+        turns: clearingCurrent ? const [] : state.turns,
+        clearSessionId: clearingCurrent,
+      ));
+    }
   }
 }

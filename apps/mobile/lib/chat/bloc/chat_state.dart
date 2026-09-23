@@ -20,16 +20,24 @@ class Turn extends Equatable {
   /// Dokumen/audio yang dikirim Agent bersama giliran ini. Lihat [ReplyFile].
   final List<ReplyFile> files;
 
+  /// Penalaran / pemikiran internal model (Thought/Chain of Thought).
+  final String thought;
+
+  /// Riwayat pemanggilan alat (tool calls) oleh AI pada giliran ini.
+  final List<ToolCallInfo> toolCalls;
+
   const Turn({
     required this.role,
     required this.content,
     this.imageCount = 0,
     this.images = const [],
     this.files = const [],
+    this.thought = '',
+    this.toolCalls = const [],
   });
 
   @override
-  List<Object?> get props => [role, content, imageCount, images, files];
+  List<Object?> get props => [role, content, imageCount, images, files, thought, toolCalls];
 }
 
 class ChatState extends Equatable {
@@ -55,6 +63,14 @@ class ChatState extends Equatable {
   /// (bawaan deployment).
   final String? selectedModel;
 
+  /// Sesi aktif saat ini.
+  final String? sessionId;
+
+  /// Riwayat sesi percakapan untuk drawer.
+  final List<SessionSummary> sessions;
+
+  final bool isLoadingSessions;
+
   const ChatState({
     this.status = ChatStatus.initial,
     this.agent,
@@ -64,6 +80,9 @@ class ChatState extends Equatable {
     this.models = const [],
     this.currentModel,
     this.selectedModel,
+    this.sessionId,
+    this.sessions = const [],
+    this.isLoadingSessions = false,
   });
 
   /// Model yang benar-benar dikirim ke server: pilihan pengguna bila
@@ -81,6 +100,10 @@ class ChatState extends Equatable {
     String? currentModel,
     String? selectedModel,
     bool clearSelectedModel = false,
+    String? sessionId,
+    bool clearSessionId = false,
+    List<SessionSummary>? sessions,
+    bool? isLoadingSessions,
   }) =>
       ChatState(
         status: status ?? this.status,
@@ -91,8 +114,23 @@ class ChatState extends Equatable {
         models: models ?? this.models,
         currentModel: currentModel ?? this.currentModel,
         selectedModel: clearSelectedModel ? null : (selectedModel ?? this.selectedModel),
+        sessionId: clearSessionId ? null : (sessionId ?? this.sessionId),
+        sessions: sessions ?? this.sessions,
+        isLoadingSessions: isLoadingSessions ?? this.isLoadingSessions,
       );
 
   @override
-  List<Object?> get props => [status, agent?.id, turns, isSending, errorMessage, models, currentModel, selectedModel];
+  List<Object?> get props => [
+        status,
+        agent?.id,
+        turns,
+        isSending,
+        errorMessage,
+        models,
+        currentModel,
+        selectedModel,
+        sessionId,
+        sessions,
+        isLoadingSessions,
+      ];
 }

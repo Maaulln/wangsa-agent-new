@@ -103,6 +103,15 @@ abstract interface class VoiceInput {
   /// atau segera bila percakapan dihentikan selagi Agent bicara.
   Future<void> speakReply(String text);
 
+  /// Membacakan teks balasan secara manual pada gelembung pesan.
+  Future<void> readAloud(String text);
+
+  /// Memotong atau menghentikan pembacaan teks yang sedang berjalan.
+  Future<void> stopSpeaking();
+
+  /// Menandakan apakah pembacaan teks manual sedang berjalan.
+  bool get isSpeaking;
+
   /// Mengakhiri percakapan suara tanpa membacakan apa pun dan menyalakan
   /// kembali pengawasan kata pemicu bila sebelumnya aktif. Tidak
   /// melakukan apa pun bila tidak ada percakapan suara, supaya tidak

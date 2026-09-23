@@ -107,9 +107,6 @@ class _DocumentFileCard extends StatelessWidget {
       name: file.filename,
       mimeType: file.mimeType,
     );
-    // `name:` di atas diabaikan cross_file di Android/iOS (hanya dipakai di
-    // web) — fileNameOverrides adalah cara yang benar-benar berfungsi lintas
-    // platform, lihat catatan di share_plus's shareXFiles().
     await SharePlus.instance.share(
       ShareParams(files: [xfile], fileNameOverrides: [file.filename]),
     );
@@ -129,6 +126,11 @@ class _AudioFileCardState extends State<_AudioFileCard> {
   VideoPlayerController? _controller;
   bool _loading = false;
   String? _error;
+
+  // Bilah waveform simulasi
+  static const List<double> _waveformHeights = [
+    0.3, 0.6, 0.4, 0.8, 0.5, 0.9, 0.7, 0.4, 0.6, 0.85, 0.55, 0.75, 0.45, 0.9, 0.65, 0.35, 0.7, 0.5,
+  ];
 
   @override
   void dispose() {
@@ -156,9 +158,6 @@ class _AudioFileCardState extends State<_AudioFileCard> {
 
     setState(() => _loading = true);
     try {
-      // video_player membutuhkan berkas nyata di disk — tidak menerima
-      // bytes langsung — jadi disalin sekali ke direktori sementara di
-      // ketukan putar pertama, bukan langsung saat kartu dirender.
       final dir = await getTemporaryDirectory();
       final path =
           '${dir.path}/wangsa_reply_audio_${DateTime.now().microsecondsSinceEpoch}_${widget.file.filename}';
@@ -193,13 +192,16 @@ class _AudioFileCardState extends State<_AudioFileCard> {
     final isPlaying = controller?.value.isPlaying ?? false;
     final duration = controller?.value.duration ?? Duration.zero;
     final position = controller?.value.position ?? Duration.zero;
+    final double progress = duration.inMilliseconds > 0
+        ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 320),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -223,19 +225,64 @@ class _AudioFileCardState extends State<_AudioFileCard> {
             color: scheme.primary,
             onPressed: widget.file.bytes == null || _loading ? null : _togglePlayback,
           ),
-          Flexible(
-            child: Text(
-              _error ??
-                  (controller != null
-                      ? '${_formatDuration(position)} / ${_formatDuration(duration)}'
-                      : (widget.file.caption?.trim().isNotEmpty == true
-                          ? widget.file.caption!
-                          : 'Balasan suara')),
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+          const SizedBox(width: 4),
+          // Waveform bars
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 22,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(_waveformHeights.length, (index) {
+                      final barRatio = (index + 1) / _waveformHeights.length;
+                      final isActive = progress >= barRatio;
+                      return Container(
+                        width: 3,
+                        height: 22 * _waveformHeights[index],
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _error ??
+                          (controller != null
+                              ? _formatDuration(position)
+                              : (widget.file.caption?.trim().isNotEmpty == true
+                                  ? widget.file.caption!
+                                  : 'Audio klip')),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (controller != null)
+                      Text(
+                        _formatDuration(duration),
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
         ],
       ),
     );

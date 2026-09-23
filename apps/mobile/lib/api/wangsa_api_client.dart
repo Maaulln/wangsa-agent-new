@@ -6,7 +6,7 @@ import '../llm/llm_override.dart';
 import 'api_result.dart';
 import 'models.dart';
 
-/// Klien untuk dua endpoint publik Wangsa, dan hanya dua.
+/// Klien untuk endpoint publik Wangsa.
 ///
 /// Tidak pernah mengirim header identitas maupun workspace. Agent yang
 /// sudah dipublikasikan memang dapat dijangkau tanpa kredensial builder,
@@ -72,6 +72,37 @@ class WangsaApiClient {
   Future<ApiResult<ModelOptions>> getModels(String agentId) {
     final uri = Uri.parse('$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/models');
     return _send(() => _httpClient.get(uri), ModelOptions.fromJson, requestTimeout);
+  }
+
+  /// Daftar sesi aktif untuk drawer percakapan.
+  Future<ApiResult<List<SessionSummary>>> getSessions(String agentId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions');
+    return _send(
+      () => _httpClient.get(uri),
+      (json) {
+        final list = json['sessions'];
+        if (list is List) {
+          return [
+            for (final item in list)
+              if (item is Map<String, dynamic>) SessionSummary.fromJson(item),
+          ];
+        }
+        return <SessionSummary>[];
+      },
+      requestTimeout,
+    );
+  }
+
+  /// Hapus riwayat sesi di server.
+  Future<ApiResult<bool>> deleteSession(String agentId, String sessionId) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions/${Uri.encodeComponent(sessionId)}',
+    );
+    return _send(
+      () => _httpClient.delete(uri),
+      (json) => json['deleted'] as bool? ?? true,
+      requestTimeout,
+    );
   }
 
   /// [model] null berarti memakai model aktif sesi di server (bawaan
