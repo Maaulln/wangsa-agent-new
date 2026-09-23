@@ -166,7 +166,8 @@ def resolve_bind_host() -> str:
     loopback = {"127.0.0.1", "localhost", "::1"}
     if requested in loopback:
         return requested
-    if localhost_only():
+    allow_insecure = os.getenv("WANGSA_MOBILE_ALLOW_INSECURE_HOST", "").strip().lower() in ("1", "true", "yes")
+    if localhost_only() and not allow_insecure:
         logger.warning(
             "wangsa_mobile: WANGSA_MOBILE_HOST=%s ignored — no "
             "WANGSA_MOBILE_BEARER_TOKEN set; binding to 127.0.0.1.",

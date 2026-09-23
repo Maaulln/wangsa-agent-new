@@ -30,7 +30,18 @@ def validate_config(config) -> bool:
 
 def is_connected(config) -> bool:
     extra = getattr(config, "extra", {}) or {}
-    return bool(extra.get("enabled")) or bool(os.getenv("WANGSA_MOBILE_PORT"))
+    return bool(extra.get("enabled")) or bool(os.getenv("WANGSA_MOBILE_PORT")) or bool(os.getenv("WANGSA_MOBILE_ENABLED"))
+
+
+def env_enablement() -> Optional[dict]:
+    port = os.getenv("WANGSA_MOBILE_PORT")
+    enabled = os.getenv("WANGSA_MOBILE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    if not port and not enabled:
+        return None
+    return {
+        "enabled": True,
+        "port": int(port or 8000),
+    }
 
 
 def interactive_setup() -> None:
@@ -96,6 +107,7 @@ def register(ctx) -> None:
             allowed_users_env="WANGSA_MOBILE_ALLOWED_USERS",
             allow_all_env="WANGSA_MOBILE_ALLOW_ALL_USERS",
             cron_deliver_env_var="WANGSA_MOBILE_HOME_CHANNEL",
+            env_enablement_fn=env_enablement,
             allow_update_command=False,
             platform_hint=(
                 "You are reachable from the Wangsa mobile app. Replies are "

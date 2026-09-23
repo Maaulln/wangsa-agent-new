@@ -1,0 +1,50 @@
+# Lightweight, fast Docker image for Wangsa Mobile Backend
+FROM python:3.11-slim
+
+# Prevent Python from writing .pyc files and buffer stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+
+# Install minimal OS runtime packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    ffmpeg \
+    build-essential \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency resolution and installation
+RUN pip install --no-cache-dir uv
+
+# Copy project definition first for efficient Docker layer caching
+COPY pyproject.toml uv.lock* ./
+
+# Copy full application codebase
+COPY . .
+
+# Install dependencies and project in editable/system mode
+RUN uv pip install --system -e .
+
+# Expose default Wangsa Mobile port
+EXPOSE 9901 8000
+
+# Default environment variables
+ENV WANGSA_MOBILE_PORT=9901 \
+    WANGSA_MOBILE_HOST=0.0.0.0 \
+    WANGSA_MOBILE_ALLOW_INSECURE_HOST=1 \
+    WANGSA_MOBILE_ENABLED=1 \
+    HERMES_HOME=/root/.hermes
+
+# Data directory volume for persistence (sessions, config, credentials)
+VOLUME ["/root/.hermes"]
+
+# Healthcheck to verify the mobile endpoint is responding
+HEALTHCHECK --interval=20s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://127.0.0.1:${WANGSA_MOBILE_PORT}/api/v1/agents/wangsa || exit 1
+
+# Start the mobile backend gateway
+CMD ["python", "scripts/run_mobile_backend.py"]

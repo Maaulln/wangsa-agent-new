@@ -1,0 +1,25 @@
+services:
+  wangsa-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: wangsa-backend
+    restart: unless-stopped
+    ports:
+      - "${WANGSA_MOBILE_PORT:-9901}:${WANGSA_MOBILE_PORT:-9901}"
+    environment:
+      - WANGSA_MOBILE_PORT=${WANGSA_MOBILE_PORT:-9901}
+      - WANGSA_MOBILE_HOST=0.0.0.0
+      - WANGSA_MOBILE_ALLOW_INSECURE_HOST=1
+      - WANGSA_MOBILE_ENABLED=1
+      - WANGSA_MOBILE_BEARER_TOKEN=${WANGSA_MOBILE_BEARER_TOKEN:-}
+      # Model & Provider Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - NOUS_API_KEY=${NOUS_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+    volumes:
+      # Persistent storage for sessions, memories, skills, and config
+      - ./data:/root/.hermes
