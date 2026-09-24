@@ -1,13 +1,13 @@
 /**
- * Hermes Bot Mode — a "one chat per agent" roster for the Hermes desktop.
+ * Wangsa Bot Mode — a "one chat per agent" roster for the Wangsa desktop.
  *
- * Left pane "Bots": one row per Hermes profile (a bot = an agent profile) with
+ * Left pane "Bots": one row per Wangsa profile (a bot = an agent profile) with
  * a customizable avatar (shape + color + eyes, image, or pet). Click opens that
  * bot's chat; right-click → Edit Profile (avatar, title, description).
  * "New Bot" creates a profile — Name / Title / Description with an
  * "Advanced" disclosure for full profile config.
  *
- * Right tile "Routines": scheduled tasks (Hermes cron jobs) scoped to the
+ * Right tile "Routines": scheduled tasks (Wangsa cron jobs) scoped to the
  * bot you're currently chatting with — follows the live gateway profile.
  *
  * Bots message each other straight into each bot's ONE canonical "Bot
@@ -1269,7 +1269,7 @@ function groupChatSyncPayloadEqual(left, right) {
 /** Every default-profile gateway route this Desktop can currently reach.
  *  The projection fans out to ALL of them, so any single gateway can die or
  *  be removed without losing the shared room state, and gateway-only
- *  clients (Hermes Go, headless backends) see rooms regardless of which
+ *  clients (Wangsa Go, headless backends) see rooms regardless of which
  *  gateway a Desktop was foregrounding when the room was used. */
 async function groupChatSyncTargetConnections() {
   const targets = new Set()
@@ -1487,7 +1487,7 @@ function handleSessionsGatewayTransition() {
 
 // ── cross-connection bot relay ────────────────────────────────────────────
 // Connections ARE the peer set: every gateway this Desktop holds a socket
-// to (local, remote URL, SSH, Hermes Cloud, docker) must be able to find
+// to (local, remote URL, SSH, Wangsa Cloud, docker) must be able to find
 // every other connection's agents and message them via message_agent. The
 // Desktop is the relay — it owns every socket. Two loops:
 //  - roster loop: pushes each gateway the union roster of agents on the
@@ -2623,7 +2623,7 @@ async function duplicateBot(bot, roster) {
   return name
 }
 
-/** Permanently delete a bot's Hermes profile, then remove plugin-local state
+/** Permanently delete a bot's Wangsa profile, then remove plugin-local state
  * that would otherwise leave stale appearance/unread data behind.
  *
  * Prefer the SDK's `host.deleteProfile` when this Desktop build ships it: it
@@ -4333,7 +4333,7 @@ function AvatarPicker({ shape, color, image, onShape, onColor, onImage, generate
               className: 'px-2 py-3 text-center text-xs leading-5 text-(--ui-text-tertiary)',
               children:
                 imagen === false
-                  ? 'No image model available. If you just enabled one (or updated Hermes), restart the gateway: Ctrl+K → "Restart gateway".'
+                  ? 'No image model available. If you just enabled one (or updated Wangsa), restart the gateway: Ctrl+K → "Restart gateway".'
                   : 'Checking image backend…'
             })
         : null,
@@ -4896,7 +4896,7 @@ function botHandle(name, bot) {
  *  display name (`hermes profile rename`) and the Bot Mode title. Free text
  *  reduces to the mention charset two ways: slugified ("Research Buddy" →
  *  research-buddy, the form autocomplete inserts) and collapsed
- *  (researchbuddy). Reserved tokens are dropped so a bot renamed "Hermes"
+ *  (researchbuddy). Reserved tokens are dropped so a bot renamed "Wangsa"
  *  can never hijack the primary profile's @hermes alias. */
 function mentionNameForms(value) {
   const name = String(value || '').trim().toLowerCase()
@@ -4980,7 +4980,7 @@ function isDefaultBot(bot) {
 
 function newBotChat(bot) {
   if (typeof host.newChat !== 'function') {
-    host.notify?.({ kind: 'error', message: 'Update Hermes Desktop to open another Bot chat.' })
+    host.notify?.({ kind: 'error', message: 'Update Wangsa Desktop to open another Bot chat.' })
 
     return
   }
@@ -4988,7 +4988,7 @@ function newBotChat(bot) {
   const route = botConnectionRoute(bot)
 
   if (!route) {
-    host.notify?.({ kind: 'error', message: 'Update Hermes Desktop to open another Bot chat.' })
+    host.notify?.({ kind: 'error', message: 'Update Wangsa Desktop to open another Bot chat.' })
 
     return
   }
@@ -5348,7 +5348,7 @@ function groupSessionOwner(member) {
 // backend answers the roster itself, the row's identity is (C, 'default') —
 // a DIFFERENT key than the alias meta (C::moxie / 'moxie') — so the friendly
 // name fell off after source/session activation: the row regressed to the
-// raw Cloud hostname, or to generic 'Hermes' in Cloud-only mode.
+// raw Cloud hostname, or to generic 'Wangsa' in Cloud-only mode.
 //
 // aliasRouteIndex bridges the backend row identity back to its configured
 // alias. It is keyed by (connectionId, targetProfile), so two same-named
@@ -5498,7 +5498,7 @@ const CANONICAL_CHAT_TITLE = 'Bot Chat'
 
 async function openStoredBotChat(owner, storedId, summary) {
   if (!storedId || typeof host.openSession !== 'function') {
-    throw new Error('This Hermes Desktop version cannot open stored sessions')
+    throw new Error('This Wangsa Desktop version cannot open stored sessions')
   }
 
   const { bot, name, route } = botOwner(owner)
@@ -5746,7 +5746,7 @@ async function prepareBotSource(bot) {
   const route = botConnectionRoute(bot)
 
   if (route && typeof host.requestProfile !== 'function') {
-    throw new Error('Update Hermes Desktop to chat with agents on other connections.')
+    throw new Error('Update Wangsa Desktop to chat with agents on other connections.')
   }
 
   if (!route && typeof host.ensureAgent === 'function') {
@@ -5886,7 +5886,7 @@ function displayName(bot, meta) {
 
   // Only THIN rows from another source trade the friendly name for their
   // connection label — the active gateway's own default must keep reading
-  // "Hermes". Annotated active rows carry sourceScoped too, and keying this
+  // "Wangsa". Annotated active rows carry sourceScoped too, and keying this
   // off sourceScoped renamed the user's main agent to an IP-derived label
   // (community report, Aug 17 2026).
   if (bot?.remoteSource && (bot.name || '').trim().toLowerCase() === 'default' && bot.connectionLabel && !alias && !meta?.title?.trim()) {
@@ -5905,7 +5905,7 @@ function displayName(bot, meta) {
   }
 
   // An untitled backend row claimed by an alias reads as the alias name —
-  // never generic "Hermes" or a hostname-derived label.
+  // never generic "Wangsa" or a hostname-derived label.
   if (alias) {
     const raw = alias.name.replace(/[-_]+/g, ' ').trim()
 
@@ -5913,10 +5913,10 @@ function displayName(bot, meta) {
   }
 
   // The primary profile is literally named "default" — as a bot identity
-  // that reads like nobody bothered. Present it as Hermes (the agent it is)
+  // that reads like nobody bothered. Present it as Wangsa (the agent it is)
   // unless the user gives it a real title.
   if ((bot.name || '').trim().toLowerCase() === 'default' && !bot.title) {
-    return 'Hermes'
+    return 'Wangsa'
   }
 
   const raw = (bot.title || bot.name || '').replace(/[-_]+/g, ' ').trim()
@@ -6353,7 +6353,7 @@ function knownGroups(metaByName) {
 // actually speaks is its own turn's choice — replying with exactly "(pass)"
 // (or nothing, or failing) is silence. Hard caps end every turn; a round in
 // which everyone passed means the conversation settled. Each member runs its
-// turn in its OWN persistent per-group Hermes session and is fed only the
+// turn in its OWN persistent per-group Wangsa session and is fed only the
 // room messages that are NEW since it last saw the room.
 
 const GROUP_CHAT_MAX_ROUNDS = 3
@@ -6485,10 +6485,10 @@ function rotateGroupSpeakers(members, round) {
  *  a Bot Mode title or a core profile display_name (e.g. default renamed to
  *  "Lucy") labels the speaker everywhere this helper feeds — the "X is
  *  thinking…" working line, the activity feed, and transcript lines — so a
- *  renamed bot never shows up as its raw profile id or a stale "Hermes"
- *  (community report, Aug 21 2026: renamed default still read "Hermes is
+ *  renamed bot never shows up as its raw profile id or a stale "Wangsa"
+ *  (community report, Aug 21 2026: renamed default still read "Wangsa is
  *  thinking…" in group rooms). The untitled primary profile is literally
- *  named "default" — render it as Hermes (matching displayName and the
+ *  named "default" — render it as Wangsa (matching displayName and the
  *  @hermes handle) so the main agent never loses its name in rooms. */
 function groupSpeakerLabel(name) {
   const trimmed = (name || '').trim()
@@ -6517,7 +6517,7 @@ function groupSpeakerLabel(name) {
     return renamed
   }
 
-  return trimmed.toLowerCase() === 'default' ? 'Hermes' : trimmed
+  return trimmed.toLowerCase() === 'default' ? 'Wangsa' : trimmed
 }
 
 /** Room-log line as a member sees it: `Name (user): …` / `Name: …` /
@@ -8829,7 +8829,7 @@ function AdvancedProfileConfig({ bot, state, setState }) {
   if (unsupported) {
     return jsx('div', {
       className: 'px-2 py-3 text-center text-xs text-(--ui-text-tertiary)',
-      children: 'Full configuration needs a newer gateway (restart it after updating Hermes).'
+      children: 'Full configuration needs a newer gateway (restart it after updating Wangsa).'
     })
   }
 
@@ -9252,7 +9252,7 @@ function HubSkillsSection({ forProfile, onInstalled }) {
                 },
                 children: jsx('iframe', {
                   src: HUB_PICKER_URL,
-                  title: 'Hermes Skills Hub',
+                  title: 'Wangsa Skills Hub',
                   ref: frameRef,
                   style: {
                     width: '133.34%',
@@ -10288,7 +10288,7 @@ function CreateAgentDialog({ open, onClose, roster }) {
                         ? jsx('div', {
                             className: 'px-2 py-3 text-center text-xs text-(--ui-text-tertiary)',
                             children:
-                              'Capability catalog needs a newer gateway (restart it after updating Hermes).'
+                              'Capability catalog needs a newer gateway (restart it after updating Wangsa).'
                           })
                         : !caps
                           ? jsx('div', {
@@ -10887,7 +10887,7 @@ function RoutineRow({ job, onOpen, owner }) {
 
 // Structured schedule picker: frequency first, then only the detail that
 // frequency needs (time of day, weekday, day of month, interval). Emits a
-// Hermes-native schedule string; Advanced exposes it raw.
+// Wangsa-native schedule string; Advanced exposes it raw.
 const FREQUENCIES = [
   { id: 'once', label: 'Once, in\u2026' },
   { id: 'hourly', label: 'Every hour' },
@@ -10921,7 +10921,7 @@ const TIMES = (() => {
   return out
 })()
 
-/** Compose the Hermes schedule string from picker state. */
+/** Compose the Wangsa schedule string from picker state. */
 function composeSchedule(state) {
   const [h, m] = (state.time || '9:0').split(':').map(Number)
 
@@ -12915,7 +12915,7 @@ function GroupChatWorkspace({ group, members, onBack, visible = true }) {
                   const meta = isUser || entry.from.source ? null : allMeta[entry.from.name]
                   // Match this speaker back to its member descriptor so display
                   // names and disambiguating handles come from the roster (the
-                  // primary "default" profile renders as Hermes, remote dupes
+                  // primary "default" profile renders as Wangsa, remote dupes
                   // carry their @name-device handle) instead of raw profile ids.
                   const member = isUser
                     ? null
@@ -13472,7 +13472,7 @@ function BotsHomeView() {
   // A ghost is reconstructed from a persisted owner key while its gateway is
   // offline. That proves the profile name, not its public mention handle.
   const handle = bot.ghost ? '' : botHandle(bot.name, bot)
-  const gateway = bot.connectionLabel || (bot.connectionId === 'local' ? 'This device' : 'Hermes gateway')
+  const gateway = bot.connectionLabel || (bot.connectionId === 'local' ? 'This device' : 'Wangsa gateway')
   const gatewayKind = bot.connectionKind || (bot.connectionId === 'local' ? 'local' : 'remote')
   const { shape, color, image } = botAppearance(bot.name, meta)
   const photo = image && !isBackfilledFacePng(image) ? image : null
@@ -14618,7 +14618,7 @@ function BotsPane() {
               children: [
                 jsx('div', {
                   children: gatewayUp
-                    ? `Roster unavailable: ${error instanceof Error ? error.message : 'gateway error'}. If your gateway predates profiles.list, update Hermes and restart the gateway.`
+                    ? `Roster unavailable: ${error instanceof Error ? error.message : 'gateway error'}. If your gateway predates profiles.list, update Wangsa and restart the gateway.`
                     : 'Waiting for the gateway connection… (remote gateways can take a few seconds; retries automatically)'
                 }),
                 jsx(Button, {
@@ -14768,7 +14768,7 @@ function BotsPane() {
               children: [
                 'This will permanently delete the bot ',
                 jsx('span', { className: 'font-medium text-foreground', children: deleting.name }),
-                ' and its associated Hermes profile at ',
+                ' and its associated Wangsa profile at ',
                 jsx('span', { className: 'font-mono text-xs', children: deleting.path }),
                 '. This cannot be undone.'
               ]

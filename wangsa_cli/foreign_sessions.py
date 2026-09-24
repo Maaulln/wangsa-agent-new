@@ -2,7 +2,7 @@
 
 ``hermes sessions import`` (and ``--resume @claude`` / ``--resume @codex``)
 let a user pull a conversation they started in another agent CLI into
-Hermes and continue it here.
+Wangsa and continue it here.
 
 Sources (read-only — foreign files are never modified):
 
@@ -23,7 +23,7 @@ Sources (read-only — foreign files are never modified):
   real rollout files, Codex CLI 0.147.)
 
 Conversion contract — imported history must satisfy the provider
-role-alternation invariant Hermes enforces everywhere else:
+role-alternation invariant Wangsa enforces everywhere else:
 
 * only plain ``user`` / ``assistant`` text messages are produced (tool
   calls become short bracketed summaries inside the assistant text; we
@@ -318,9 +318,9 @@ _SOURCE_DB_NAMES = {"claude": "claude-code", "codex": "codex-cli"}
 
 
 def import_foreign_session(source: str, path, db=None) -> str:
-    """Import one foreign session into the Hermes SessionDB.
+    """Import one foreign session into the Wangsa SessionDB.
 
-    Returns the new Hermes session id.  The foreign file is only read.
+    Returns the new Wangsa session id.  The foreign file is only read.
     Raises ``ValueError`` on unknown source or a session with no usable
     conversation turns.
     """

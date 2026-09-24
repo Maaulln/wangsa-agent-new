@@ -312,7 +312,7 @@ def check_fn_cache_scope() -> Optional[str]:
     from leaking into any unrelated session.
 
     Single-profile processes intentionally keep the historical process-wide
-    cache. A multiplex gateway installs a Hermes-home override for every
+    cache. A multiplex gateway installs a Wangsa-home override for every
     profile turn, so the canonical profile key is the stable isolation
     boundary across repeated turns for that profile.
     """

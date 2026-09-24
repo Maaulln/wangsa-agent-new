@@ -482,7 +482,7 @@ class TestSchemaValidation:
     """#34067: ``hermes config set`` must not report bare success for
     unrecognized keys. The key IS written (arbitrary keys are supported —
     top-level scalars bridge into os.environ for skills/external apps), but
-    a post-write notice warns that Hermes may never read it and suggests the
+    a post-write notice warns that Wangsa may never read it and suggests the
     likely-intended path. Headline case: the plausible-but-wrong
     ``gateway.discord.gateway_restart_notification`` (correct path:
     ``discord.gateway_restart_notification``).
@@ -496,10 +496,10 @@ class TestSchemaValidation:
 
     def test_desktop_macos_signing_identity_is_accepted(self, _isolated_hermes_home, capsys):
         """The documented TCC signing identity setting is part of the schema."""
-        set_config_value("desktop.macos_signing_identity", "Hermes Local Signing")
+        set_config_value("desktop.macos_signing_identity", "Wangsa Local Signing")
         import yaml
         saved = yaml.safe_load(_read_config(_isolated_hermes_home))
-        assert saved["desktop"]["macos_signing_identity"] == "Hermes Local Signing"
+        assert saved["desktop"]["macos_signing_identity"] == "Wangsa Local Signing"
         assert "not a recognized config key" not in capsys.readouterr().out
 
 

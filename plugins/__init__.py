@@ -1,1 +1,1 @@
-# Hermes plugins package
+# Wangsa plugins package

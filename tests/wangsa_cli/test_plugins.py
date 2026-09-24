@@ -1,4 +1,4 @@
-"""Tests for the Hermes plugin system (wangsa_cli.plugins)."""
+"""Tests for the Wangsa plugin system (wangsa_cli.plugins)."""
 
 import logging
 import json
@@ -62,7 +62,7 @@ def _make_plugin_dir(base: Path, name: str, *, register_body: str = "pass",
     ``<hermes_home>`` from it by walking one level up unless *home* is
     given explicitly.
 
-    Pass *home* explicitly whenever the target Hermes home for this
+    Pass *home* explicitly whenever the target Wangsa home for this
     plugin isn't necessarily the current ``HERMES_HOME`` env var — e.g.
     when writing fixtures for two profiles up front and only switching
     ``HERMES_HOME``/``set_hermes_home_override()`` per-profile afterwards
@@ -154,9 +154,9 @@ class TestPluginDiscovery:
         assert loaded == []
         assert not state.enabled
         assert state.error is not None
-        assert "Relay lifecycle is owned by Hermes core" in state.error
+        assert "Relay lifecycle is owned by Wangsa core" in state.error
         assert RELAY_PLUGINS_CONFIG_ENV in state.error
-        assert "Refusing to load removed Hermes Relay plugin" in caplog.text
+        assert "Refusing to load removed Wangsa Relay plugin" in caplog.text
 
     def test_enabled_portable_plugin_registers_components(
         self, tmp_path, monkeypatch

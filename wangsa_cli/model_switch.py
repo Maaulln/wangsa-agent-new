@@ -88,7 +88,7 @@ def _declared_model_ids(value: Any) -> list[str]:
 
     if isinstance(value, dict):
         for model_id in value:
-            # Backward compat: pre-fix Hermes wrote sentinel keys inside the
+            # Backward compat: pre-fix Wangsa wrote sentinel keys inside the
             # user-facing ``models`` mapping. Never list them as model IDs.
             if model_id in {
                 "__explicit_model_allowlist__",
@@ -114,10 +114,10 @@ def _declared_model_ids(value: Any) -> list[str]:
 
 
 def _entry_models_discovered(entry: Any) -> bool:
-    """True when the entry's ``models`` mapping was auto-discovered by Hermes.
+    """True when the entry's ``models`` mapping was auto-discovered by Wangsa.
 
     The current shape is an entry-level ``models_discovered: true`` sibling of
-    ``models``. Older Hermes versions wrote an in-mapping
+    ``models``. Older Wangsa versions wrote an in-mapping
     ``__discovered_model_catalog__: true`` sentinel instead — accept that on
     read for backward compatibility (the next discovery save migrates the
     entry to the clean shape).
@@ -147,7 +147,7 @@ def _models_config_is_allowlist(value: Any, discovered: bool = False) -> bool:
     dict-shaped catalog, set ``discover_models: false``.
 
     ``discovered`` is the entry-level ``models_discovered`` flag (see
-    ``_entry_models_discovered``): a catalog Hermes itself persisted after a
+    ``_entry_models_discovered``): a catalog Wangsa itself persisted after a
     successful probe is never a user pin, whatever its shape.
     """
     if discovered:
@@ -219,7 +219,7 @@ def _save_discovered_models_to_config(
             # (e.g. ``{"model-a": {"context_length": 8192}}``) or a list of
             # dicts (e.g. ``[{"id": "model-a", "context_length": 8192}]``),
             # the user has curated metadata per model — do not replace it.
-            # A mapping Hermes itself discovered (``models_discovered: true``
+            # A mapping Wangsa itself discovered (``models_discovered: true``
             # or the legacy in-mapping sentinel) is ours to refresh.
             if isinstance(existing, dict) and not entry_discovered:
                 continue
@@ -352,31 +352,6 @@ def _fetch_picker_live_models(
 
 
 # ---------------------------------------------------------------------------
-# Non-agentic model warning
-# ---------------------------------------------------------------------------
-
-_HERMES_MODEL_WARNING = (
-    "Nous Research Hermes 3 & 4 models are NOT agentic and are not designed "
-    "for use with Hermes Agent. They lack the tool-calling capabilities "
-    "required for agent workflows. Consider using an agentic model instead "
-    "(Claude, GPT, Gemini, DeepSeek, etc.)."
-)
-
-# Match only the real Nous Research Hermes 3 / Hermes 4 chat families.
-# The previous substring check (`"hermes" in name.lower()`) false-positived on
-# unrelated local Modelfiles like ``hermes-brain:qwen3-14b-ctx16k`` that just
-# happen to carry "hermes" in their tag but are fully tool-capable.
-#
-# Positive examples the regex must match:
-#   NousResearch/Hermes-3-Llama-3.1-70B, hermes-4-405b, openrouter/hermes3:70b
-# Negative examples it must NOT match:
-#   hermes-brain:qwen3-14b-ctx16k, qwen3:14b, claude-opus-4-6
-_NOUS_HERMES_NON_AGENTIC_RE = re.compile(
-    r"(?:^|[/:])hermes[-_ ]?[34](?:[-_.:]|$)",
-    re.IGNORECASE,
-)
-
-
 # Opaque internal model-ID display
 # ---------------------------------------------------------------------------
 # Some proxies (notably Palantir Foundry's LLM-proxy) identify models by
@@ -419,26 +394,6 @@ def format_model_for_display(model_name: str) -> str:
             tail = model_name[len(prefix):]
             return tail if tail else model_name
     return model_name
-
-
-# ---------------------------------------------------------------------------
-def is_nous_hermes_non_agentic(model_name: str) -> bool:
-    """Return True if *model_name* is a real Nous Hermes 3/4 chat model.
-
-    Used to decide whether to surface the non-agentic warning at startup.
-    Callers in :mod:`cli.py` and here should go through this single helper
-    so the two sites don't drift.
-    """
-    if not model_name:
-        return False
-    return bool(_NOUS_HERMES_NON_AGENTIC_RE.search(model_name))
-
-
-def _check_hermes_model_warning(model_name: str) -> str:
-    """Return a warning string if *model_name* is a Nous Hermes 3/4 chat model."""
-    if is_nous_hermes_non_agentic(model_name):
-        return _HERMES_MODEL_WARNING
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -2179,9 +2134,6 @@ def switch_model(
     warnings: list[str] = []
     if validation.get("message"):
         warnings.append(validation["message"])
-    hermes_warn = _check_hermes_model_warning(new_model)
-    if hermes_warn:
-        warnings.append(hermes_warn)
 
     # --- Build result ---
     return ModelSwitchResult(
@@ -2342,7 +2294,7 @@ def _prefetch_provider_models_parallel(provider_slugs: list[str]) -> None:
     so concurrent writes to ``provider_models_cache.json`` don't clobber each
     other.
 
-    :param provider_slugs: Hermes provider IDs to prefetch (e.g. ``["openrouter",
+    :param provider_slugs: Wangsa provider IDs to prefetch (e.g. ``["openrouter",
         "anthropic", "deepseek"]``).  Unknown providers are silently skipped.
     """
     from wangsa_cli.models import cached_provider_model_ids
@@ -2432,7 +2384,7 @@ def _collect_authed_provider_slugs(
     slugs: list[str] = []
     seen: set[str] = set()
 
-    # --- Section 1: Hermes-mapped providers (PROVIDER_TO_MODELS_DEV) ---
+    # --- Section 1: Wangsa-mapped providers (PROVIDER_TO_MODELS_DEV) ---
     for hermes_id, mdev_id in PROVIDER_TO_MODELS_DEV.items():
         _alias_target = _PROVIDER_ALIAS_TABLE.get(hermes_id)
         if (
@@ -2487,7 +2439,7 @@ def _collect_authed_provider_slugs(
             slugs.append(hermes_id)
             seen.add(hermes_id.lower())
 
-    # --- Section 2: Hermes-only providers (HERMES_OVERLAYS) ---
+    # --- Section 2: Wangsa-only providers (HERMES_OVERLAYS) ---
     _mdev_to_hermes = {v: k for k, v in PROVIDER_TO_MODELS_DEV.items()}
     for pid, overlay in HERMES_OVERLAYS.items():
         if pid.lower() in seen:
@@ -2735,7 +2687,7 @@ def list_authenticated_providers(
     # "nous" pulls from the remote model-catalog manifest published at
     # https://hermes-agent.nousresearch.com/docs/api/model-catalog.json so
     # newly added Portal models surface in the /model picker without
-    # requiring a Hermes release. Falls back to the in-repo
+    # requiring a Wangsa release. Falls back to the in-repo
     # _PROVIDER_MODELS["nous"] snapshot when the manifest is unreachable.
     curated["nous"] = get_curated_nous_model_ids()
     # Ollama Cloud uses dynamic discovery (no static curated list)
@@ -2794,7 +2746,7 @@ def list_authenticated_providers(
         except Exception:
             pass  # best-effort; serial path still works as fallback
 
-    # --- 1. Check Hermes-mapped providers ---
+    # --- 1. Check Wangsa-mapped providers ---
     from wangsa_cli.models import _AGGREGATOR_PROVIDERS as _AGG_PROVIDERS
     from wangsa_cli.providers import ALIASES as _PROVIDER_ALIAS_TABLE
     for hermes_id, mdev_id in PROVIDER_TO_MODELS_DEV.items():
@@ -2852,7 +2804,7 @@ def list_authenticated_providers(
         # section 2 (HERMES_OVERLAYS) with proper auth store checking.
         if pconfig and pconfig.auth_type != "api_key":
             continue
-        # models.dev catalogs include providers Hermes may not route yet.
+        # models.dev catalogs include providers Wangsa may not route yet.
         # Gate on runtime capability rather than registry membership: special
         # providers and plugin aliases can be routable without a registry row.
         from wangsa_cli.auth import is_runtime_provider_routable
@@ -2926,20 +2878,20 @@ def list_authenticated_providers(
         seen_slugs.add(slug.lower())
         _record_builtin_endpoint(slug)
 
-    # --- 2. Check Hermes-only providers (nous, openai-codex, copilot, opencode-go) ---
+    # --- 2. Check Wangsa-only providers (nous, openai-codex, copilot, opencode-go) ---
     from wangsa_cli.providers import HERMES_OVERLAYS
     from wangsa_cli.auth import PROVIDER_REGISTRY as _auth_registry
 
-    # Build reverse mapping: models.dev ID → Hermes provider ID.
+    # Build reverse mapping: models.dev ID → Wangsa provider ID.
     # HERMES_OVERLAYS keys may be models.dev IDs (e.g. "github-copilot")
-    # while _PROVIDER_MODELS and config.yaml use Hermes IDs ("copilot").
+    # while _PROVIDER_MODELS and config.yaml use Wangsa IDs ("copilot").
     _mdev_to_hermes = {v: k for k, v in PROVIDER_TO_MODELS_DEV.items()}
 
     for pid, overlay in HERMES_OVERLAYS.items():
         if pid.lower() in seen_slugs:
             continue
 
-        # Resolve Hermes slug — e.g. "github-copilot" → "copilot"
+        # Resolve Wangsa slug — e.g. "github-copilot" → "copilot"
         hermes_slug = _mdev_to_hermes.get(pid, pid)
         if hermes_slug.lower() in seen_slugs:
             continue
@@ -3261,7 +3213,7 @@ def list_authenticated_providers(
             # custom_providers entries use, so accept either.
             default_model = ep_cfg.get("default_model", "") or ep_cfg.get("model", "")
             # Build models list from both default_model and full models array.
-            # Hermes writes ``models:`` as a dict keyed by model id, but older
+            # Wangsa writes ``models:`` as a dict keyed by model id, but older
             # or hand-edited configs may use strings or ``[{id: ...}]`` rows —
             # _declared_model_ids() owns that contract.
             entry_models: list = []
@@ -3275,7 +3227,7 @@ def list_authenticated_providers(
             if group_key not in ep_groups:
                 # Strip per-model suffix so "Palantir Claude 4.7 Opus" becomes
                 # "Palantir Claude". Em dash and " - " are the separators
-                # Hermes's own writer uses (mirrors section-4 grouping).
+                # Wangsa's own writer uses (mirrors section-4 grouping).
                 grp_display = display_name
                 for sep in ("—", " - "):
                     if sep in grp_display:
@@ -3662,7 +3614,7 @@ def list_authenticated_providers(
             )
 
             # The singular ``model:`` field only holds the currently
-            # active model. Hermes's own writer (main.py::_save_custom_provider)
+            # active model. Wangsa's own writer (main.py::_save_custom_provider)
             # stores every configured model as a dict under ``models:``;
             # downstream readers (agent/models_dev.py, gateway/run.py,
             # run_agent.py, wangsa_cli/config.py) already consume that dict.

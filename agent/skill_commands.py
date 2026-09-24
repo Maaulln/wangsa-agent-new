@@ -36,7 +36,7 @@ _SKILL_MULTI_HYPHEN = re.compile(r"-{2,}")
 # ---------------------------------------------------------------------------
 # Skill-scaffolding markers and the canonical extractor.
 #
-# When a user invokes a /skill (or /bundle), Hermes expands the turn into a
+# When a user invokes a /skill (or /bundle), Wangsa expands the turn into a
 # model-facing message that embeds the full skill body plus scaffolding. That
 # expanded text is what flows into the agent loop — and into memory providers
 # via MemoryManager. Providers that store or embed the raw user turn (mem0,
@@ -215,7 +215,7 @@ def _resolve_skill_commands_platform() -> Optional[str]:
 
 
 def _resolve_skill_commands_home() -> str:
-    """Return the effective Hermes home the skill scan should be scoped to.
+    """Return the effective Wangsa home the skill scan should be scoped to.
 
     A gateway session can switch between profiles that each carry their own
     ``skills.external_dirs`` (via ``set_hermes_home_override``), but the
@@ -499,14 +499,14 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
                     if not cmd_name:
                         continue
                     # Skip if this skill's auto-generated /command collides
-                    # with a core Hermes slash command (name or alias). The
+                    # with a core Wangsa slash command (name or alias). The
                     # skill remains fully loadable via /skill <name>.
                     # Uses resolve_command() so aliases and case variants are
                     # covered without maintaining a separate cache.
                     if resolve_command(cmd_name) is not None:
                         logger.warning(
                             "Skill %r generates slash command '/%s' which "
-                            "collides with a core Hermes command; skipping "
+                            "collides with a core Wangsa command; skipping "
                             "auto-registration. Use '/skill %s' instead.",
                             name, cmd_name, name,
                         )
@@ -553,7 +553,7 @@ def get_skill_commands() -> Dict[str, Dict[str, Any]]:
     Rescans when the active platform scope changes (e.g. a gateway
     process serving Telegram and Discord concurrently) so each platform
     sees its own ``skills.platform_disabled`` view (#14536), and when the
-    active profile's Hermes home changes (e.g. Desktop switching profiles
+    active profile's Wangsa home changes (e.g. Desktop switching profiles
     mid-session) so each profile sees its own ``skills.external_dirs`` (#88023).
     """
     current_platform = _resolve_skill_commands_platform()

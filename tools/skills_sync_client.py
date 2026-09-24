@@ -335,7 +335,7 @@ def resolve_sync_base_url() -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Sync feature configuration — env-first, so a Hermes Cloud instance can be set
+# Sync feature configuration — env-first, so a Wangsa Cloud instance can be set
 # up to use sync BY DEFAULT purely through environment variables (no per-user
 # config.yaml edit, no per-skill CLI call). Every knob follows the same
 # precedence as base_url: the HERMES_SYNC_* env var wins, else config.yaml
@@ -392,7 +392,7 @@ def sync_feature_enabled() -> bool:
     """Whether the sync feature is turned on for this instance (env-first).
 
     ``HERMES_SYNC_ENABLED`` -> ``sync.enabled`` -> False. This is the master
-    switch a Hermes Cloud deployment sets to opt its instances into sync by
+    switch a Wangsa Cloud deployment sets to opt its instances into sync by
     default. It is checked by the gate-and-swallow entrypoints IN ADDITION to
     the Nous-admin token gate and a configured base URL — all three must hold for
     background sync to run.
@@ -428,7 +428,7 @@ def sync_default_opt_in() -> bool:
     ``hermes sync enable`` (or a plane manifest that opted it in). True: opt-OUT
     — every sync-eligible skill is treated as opted in unless explicitly
     disabled, which is the "your skills follow you with no setup" default a
-    Hermes Cloud deployment wants. Per the design notes, this default is
+    Wangsa Cloud deployment wants. Per the design notes, this default is
     provisional and expected to flip; exposing it as env config lets the
     operator choose per deployment without a protocol change.
     """
@@ -486,7 +486,7 @@ def list_synced_skill_names() -> List[str]:
 
     - **opt-in (default):** a skill syncs only when its usage record carries
       ``sync: true`` AND it is eligible. Nothing syncs by default.
-    - **opt-out (Hermes Cloud "on by default"):** every *eligible* skill syncs
+    - **opt-out (Wangsa Cloud "on by default"):** every *eligible* skill syncs
       UNLESS its usage record explicitly carries ``sync: false``. This is what a
       deployment sets (via ``HERMES_SYNC_DEFAULT_OPT_IN``) so a user's skills
       follow them with no per-skill setup.
@@ -692,7 +692,7 @@ def stable_device_id() -> str:
     except OSError:
         pass
 
-    # Hermes Cloud (and any templated deployment) can seed the label
+    # Wangsa Cloud (and any templated deployment) can seed the label
     # declaratively via HERMES_SYNC_DEVICE_NAME, so a hosted instance shows a
     # recognizable name with no CLI call. Env seeds the FIRST-USE value only; it
     # is then persisted, so a later `hermes sync device --name` (or editing the
@@ -1246,8 +1246,8 @@ def _check_version(caps: Dict[str, Any]) -> None:
     major = ver.split(".", 1)[0]
     if major != WIRE_VERSION:
         raise SyncError(
-            f"this server speaks sync version {ver!r}, but this Hermes speaks "
-            f"{WIRE_VERSION} — update Hermes to sync with it"
+            f"this server speaks sync version {ver!r}, but this Wangsa speaks "
+            f"{WIRE_VERSION} — update Wangsa to sync with it"
         )
 
 

@@ -12,7 +12,7 @@ refresh, and step-up authorization automatically.
 
 Client identification follows the MCP 2026-07-28 spec: when the authorization
 server advertises ``client_id_metadata_document_supported``, the SDK uses the
-URL of Hermes' published Client ID Metadata Document (CIMD) as the
+URL of Wangsa' published Client ID Metadata Document (CIMD) as the
 ``client_id``; otherwise it falls back to RFC 7591 dynamic client registration,
 which that spec revision deprecated.
 
@@ -37,7 +37,7 @@ Configuration in config.yaml::
           redirect_port: 0                      # 0 = auto-pick free port
           redirect_uri: "https://proxy/callback"  # default: loopback callback
           redirect_host: "localhost"            # loopback hostname (WAF-safe)
-          client_name: "My Custom Client"       # default: "Hermes Agent"
+          client_name: "My Custom Client"       # default: "Wangsa Agent"
           client_metadata_url: "https://me/cimd.json"  # self-hosted CIMD
           cimd: false                           # force DCR for this server
 """
@@ -273,7 +273,7 @@ def _cached_redirect_port(storage: "HermesTokenStorage | None") -> int | None:
     """Return the loopback callback port from cached client registration.
 
     OAuth providers bind a dynamically-registered ``client_id`` to the exact
-    redirect URI that was registered with it. If Hermes restarts and chooses a
+    redirect URI that was registered with it. If Wangsa restarts and chooses a
     new random callback port while reusing the stored ``client_id``, providers
     such as Summ reject the authorization request with ``redirect_uri does not
     match any registered URIs``. Reusing the cached redirect port keeps the
@@ -488,7 +488,7 @@ class HermesTokenStorage:
             return None
         if OAuthToken is None and not _ensure_sdk_loaded():
             return None
-        # Hermes records an absolute wall-clock ``expires_at`` alongside the
+        # Wangsa records an absolute wall-clock ``expires_at`` alongside the
         # SDK's serialized token (see ``set_tokens``). On read we rewrite
         # ``expires_in`` to the remaining seconds so the SDK's downstream
         # ``update_token_expiry`` computes the correct absolute time and
@@ -775,7 +775,7 @@ def _make_callback_handler() -> tuple[type, dict]:
 
             body = (
                 "<html><body><h2>Authorization Successful</h2>"
-                "<p>You can close this tab and return to Hermes.</p></body></html>"
+                "<p>You can close this tab and return to Wangsa.</p></body></html>"
             ) if code else (
                 "<html><body><h2>Authorization Failed</h2>"
                 f"<p>Error: {error or 'unknown'}</p></body></html>"
@@ -1052,7 +1052,7 @@ def _make_callback_waiter(
                 hint = (
                     " If the browser showed an invalid-client error instead of "
                     "an approval prompt, the authorization server rejected "
-                    f"Hermes' Client ID Metadata Document ({cimd_url}); set "
+                    f"Wangsa' Client ID Metadata Document ({cimd_url}); set "
                     "``cimd: false`` under that server's ``oauth:`` block in "
                     "config.yaml to authorize via dynamic client registration "
                     "instead."
@@ -1295,7 +1295,7 @@ def remove_oauth_tokens(
 # Under CIMD the client_id IS an HTTPS URL that the authorization server
 # fetches to learn our app name, logo and permitted redirect URIs, replacing
 # the per-install RFC 7591 registration that the MCP spec deprecated in
-# 2026-07-28. The SDK does the protocol work; Hermes only decides whether a
+# 2026-07-28. The SDK does the protocol work; Wangsa only decides whether a
 # given flow is eligible and hands the URL to ``OAuthClientProvider``.
 # ---------------------------------------------------------------------------
 
@@ -1310,7 +1310,7 @@ _CIMD_CLIENT_METADATA_URL = (
 
 # Loopback callback ports declared in that document. The redirect URI in the
 # authorization request must be an exact string match against a listed one
-# (section 4.2), so a CIMD flow cannot use the ephemeral port Hermes picks
+# (section 4.2), so a CIMD flow cannot use the ephemeral port Wangsa picks
 # otherwise. These sit below Linux's 32768 ephemeral floor, so the kernel never
 # hands one to an unrelated process. Keep in sync with the document — the
 # cross-artifact test in tests/tools/test_mcp_cimd.py enforces that.
@@ -1418,7 +1418,7 @@ def _server_declined_cimd(storage: "HermesTokenStorage | None") -> bool:
 
     Pinning a callback port is only needed for a flow that actually ends up
     using CIMD, but the SDK decides that during its 401 branch — long after
-    Hermes has to fix the redirect URI. Cached authorization-server metadata
+    Wangsa has to fix the redirect URI. Cached authorization-server metadata
     from an earlier connection closes the gap for every server the user has
     already reached: one that never advertised
     ``client_id_metadata_document_supported`` keeps the reserved ephemeral
@@ -1442,7 +1442,7 @@ def _maybe_use_cimd(
 ) -> "tuple[str, int] | None":
     """Return ``(client_id URL, pinned callback port)``, or None to use DCR.
 
-    Every early return below is a case where the redirect URI Hermes would
+    Every early return below is a case where the redirect URI Wangsa would
     send is not one the published document declares, where the client
     identity is already settled, or where the server is known not to want a
     document — DCR remains correct in all of them. Passing a metadata URL
@@ -1627,7 +1627,7 @@ def _resolve_redirect_uri(cfg: dict, port: int) -> str:
 # of 2026-07, verified by live call against api.figma.com):
 #   "Claude Code" → 200
 #   "Codex"       → 200
-#   "Hermes Agent" / "Hermes" / "Cursor" / "VS Code" / … → 403
+#   "Wangsa Agent" / "Wangsa" / "Cursor" / "VS Code" / … → 403
 # pi-figma-remote-auth and similar tools work around this the same way — register
 # under an allowlisted name so the browser flow can start. User can still pin a
 # different name via oauth.client_name if Figma ever admits one.
@@ -1699,7 +1699,7 @@ def _build_client_metadata(cfg: dict) -> "OAuthClientMetadata":
         )
     if OAuthClientMetadata is None:
         _ensure_sdk_loaded()
-    client_name = cfg.get("client_name", "Hermes Agent")
+    client_name = cfg.get("client_name", "Wangsa Agent")
     scope = cfg.get("scope")
     redirect_uri = _resolve_redirect_uri(cfg, port)
 
@@ -1717,7 +1717,7 @@ def _build_client_metadata(cfg: dict) -> "OAuthClientMetadata":
         "token_endpoint_auth_method": auth_method,
         # SEP-837 (2026-07-28 spec): clients MUST declare an application_type
         # during registration so OIDC-strict authorization servers stop
-        # rejecting loopback redirect_uris. Hermes is a CLI/desktop app
+        # rejecting loopback redirect_uris. Wangsa is a CLI/desktop app
         # redirecting to 127.0.0.1/localhost — that is exactly "native".
         # Overridable for the rare hosted-dashboard deployment fronting a
         # real https redirect.
@@ -1837,9 +1837,9 @@ def humanize_oauth_registration_error(
     Returns a humanized message when the error is a registration 403/Forbidden,
     else ``None`` so the caller keeps the original exception text.
 
-    Figma's remote MCP gates DCR on exact ``client_name``. Hermes auto-sets
+    Figma's remote MCP gates DCR on exact ``client_name``. Wangsa auto-sets
     ``Claude Code`` (known-good); this message fires when the user overrode
-    that with something Figma still rejects, or an older Hermes is running.
+    that with something Figma still rejects, or an older Wangsa is running.
     """
     msg = str(exc)
     lowered = msg.lower()
@@ -1860,7 +1860,7 @@ def humanize_oauth_registration_error(
         return (
             f"'{server_name}' is Figma's remote MCP — DCR is allowlisted by "
             f"exact client_name (\"{_FIGMA_DCR_CLIENT_NAME}\" and \"Codex\" "
-            "work; most other names 403). Hermes defaults to "
+            "work; most other names 403). Wangsa defaults to "
             f"client_name: {_FIGMA_DCR_CLIENT_NAME!r} automatically. If you "
             "set oauth.client_name yourself, change it to one of those, or "
             "clear it and re-run:\n"

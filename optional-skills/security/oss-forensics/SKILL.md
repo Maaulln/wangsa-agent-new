@@ -2,7 +2,7 @@
 name: oss-forensics
 description: "GitHub supply-chain forensics: recovery, IOCs, reporting."
 version: 1.0.0
-author: Teknium (teknium1), Hermes Agent
+author: Teknium (teknium1), Wangsa Agent
 license: MIT
 platforms: [linux, macos, windows]
 category: security

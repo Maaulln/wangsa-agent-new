@@ -1,7 +1,7 @@
 /**
  * after-pack.mjs — electron-builder afterPack hook.
  *
- * Stamps the Hermes icon + identity onto the packed Windows Hermes.exe via
+ * Stamps the Wangsa icon + identity onto the packed Windows Hermes.exe via
  * rcedit (delegated to set-exe-identity.mjs). This runs for EVERY packed build
  * — first install, `hermes desktop`, the installer's --update rebuild, and a
  * dev's manual `npm run pack` — so the branded exe can never silently revert
@@ -16,7 +16,7 @@
  * electron-builder passes a context with:
  *   - electronPlatformName: 'win32' | 'darwin' | 'linux'
  *   - appOutDir:            the unpacked app directory for this target
- *   - packager.appInfo.productFilename: the exe basename (e.g. 'Hermes')
+ *   - packager.appInfo.productFilename: the exe basename (e.g. 'Wangsa')
  */
 
 import path from 'node:path'

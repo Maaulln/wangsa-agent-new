@@ -196,7 +196,7 @@ def _remote_paragraph(root: Path) -> str:
     """Protocol addendum for agents on OTHER connected machines.
 
     Fed by the Desktop relay roster (``tools/bot_relay.py``) — every gateway
-    connected to the user's Desktop (local, remote URL, SSH, Hermes Cloud,
+    connected to the user's Desktop (local, remote URL, SSH, Wangsa Cloud,
     docker) syncs its agents here, so bots can DM across machines with the
     same message_agent tool. Only rendered when the relay roster is
     non-empty.
@@ -258,7 +258,7 @@ def _build_section(home: Path) -> str:
 
     return (
         f"{_PROTOCOL_HEADING}\n"
-        "This install runs Bot Mode: each Hermes profile is an agent teammate with "
+        "This install runs Bot Mode: each Wangsa profile is an agent teammate with "
         'one canonical "Bot Chat" conversation, and you have the `message_agent` '
         "tool to DM any of them. It is FIRE-AND-FORGET: it delivers your message "
         "with your attribution prefixed automatically and returns an acknowledgement "

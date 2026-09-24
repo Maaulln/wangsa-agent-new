@@ -1,7 +1,7 @@
 """Process identity: spawn tags, the machine-wide spawn ledger, and the
 Windows job-object self-attach.
 
-Three layers that make every long-lived Hermes process positively
+Three layers that make every long-lived Wangsa process positively
 identifiable, so reapers (``hermes update``, Desktop startup sweeps) never
 have to guess lineage from PPID archaeology or cmdline pattern-matching:
 
@@ -10,7 +10,7 @@ have to guess lineage from PPID archaeology or cmdline pattern-matching:
    that can read the child's environment classifies it instantly: which
    install, what it is, who spawned it, and when.
 
-2. **Spawn ledger** (``spawn-ledger.json`` at the machine Hermes root): every
+2. **Spawn ledger** (``spawn-ledger.json`` at the machine Wangsa root): every
    long-lived process (serve/dashboard backend, gateway) self-registers
    ``pid + create_time + purpose + spawner`` at startup. ``pid`` alone is
    forgeable by reuse; the ``(pid, create_time)`` pair is not. Reapers
@@ -70,7 +70,7 @@ _LEDGER_LOCK = threading.Lock()
 def install_id(project_root: Optional[Path] = None) -> str:
     """Stable 12-hex identifier for THIS install (derived from its path).
 
-    Lets a reaper reject processes from a different Hermes install on the
+    Lets a reaper reject processes from a different Wangsa install on the
     same machine without path comparisons at scan time.
     """
     if project_root is None:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SQLite State Store for Hermes Agent.
+SQLite State Store for Wangsa Agent.
 
 Provides persistent session storage with FTS5 full-text search, replacing
 the per-session JSONL file approach. Stores session metadata, full message
@@ -450,7 +450,7 @@ _STATE_DB_GUARD_EXTRA_DENY_ROOTS: Tuple[Path, ...] = ()
 
 
 def _real_platform_state_root() -> Optional[Path]:
-    """Resolve the REAL platform-default Hermes root for the guard.
+    """Resolve the REAL platform-default Wangsa root for the guard.
 
     Deliberately avoids ``Path.home()`` / ``wangsa_constants``: tests
     routinely monkeypatch ``Path.home`` to a tempdir, and ``wangsa_state``
@@ -479,7 +479,7 @@ def _real_platform_state_root() -> Optional[Path]:
 #: redirects ``HERMES_HOME`` to the per-session tmp isolation root.  Its
 #: value is that isolation root.  Unlike ``PYTEST_*`` (owned by pytest, and
 #: routinely scrubbed by tests that rebuild a child environment), this marker
-#: is OURS: it declares "this process tree is running under Hermes test
+#: is OURS: it declares "this process tree is running under Wangsa test
 #: isolation", and it inherits into subprocess children by default — so a
 #: child that received the patched ``HERMES_HOME`` also received the marker,
 #: and a child that resolves a production DB while carrying it is, by
@@ -590,7 +590,7 @@ def _production_state_roots() -> List[Path]:
 
 
 def _is_production_state_db(resolved: Path, root: Path) -> bool:
-    """True when *resolved* is a DB file of the real Hermes home *root*.
+    """True when *resolved* is a DB file of the real Wangsa home *root*.
 
     Matches files directly in the root (``<root>/state.db``) and profile
     homes (``<root>/profiles/<name>/state.db``).  Deliberately does NOT
@@ -632,7 +632,7 @@ def _ensure_test_isolation(db_path: Path) -> None:
         if _is_production_state_db(resolved, root):
             raise RuntimeError(
                 "live-system guard: test attempted to open production "
-                f"state.db at {resolved} (under real Hermes root {root}). "
+                f"state.db at {resolved} (under real Wangsa root {root}). "
                 "Tests must run against a temporary HERMES_HOME — pass an "
                 "explicit tmp db_path or let the hermetic conftest redirect "
                 "HERMES_HOME. If this test genuinely needs the live "
@@ -1373,7 +1373,7 @@ def _wal_reset_repair_hint() -> str:
         method = detect_install_method(get_project_root())
         cmd = recommended_update_command_for_method(method)
         if method in {"git", "unknown"}:
-            return f"Hermes-managed installs can repair the embedded runtime with `{cmd}`"
+            return f"Wangsa-managed installs can repair the embedded runtime with `{cmd}`"
         if method == "docker":
             return f"update the container image with `{cmd}`"
         # nix/nixos
@@ -1382,7 +1382,7 @@ def _wal_reset_repair_hint() -> str:
         pass
     return (
         "install a Python build bundled with SQLite 3.51.3+ "
-        "(or backports 3.50.7 / 3.44.6) and restart Hermes"
+        "(or backports 3.50.7 / 3.44.6) and restart Wangsa"
     )
 
 
@@ -1411,7 +1411,7 @@ def _log_wal_reset_bug_once(
         )
     else:
         action = "using journal_mode=DELETE instead of enabling WAL"
-    # Check whether this is a Hermes-managed install (uv-managed venv)
+    # Check whether this is a Wangsa-managed install (uv-managed venv)
     # so the warning doesn't promise a repair path that doesn't exist
     # for git/pip/system Python installs (#75153).
     repair_hint = _wal_reset_repair_hint()
@@ -1726,7 +1726,7 @@ def _claim_repair_attempt(db_path: Path) -> bool:
 
 # Cross-process serialisation for the schema-surgery paths below.  The
 # ``_repair_attempt_lock`` above is a ``threading.Lock`` — it only covers
-# threads inside ONE interpreter, yet a normal Hermes host runs several
+# threads inside ONE interpreter, yet a normal Wangsa host runs several
 # independent processes against the same ``state.db``: the gateway service,
 # the Desktop app's own ``hermes serve`` backend, interactive CLI sessions,
 # and the TUI slash worker.  Two of those hitting a malformed DB at once each
@@ -1870,7 +1870,7 @@ _MAX_PERSISTENT_REPAIR_ATTEMPTS = 3
 _MAX_MALFORMED_BACKUPS = 3
 
 # Sidecars copied alongside a damaged DB and pruned with it. ``-journal`` is
-# included because rollback-journal (DELETE) mode — Hermes's fallback on
+# included because rollback-journal (DELETE) mode — Wangsa's fallback on
 # NFS/SMB/FUSE/ZFS and on WAL-reset-vulnerable SQLite builds — leaves a hot
 # journal on disk whenever a transaction was open, and that file is what
 # interprets the damaged bytes. Omitting it from the forensic copy means the
@@ -2509,8 +2509,8 @@ def preflight_db_writability(
     transactions. This preflight:
 
     - **Repairs** permissions with ``chmod u+rw`` when the file lives inside
-      the Hermes home tree (``get_hermes_home()``) — the safe repair scope:
-      Hermes owns those files, and the OS makes ``chmod`` fail on files the
+      the Wangsa home tree (``get_hermes_home()``) — the safe repair scope:
+      Wangsa owns those files, and the OS makes ``chmod`` fail on files the
       user doesn't own, which bounds the repair exactly.
     - **Fails fast with an actionable error** naming the exact file and the
       exact ``chmod`` command for anything else (root-owned files, read-only
@@ -2566,7 +2566,7 @@ def preflight_db_writability(
         )
         raise sqlite3.OperationalError(
             f"{db_label} is not writable: {kind} {p} is read-only for this "
-            f"user. Hermes needs read-write access to open the database. "
+            f"user. Wangsa needs read-write access to open the database. "
             f"Fix with: chmod u+rw{'x' if is_dir else ''} '{p}'"
             f" (files owned by another user may need sudo/chown).{wal_note}"
         )
@@ -2888,7 +2888,7 @@ def _live_writer_holds_db(db_path: Path) -> bool:
 
     Scope: the WAL-index exclusive lock is what makes this detect a holder, so
     the guard is effective in WAL mode. On SQLite builds carrying the WAL-reset
-    bug and on NFS/SMB, Hermes deliberately runs ``state.db`` in
+    bug and on NFS/SMB, Wangsa deliberately runs ``state.db`` in
     ``journal_mode=DELETE`` (see :func:`apply_wal_with_fallback`); there a held
     reader takes only a SHARED lock, ``BEGIN IMMEDIATE`` still acquires
     RESERVED, and this probe returns False. In that mode repair is serialised
@@ -3990,11 +3990,11 @@ _HERMES_CMDLINE_MARKERS = ("wangsa_cli.main", "wangsa_cli/main", "hermes serve",
 
 
 def _looks_like_hermes(cmdline: str) -> bool:
-    """Heuristic: does this cmdline look like a Hermes process?
+    """Heuristic: does this cmdline look like a Wangsa process?
 
     Used to decide whether an uninspectable process (fd table unreadable
     due to different user) should be treated as a potential state.db holder.
-    We only flag processes that look like Hermes, not every system daemon.
+    We only flag processes that look like Wangsa, not every system daemon.
     """
     lower = cmdline.lower()
     return any(marker in lower for marker in _HERMES_CMDLINE_MARKERS)
@@ -4061,7 +4061,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
     # writers and avoids the convoy.
     #
     # Patience is TIME-based, not attempt-based.  A shared state.db is
-    # legitimately held for multi-second stretches by sibling Hermes
+    # legitimately held for multi-second stretches by sibling Wangsa
     # processes: a TRUNCATE checkpoint at close on a large WAL, VACUUM after
     # an auto-prune, offline recovery, or an older still-running process
     # whose FTS maintenance predates the bounded-merge protocol (every
@@ -5004,7 +5004,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                     # Patience exhausted — say what actually happened so the
                     # surfaced error doesn't read as disk/permission damage.
                     raise sqlite3.OperationalError(
-                        f"database is locked (another Hermes process held the "
+                        f"database is locked (another Wangsa process held the "
                         f"state.db write lock for over {patience_s:.0f}s — "
                         "likely a long maintenance operation such as VACUUM, "
                         "a large WAL checkpoint, or an older pre-update "
@@ -5142,9 +5142,9 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                         # Cannot read this process's fd table (different
                         # user, e.g. root gateway vs user desktop).
                         # /proc/<pid>/cmdline is world-readable by default,
-                        # so check whether this is a Hermes process —
+                        # so check whether this is a Wangsa process —
                         # only flag uninspectable holders that look like
-                        # another Hermes instance, not every system daemon.
+                        # another Wangsa instance, not every system daemon.
                         cmdline = _read_proc_cmdline(pid)
                         if cmdline is not None and _looks_like_hermes(cmdline):
                             holders.append((pid, f"uninspectable holder: {cmdline[:80]}"))
@@ -13781,7 +13781,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         """Create Telegram DM topic-mode tables on explicit /topic opt-in.
 
         This migration is deliberately not part of automatic SessionDB startup
-        reconciliation. Operators must be able to upgrade Hermes, keep the old
+        reconciliation. Operators must be able to upgrade Wangsa, keep the old
         Telegram bot behavior running, and only mutate topic-mode state when the
         user executes /topic to opt into the feature.
 
@@ -14129,9 +14129,9 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         session_id: str,
         managed_mode: str = "auto",
     ) -> None:
-        """Bind one Telegram DM topic thread to one Hermes session.
+        """Bind one Telegram DM topic thread to one Wangsa session.
 
-        A Hermes session may only be linked to one Telegram topic in MVP.
+        A Wangsa session may only be linked to one Telegram topic in MVP.
         Rebinding the same topic to the same session is idempotent; trying to
         link the same session to a different topic raises ValueError.
         """
@@ -14184,7 +14184,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         self._execute_write(_do)
 
     def is_telegram_session_linked_to_topic(self, *, session_id: str) -> bool:
-        """Return True if a Hermes session is already bound to any Telegram DM topic.
+        """Return True if a Wangsa session is already bound to any Telegram DM topic.
 
         Read-only: does NOT trigger the telegram-topic migration. If the
         topic-mode tables have not been created yet (i.e. nobody has run

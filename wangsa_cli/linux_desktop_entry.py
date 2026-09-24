@@ -60,7 +60,7 @@ def icon_path(project_root: Path) -> Path:
 def resolve_exec_command() -> str:
     """Build the absolute ``Exec=`` command line for ``hermes desktop``.
 
-    Prefer the real ``hermes`` executable (argv[0] or PATH). When Hermes
+    Prefer the real ``hermes`` executable (argv[0] or PATH). When Wangsa
     runs as a module with no launcher installed, use the current
     interpreter, also absolute.
     """
@@ -76,7 +76,7 @@ def resolve_exec_command() -> str:
             # installer's bash wrapper). Launched from the .desktop entry that
             # shebang resolves to the SYSTEM python and dies on the first
             # third-party import (#90292) — silently, since Terminal=false.
-            # sys.executable is the interpreter actually running Hermes (the
+            # sys.executable is the interpreter actually running Wangsa (the
             # venv one), so prefix it explicitly.
             argv = [str(Path(sys.executable).resolve()), str(resolved), "desktop"]
         else:
@@ -88,7 +88,7 @@ def resolve_exec_command() -> str:
 
 def _needs_interpreter(bin_path: Path) -> bool:
     """Whether ``bin_path`` is a Python script that must run under
-    ``sys.executable`` to see Hermes' venv (rather than its own shebang)."""
+    ``sys.executable`` to see Wangsa' venv (rather than its own shebang)."""
     try:
         with open(bin_path, "rb") as fh:
             head = fh.readline(256)
@@ -126,15 +126,15 @@ def render_desktop_entry(exec_command: str, icon: str) -> str:
     return (
         "[Desktop Entry]\n"
         "Type=Application\n"
-        "Name=Hermes\n"
-        "GenericName=Hermes Desktop\n"
-        "Comment=Launch Hermes Desktop\n"
+        "Name=Wangsa\n"
+        "GenericName=Wangsa Desktop\n"
+        "Comment=Launch Wangsa Desktop\n"
         f"Exec={exec_command}\n"
         f"Icon={icon}\n"
         "Terminal=false\n"
         "Categories=Utility;\n"
         "StartupNotify=true\n"
-        "StartupWMClass=Hermes\n"
+        "StartupWMClass=Wangsa\n"
     )
 
 
@@ -177,7 +177,7 @@ def _run_quiet(cmd: "list[str]") -> bool:
 
 
 def install_desktop_entry(project_root: Path) -> Optional[Path]:
-    """Write (or refresh) the Hermes desktop entry. Return its path.
+    """Write (or refresh) the Wangsa desktop entry. Return its path.
 
     Return ``None`` on non-Linux platforms or when the write fails. This
     is a convenience, never a reason to fail a launch.

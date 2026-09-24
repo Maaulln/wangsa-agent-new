@@ -1,6 +1,6 @@
 """Cross-process admission for full structural FTS rebuilds (PR #93200 class).
 
-Several independent Hermes processes routinely share one state.db (gateway,
+Several independent Wangsa processes routinely share one state.db (gateway,
 Desktop's ``hermes serve`` backend, CLI sessions, the TUI slash worker). Two
 of them detecting FTS corruption at once each ran the full FTS5 'rebuild' on
 the same file in parallel, colliding on write and structurally corrupting

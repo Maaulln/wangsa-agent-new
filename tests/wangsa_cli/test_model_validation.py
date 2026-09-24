@@ -506,7 +506,7 @@ class TestValidateCodexAutoCorrection:
 
 
 class TestValidateCodex900kVariants:
-    """`-900k` is a Hermes picker convention: valid variants come from the
+    """`-900k` is a Wangsa picker convention: valid variants come from the
     catalog; ineligible aliases are hard-rejected BEFORE the hidden-slug
     soft-accept (#92797 review)."""
 
@@ -537,7 +537,7 @@ class TestValidateCodex900kVariants:
 # -- probe_api_models — Cloudflare UA mitigation --------------------------------
 
 class TestProbeApiModelsUserAgent:
-    """Probing custom /v1/models must send a Hermes User-Agent.
+    """Probing custom /v1/models must send a Wangsa User-Agent.
 
     Some custom Claude proxies (e.g. ``packyapi.com``) sit behind Cloudflare with
     Browser Integrity Check enabled. The default ``Python-urllib/3.x`` signature

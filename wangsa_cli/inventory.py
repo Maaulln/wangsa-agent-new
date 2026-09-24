@@ -665,7 +665,7 @@ def _anthropic_oauth_credentials_present() -> bool:
     """True when the user explicitly authenticated Anthropic via OAuth.
 
     Two deliberate flows leave no trace in active_provider /
-    model.provider / API-key env vars: Hermes' own Anthropic device flow
+    model.provider / API-key env vars: Wangsa' own Anthropic device flow
     (token in auth.json) and a Claude Code login (~/.claude/.credentials.json).
     ``list_authenticated_providers`` already accepts both readers as real
     credentials when discovering rows; this mirrors that acceptance so the
@@ -713,7 +713,7 @@ def _filter_explicit_provider_rows(rows: list[dict], ctx: ConfigContext) -> list
 
     ``list_authenticated_providers`` intentionally discovers ambient / auto-
     seeded credentials (for example GitHub CLI -> Copilot). Desktop chat model
-    pickers want the narrower subset the user explicitly configured for Hermes.
+    pickers want the narrower subset the user explicitly configured for Wangsa.
     """
     from wangsa_cli.auth import is_provider_explicitly_configured
 
@@ -745,7 +745,7 @@ def _filter_explicit_provider_rows(rows: list[dict], ctx: ConfigContext) -> list
             kept.append(row)
             continue
         if slug == "anthropic" and _anthropic_oauth_credentials_present():
-            # Anthropic OAuth logins (Hermes device flow / Claude Code) are
+            # Anthropic OAuth logins (Wangsa device flow / Claude Code) are
             # deliberate sign-ins that leave no trace in active_provider,
             # model.provider, or API-key env vars. The strict gate below
             # would drop the row even though list_authenticated_providers
@@ -758,7 +758,7 @@ def _filter_explicit_provider_rows(rows: list[dict], ctx: ConfigContext) -> list
 
 
 def _provider_is_keyless(slug: str) -> bool:
-    """True when the provider's Hermes overlay declares it keyless."""
+    """True when the provider's Wangsa overlay declares it keyless."""
     try:
         from wangsa_cli.providers import HERMES_OVERLAYS
         overlay = HERMES_OVERLAYS.get(slug)

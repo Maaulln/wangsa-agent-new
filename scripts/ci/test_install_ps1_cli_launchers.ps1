@@ -103,7 +103,7 @@ try {
     Install-HermesCommandLaunchers -Root $installRoot -Destination $binDir | Out-Null
     Assert-BytesEqual $hermesV2 `
         ([System.IO.File]::ReadAllBytes((Join-Path $binDir 'hermes.exe'))) `
-        'installer refreshes an existing Hermes launcher'
+        'installer refreshes an existing Wangsa launcher'
     Assert-BytesEqual $acp `
         ([System.IO.File]::ReadAllBytes((Join-Path $binDir 'hermes-acp.exe'))) `
         'installer copies the optional ACP launcher when present'

@@ -21,7 +21,7 @@ method = _registry.method
 
 @method("profiles.list")
 def _(rid, params: dict) -> dict:
-    """List Hermes profiles (name, path, model, description, skill count).
+    """List Wangsa profiles (name, path, model, description, skill count).
 
     ``include_sessions`` (default true) additionally reports each profile's
     most recent conversation as ``last_session`` so a roster UI can paint

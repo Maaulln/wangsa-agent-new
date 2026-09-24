@@ -305,7 +305,7 @@ class TestInstallCuaDriverUpgrade:
     def test_install_target_writability_is_probed_for_real_on_macos(self):
         """The ``_cua_install_target_writable`` seam the two tests above patch.
 
-        ``macos_only``: ``/Applications`` is the only install target Hermes
+        ``macos_only``: ``/Applications`` is the only install target Wangsa
         checks, and the probe short-circuits to True on every other platform —
         so this is the one host where the real filesystem answer means
         anything.
@@ -347,7 +347,7 @@ class TestInstallCuaDriverUpgrade:
         incompatible = {
             "ready": False,
             "version": "0.19.4",
-            "reason": "Hermes computer use requires cua-driver 0.20.0 or newer",
+            "reason": "Wangsa computer use requires cua-driver 0.20.0 or newer",
         }
         repaired = {"ready": True, "version": "0.20.0", "reason": ""}
         with patch.object(
@@ -381,7 +381,7 @@ class TestInstallCuaDriverUpgrade:
         incompatible = {
             "ready": False,
             "version": "0.19.4",
-            "reason": "Hermes computer use requires cua-driver 0.20.0 or newer",
+            "reason": "Wangsa computer use requires cua-driver 0.20.0 or newer",
         }
         with patch.object(
                  tools_config,
@@ -519,7 +519,7 @@ class TestRequireConfirmedUpdate:
         runner.assert_called_once()
 
     def test_incompatible_driver_repairs_despite_indeterminate_check(self):
-        """Hermes' own version floor is the confirmation. When the installed
+        """Wangsa' own version floor is the confirmation. When the installed
         driver fails the runtime contract, the `hermes update` refresh must
         repair it even though ``check-update`` can't confirm a newer release
         (its ~20h cache routinely lags a same-day floor bump — the 0.19.3
@@ -531,7 +531,7 @@ class TestRequireConfirmedUpdate:
         incompatible = {
             "ready": False,
             "version": "0.19.3",
-            "reason": "Hermes computer use requires cua-driver 0.20.0 or newer",
+            "reason": "Wangsa computer use requires cua-driver 0.20.0 or newer",
         }
         with patch.object(tools_config.shutil, "which",
                           side_effect=lambda n: "/x/" + n

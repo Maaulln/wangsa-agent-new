@@ -10,7 +10,7 @@ const source = readFileSync(new URL('../plugin.js', import.meta.url), 'utf8')
 // gateway socket's home. Tab/tile focus moves without swapping the socket, so
 // keying these off `host.state.profile` alone highlighted (and scoped the
 // Cronjobs panel to) the wrong bot whenever a focused tab showed another
-// profile's chat (community report: Newsanalyst chat open, Hermes highlighted).
+// profile's chat (community report: Newsanalyst chat open, Wangsa highlighted).
 
 test('$focusedBotOwner prefers the connection-qualified focused owner atom', () => {
   assert.match(

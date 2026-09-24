@@ -717,7 +717,7 @@ class TestSyncManifest:
 
 
 # ---------------------------------------------------------------------------
-# Env-var configuration (Hermes Cloud "on by default" via environment)
+# Env-var configuration (Wangsa Cloud "on by default" via environment)
 # ---------------------------------------------------------------------------
 
 class TestEnvConfig:
@@ -835,7 +835,7 @@ class TestDeviceName:
         assert ssc.stable_device_id() == "Explicit Name"
 
     def test_env_seeds_first_use(self, tmp_path, monkeypatch):
-        # Hermes Cloud path: HERMES_SYNC_DEVICE_NAME seeds the first-use label.
+        # Wangsa Cloud path: HERMES_SYNC_DEVICE_NAME seeds the first-use label.
         monkeypatch.setattr(ssc, "_skills_dir", lambda: tmp_path)
         monkeypatch.setenv("HERMES_SYNC_DEVICE_NAME", "hermes-cloud-ben-1")
         assert ssc.stable_device_id() == "hermes-cloud-ben-1"

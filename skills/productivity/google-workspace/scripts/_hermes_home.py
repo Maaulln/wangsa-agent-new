@@ -1,6 +1,6 @@
 """Resolve HERMES_HOME for standalone skill scripts.
 
-Skill scripts may run outside the Hermes process (e.g. system Python,
+Skill scripts may run outside the Wangsa process (e.g. system Python,
 nix env, CI) where ``wangsa_constants`` is not importable.  This module
 provides the same ``get_hermes_home()`` and ``display_hermes_home()``
 contracts as ``wangsa_constants`` without requiring it on ``sys.path``.
@@ -25,7 +25,7 @@ try:
 except (ModuleNotFoundError, ImportError):
 
     def get_hermes_home() -> Path:
-        """Return the Hermes home directory (default: ~/.hermes).
+        """Return the Wangsa home directory (default: ~/.hermes).
 
         Mirrors ``wangsa_constants.get_hermes_home()``."""
         val = os.environ.get("HERMES_HOME", "").strip()

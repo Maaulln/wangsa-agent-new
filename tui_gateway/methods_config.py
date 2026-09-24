@@ -36,7 +36,7 @@ def _(rid, params: dict) -> dict:
                 )
                 # `scan=true` (set by the desktop in remote-gateway mode): run a
                 # backend-side filesystem scan of the policy roots so repos with
-                # zero Hermes sessions still surface. The desktop's native scan
+                # zero Wangsa sessions still surface. The desktop's native scan
                 # only runs on the local filesystem; on a remote connection it
                 # must ask the host to scan itself (#81723).
                 if params.get("scan") and policy["enabled"]:
@@ -423,7 +423,7 @@ def _(rid, params: dict) -> dict:
                     "provider": provider,
                     "model": runtime.get("model"),
                     "source": source,
-                    "error": "No Hermes provider is configured.",
+                    "error": "No Wangsa provider is configured.",
                 },
             )
 

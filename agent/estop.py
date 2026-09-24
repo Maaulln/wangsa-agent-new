@@ -6,7 +6,7 @@
 * the cron scheduler skips dispatching due jobs (``cron/scheduler.py:tick``),
 * the embedded kanban dispatcher skips spawning workers
   (``gateway/kanban_watchers.py``),
-* new gateway turns get a brief "Hermes is paused" reply instead of an
+* new gateway turns get a brief "Wangsa is paused" reply instead of an
   agent run (``gateway/run.py:_handle_message``).
 
 In-flight work is NEVER killed — this is pause-new-work, not panic/exit.
@@ -130,11 +130,11 @@ def paused_reply() -> Optional[str]:
     reason = state.get("reason")
     if reason:
         return (
-            f"⏸️ Hermes is paused ({reason}). New work is on hold; "
+            f"⏸️ Wangsa is paused ({reason}). New work is on hold; "
             "run `hermes resume` to pick things back up."
         )
     return (
-        "⏸️ Hermes is paused. New work is on hold; "
+        "⏸️ Wangsa is paused. New work is on hold; "
         "run `hermes resume` to pick things back up."
     )
 

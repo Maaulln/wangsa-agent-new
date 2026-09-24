@@ -192,7 +192,7 @@ class PlatformEntry:
     # explicit target.  Invoked by ``tools/send_message_tool._parse_target_ref``
     # before channel-directory fallback so plugin platforms can declare their
     # own native target syntax (e.g. ``fmsg:@alice@example.com``) without
-    # hard-casing in Hermes core.
+    # hard-casing in Wangsa core.
     #
     # Signature:
     #     (target_ref: str) -> Optional[tuple[str, Optional[str]]]

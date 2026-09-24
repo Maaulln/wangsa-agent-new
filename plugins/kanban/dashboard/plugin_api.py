@@ -2087,7 +2087,7 @@ def _configured_home_channels() -> list[dict]:
 
 
 def _active_profile_name() -> str:
-    """Return the current Hermes profile name for notify-sub ownership."""
+    """Return the current Wangsa profile name for notify-sub ownership."""
     try:
         from wangsa_cli.profiles import get_active_profile_name
         return get_active_profile_name() or "default"
@@ -2311,7 +2311,7 @@ def model_options():
 
     Thin wrapper around ``wangsa_cli.inventory.build_models_payload`` — the
     same substrate the dashboard Models page and the TUI picker use, so the
-    dropdown can never offer a model/provider pair the rest of Hermes
+    dropdown can never offer a model/provider pair the rest of Wangsa
     wouldn't accept. Deliberately skips pricing/capability enrichment and
     custom-provider probes: the dropdown needs names fast, not $/Mtok
     columns (a slow/offline local endpoint must not hang the drawer).
@@ -2434,7 +2434,7 @@ def _default_workspace_kind(board: dict[str, Any]) -> str:
 
 @router.get("/projects")
 def list_kanban_projects():
-    """List first-class Hermes projects for board scoping.
+    """List first-class Wangsa projects for board scoping.
 
     Returns ``{projects: [{id, slug, name, primary_path, icon, color}]}``.
     Archived projects are excluded — a board can only be scoped to a live one.

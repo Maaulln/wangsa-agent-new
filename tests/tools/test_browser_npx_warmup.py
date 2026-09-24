@@ -91,7 +91,7 @@ def test_captures_stdout_and_stderr_instead_of_inheriting_parent_fds():
 def test_uses_credential_scrubbed_environment():
     """Must not inherit the full parent environment — matching every other
     agent-browser subprocess spawn (_build_browser_env), not the ambient
-    os.environ with every provider/gateway credential Hermes holds."""
+    os.environ with every provider/gateway credential Wangsa holds."""
     scrubbed_env = {"PATH": "/scrubbed/bin", "SCRUBBED": "1"}
     with patch("tools.browser_tool._resolve_npx_bin", return_value="/usr/bin/npx"), \
          patch("tools.browser_tool._build_browser_env", return_value=dict(scrubbed_env)), \
@@ -105,7 +105,7 @@ def test_uses_credential_scrubbed_environment():
 
 
 def test_merges_extended_path_so_managed_only_npx_can_find_sibling_node():
-    """If npx was resolved via the Hermes-managed/extended search (not the
+    """If npx was resolved via the Wangsa-managed/extended search (not the
     ambient PATH), the child's own PATH must include that same directory —
     npx's #!/usr/bin/env node shebang resolves `node` via the child's PATH
     at exec time, not the resolving process's PATH."""

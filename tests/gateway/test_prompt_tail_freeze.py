@@ -62,6 +62,7 @@ def _make_context(
     parent_chat_id: str | None = "111222333",
     chat_topic: str | None = "ops chatter",
     user_name: str | None = "pix",
+    user_bio: str | None = None,
     user_id: str | None = "9001",
     guild_id: str | None = "777888999",
     message_id: str | None = "1357",
@@ -76,6 +77,7 @@ def _make_context(
         chat_type=chat_type,
         user_id=user_id,
         user_name=user_name,
+        user_bio=user_bio,
         thread_id=thread_id,
         chat_topic=chat_topic,
         parent_chat_id=parent_chat_id,
@@ -129,6 +131,7 @@ class TestEphemeralChangeKeyParity:
         ("chat_type", dict(chat_type="group")),
         ("user_name", dict(user_name="somebody-else")),
         ("user_name_cleared", dict(user_name=None)),
+        ("user_bio", dict(user_bio="prefers casual tone, replies in Indonesian")),
         ("user_id", dict(user_name=None, user_id="1234")),
         ("shared_multi_user", dict(shared_multi_user=True)),
         ("guild_id", dict(guild_id="123123123")),
@@ -170,6 +173,19 @@ class TestEphemeralChangeKeyParity:
         ctx = _make_context(platform=Platform.TELEGRAM, thread_id=None, parent_chat_id=None)
         assert _render(ctx, False) != _render(ctx, True)
         assert _key(runner, ctx, False) != _key(runner, ctx, True)
+
+    def test_user_bio_renders_and_changes_key(self):
+        # A user profile edit (e.g. the Wangsa mobile app's local profile
+        # screen) must land in the rendered "User notes" line AND bust the
+        # pin — otherwise an open session keeps answering against the old
+        # profile until the agent happens to be evicted for another reason.
+        runner = _make_runner()
+        without_bio = _make_context()
+        with_bio = _make_context(user_bio="replies in casual Indonesian")
+        assert "User notes" not in _render(without_bio)
+        rendered_with_bio = _render(with_bio)
+        assert '**User notes:** "replies in casual Indonesian"' in rendered_with_bio
+        assert _key(runner, without_bio) != _key(runner, with_bio)
 
 
     def test_slack_note_byte_stable_across_turns_in_one_session(self):

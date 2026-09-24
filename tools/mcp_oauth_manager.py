@@ -319,7 +319,7 @@ def _make_hermes_provider_class() -> Optional[type]:
             builders and response handlers so we track whatever the SDK
             version we're pinned to expects.
             """
-            # The SDK's httpx flavour, not Hermes' — mcp 2.0 builds on httpx2,
+            # The SDK's httpx flavour, not Wangsa' — mcp 2.0 builds on httpx2,
             # and `create_oauth_metadata_request` below returns one of *its*
             # Request objects, which only its own AsyncClient can send. See
             # tools.mcp_tool.sdk_httpx.

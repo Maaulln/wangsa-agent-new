@@ -2317,7 +2317,7 @@ def anthropic_prompt_cache_policy(
     )
 
     # A configured route may use an arbitrary provider name and model alias
-    # that are canonicalized only after Hermes sends the request. Honor its
+    # that are canonicalized only after Wangsa sends the request. Honor its
     # existing per-model ``prompt_caching`` capability instead of guessing
     # support from either spelling. Explicit false is authoritative too.
     #
@@ -4191,7 +4191,7 @@ def reapply_reasoning_echo_for_provider(agent, api_messages: list) -> int:
 def _iter_httpx_pool_objects(http_client: Any):
     """Yield httpcore pool objects reachable from an httpx client.
 
-    Hermes' keepalive client (#10324 / ``_build_keepalive_http_client``) and
+    Wangsa' keepalive client (#10324 / ``_build_keepalive_http_client``) and
     any ``HTTP(S)_PROXY`` configuration put live connections on *mounted*
     transports (``client._mounts``), not only on the default
     ``client._transport``. Walking the default transport alone makes

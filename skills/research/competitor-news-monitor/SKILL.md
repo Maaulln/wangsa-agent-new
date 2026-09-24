@@ -2,7 +2,7 @@
 name: competitor-news-monitor
 description: "Watch named companies for material news; cited digests."
 version: 0.1.0
-author: Ben Barclay (benbarclay), Hermes Agent
+author: Ben Barclay (benbarclay), Wangsa Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:

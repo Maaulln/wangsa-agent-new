@@ -1,7 +1,7 @@
 """
-Lazy dependency installer for opt-in Hermes Agent backends.
+Lazy dependency installer for opt-in Wangsa Agent backends.
 
-Many Hermes features (Mistral TTS, ElevenLabs TTS, Honcho memory, Bedrock,
+Many Wangsa features (Mistral TTS, ElevenLabs TTS, Honcho memory, Bedrock,
 Slack, Matrix, etc.) require Python packages that not every user needs. The
 historical approach was to bundle them all under ``pyproject.toml`` extras
 (``hermes-agent[all]``) and install them eagerly at setup time. That has
@@ -38,7 +38,7 @@ Security model:
   a module the core already ships. The worst a bad/incompatible backend
   package can do is fail to import and report itself unavailable — the agent
   core stays healthy. This is the structural guarantee that a lazily
-  installed package cannot brick Hermes, which is what made it safe to seal
+  installed package cannot brick Wangsa, which is what made it safe to seal
   the venv in the first place. Compiled-wheel safety across image rebuilds
   is handled by an ABI/Python-version stamp on the target subdir (see
   :func:`_ensure_target_ready`).
@@ -152,7 +152,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # small silk-v3 codec binding; installed on first .silk transcription.
     "stt.silk": ("pilk==0.2.4",),
 
-    # ─── Wake word ("Hey Hermes") engines ──────────────────────────────────
+    # ─── Wake word ("Hey Wangsa") engines ──────────────────────────────────
     # Keep in sync with the `wake` extra in pyproject.toml. openWakeWord is the
     # free, local default (ONNX runtime); Porcupine is the premium engine.
     # openWakeWord's ONNX embedding model returns near-zero scores on macOS
@@ -547,7 +547,7 @@ def _unsupported_feature_reason(feature: str) -> Optional[str]:
         return (
             "unsupported on Windows: Matrix E2EE depends on python-olm, "
             "which has no Windows wheel and requires make + libolm to build "
-            "from sdist. Run Hermes under WSL to use Matrix on Windows."
+            "from sdist. Run Wangsa under WSL to use Matrix on Windows."
         )
     return None
 
@@ -743,7 +743,7 @@ def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _Install
 
         # Tier 1: uv (preferred — fast, doesn't need pip in the venv)
         # Managed uv first: $HERMES_HOME/bin is never on PATH, so a bare
-        # which() misses the uv Hermes installed and falls through to the
+        # which() misses the uv Wangsa installed and falls through to the
         # slower pip tier. Deliberately a lookup and not ensure_uv(): this runs
         # mid-turn to install an optional dependency, and downloading uv +
         # migrating the Python runtime as a side effect of that is a far bigger
@@ -867,7 +867,7 @@ def ensure(feature: str, *, prompt: bool = True) -> None:
     if unsupported:
         raise FeatureUnavailable(feature, missing, unsupported)
 
-    # Package-manager installs (NixOS, and any other distro that ships Hermes
+    # Package-manager installs (NixOS, and any other distro that ships Wangsa
     # from a read-only store) cannot receive lazy pip installs: the venv's
     # site-packages lives in the store, so the uv -> pip -> ensurepip ladder
     # below burns ~15s bootstrapping ensurepip only to fail on a read-only
@@ -891,9 +891,9 @@ def ensure(feature: str, *, prompt: bool = True) -> None:
             raise FeatureUnavailable(
                 feature, missing,
                 f"unsupported on {managed_by}-managed installs: this build's "
-                f"packages come from {managed_by}, so Hermes cannot install "
+                f"packages come from {managed_by}, so Wangsa cannot install "
                 f"them at runtime. Add the dependencies for {feature!r} via "
-                f"{managed_by} (or run a pip/uv install of Hermes instead)."
+                f"{managed_by} (or run a pip/uv install of Wangsa instead)."
             )
 
     # Validate every spec against the allowlist + safety regex. Belt and

@@ -1788,7 +1788,7 @@ def init_agent(
         agent.show_commentary = True
 
     # LM Studio can either be explicitly preloaded through LM Studio's
-    # management API (the historical Hermes behavior) or left to LM Studio's
+    # management API (the historical Wangsa behavior) or left to LM Studio's
     # just-in-time / Auto-Evict chat-completions path.  Keep the default
     # explicit for backward compatibility; users with LM Studio Auto-Evict can
     # opt into JIT via ``model.lmstudio_load_mode: jit``.
@@ -2040,7 +2040,7 @@ def init_agent(
     agent._session_title_hint = None
 
     # Per-platform prompt-hint overrides (config.yaml → platform_hints).
-    # Lets an enterprise admin append to or replace Hermes' built-in
+    # Lets an enterprise admin append to or replace Wangsa' built-in
     # platform hint for a single messaging platform (e.g. WhatsApp) without
     # affecting other platforms. Shape:
     #   platform_hints:
@@ -2796,39 +2796,12 @@ def init_agent(
         raise ValueError(
             f"Model {agent.model} has a context window of {_ctx:,} tokens, "
             f"which is below the minimum {MINIMUM_CONTEXT_LENGTH:,} required "
-            f"by Hermes Agent.  Choose a model with at least "
+            f"by Wangsa Agent.  Choose a model with at least "
             f"{MINIMUM_CONTEXT_LENGTH // 1000}K context.  If your server "
             f"reports a window smaller than the model's true window, set "
             f"model.context_length in config.yaml to the real value "
             f"(this must be at least {MINIMUM_CONTEXT_LENGTH // 1000}K)."
         )
-
-    # Nous Hermes 3/4 are chat models, not tool-call-tuned. The interactive
-    # CLI already warns via cli.py show_banner() (richer output + /model hint),
-    # so skip platform=="cli" here to avoid emitting the warning twice per
-    # startup. (Gateway/TUI/cron construct with quiet_mode=True and are already
-    # gated off by the `not agent.quiet_mode` check above; this guard's active
-    # job is the CLI dedup, and it leaves the door open for any non-quiet
-    # non-CLI surface to still surface the warning.)
-    if not agent.quiet_mode and (agent.platform or "cli") != "cli":
-        try:
-            from wangsa_cli.model_switch import _check_hermes_model_warning
-
-            _hermes_warn = _check_hermes_model_warning(agent.model or "")
-            if _hermes_warn:
-                _user_msg = (
-                    "⚠ Nous Research Hermes 3 & 4 models are NOT agentic — they "
-                    "lack reliable tool-calling for agent workflows (delegation, "
-                    "cron, proactive tools). Consider an agentic model instead "
-                    "(Claude, GPT, Gemini, Qwen-Coder, etc.)."
-                )
-                if hasattr(agent, "_emit_warning"):
-                    agent._emit_warning(_user_msg)
-                else:
-                    print(f"\n{_user_msg}\n", file=sys.stderr)
-                _ra().logger.warning(_hermes_warn)
-        except Exception:
-            pass
 
     # Inject context engine tool schemas (e.g. lcm_grep, lcm_describe, lcm_expand).
     # Skip names that are already present — the _ra().get_tool_definitions()

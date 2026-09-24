@@ -1,7 +1,7 @@
 """LIVE Windows E2E for the venv-holder preflight (fleet-update #91277).
 
 Runs ONLY on a real Windows host (the on-demand ``windows-venv-e2e.yml``
-lane). Spawns REAL processes with realistic Hermes argv shapes and drives
+lane). Spawns REAL processes with realistic Wangsa argv shapes and drives
 the actual detection / classification / exemption code against the live
 process table — no mocked psutil, no faked cmdlines.
 
@@ -86,7 +86,7 @@ class TestDetection:
             _kill(proc)
 
     def test_foreign_python_not_detected(self):
-        """A python process with no Hermes argv and cwd OUTSIDE the install
+        """A python process with no Wangsa argv and cwd OUTSIDE the install
         must not be reported as a holder."""
         import tempfile
 

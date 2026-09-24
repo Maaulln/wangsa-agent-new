@@ -2,7 +2,7 @@
 name: merge-reconciler
 description: "Neutral third-party resolution of agent merge conflicts."
 version: 1.0.0
-author: Hermes Agent
+author: Wangsa Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:

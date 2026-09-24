@@ -211,7 +211,7 @@ def _summarize_cron_failure_for_delivery(job: dict, error: str | None) -> str:
         else:
             job_id = job.get("id") or "<job_id>"
             remediation = (
-                "On the host running Hermes, pin it explicitly: "
+                "On the host running Wangsa, pin it explicitly: "
                 f"`hermes cron edit {job_id} --provider <provider> "
                 "--model <model>`."
             )
@@ -1448,7 +1448,7 @@ _hermes_home: Path | None = None
 
 
 def _get_hermes_home() -> Path:
-    """Resolve Hermes home dynamically while preserving test monkeypatch hooks.
+    """Resolve Wangsa home dynamically while preserving test monkeypatch hooks.
 
     Cron is per-profile by design (#4707): the in-process ticker runs inside a
     profile-scoped gateway, so resolving the active HERMES_HOME at call time
@@ -1758,7 +1758,7 @@ def _open_continuable_cron_thread(
     if not callable(create_thread) or loop is None:
         return None
     task_name = job.get("name") or job.get("id", "cron")
-    thread_name = f"Hermes — {task_name}"
+    thread_name = f"Wangsa — {task_name}"
     try:
         from agent.async_utils import safe_schedule_threadsafe
 
@@ -3945,7 +3945,7 @@ def _run_job_script(
     (the `memory-watchdog.sh` pattern) without wrapping them in Python.
 
     Subprocess environment is passed through ``_sanitize_subprocess_env`` so
-    provider credentials and other Hermes-managed secrets are not inherited
+    provider credentials and other Wangsa-managed secrets are not inherited
     (SECURITY.md §2.3), matching terminal and MCP child processes.
 
     Args:
@@ -5981,7 +5981,7 @@ def run_job(
                     )
                 else:
                     _remediation = (
-                        "To run on the new config, on the host running Hermes "
+                        "To run on the new config, on the host running Wangsa "
                         "pin it explicitly: "
                         f"`hermes cron edit {job_id} --provider <provider> "
                         "--model <model>` (or pin the original values to keep "

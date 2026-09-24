@@ -1393,25 +1393,25 @@ test('source contract: workspace deletion stays behind a ConfirmDialog', () => {
   assert.match(pluginSource, /await disbandGroupChat\(deletingGroup\.name, deletingGroup\.members\)/)
 })
 
-test('default profile speaks as Hermes in room transcripts, not @default', () => {
+test('default profile speaks as Wangsa in room transcripts, not @default', () => {
   const gc = load(() => '(pass)')
   const line = gc.formatGroupChatLine({ from: { kind: 'member', name: 'default' }, text: 'hello room' }, 'builder')
-  assert.equal(line, 'Hermes: hello room')
+  assert.equal(line, 'Wangsa: hello room')
   assert.doesNotMatch(line, /default/)
 
   // Other members keep their profile name; the (you) suffix survives.
   const you = gc.formatGroupChatLine({ from: { kind: 'member', name: 'default' }, text: 'hi' }, 'default')
-  assert.equal(you, 'Hermes (you): hi')
+  assert.equal(you, 'Wangsa (you): hi')
   const plain = gc.formatGroupChatLine({ from: { kind: 'member', name: 'builder' }, text: 'yo' }, 'research')
   assert.equal(plain, 'builder: yo')
 })
 
-test('speaker labels honor friendly identity: Bot Mode title, then display_name, never a stale Hermes', () => {
+test('speaker labels honor friendly identity: Bot Mode title, then display_name, never a stale Wangsa', () => {
   const gc = load(() => '(pass)')
 
   // A renamed default (core display_name via `hermes profile rename`) must
   // read as its new name — the community report was "Lucy" still showing
-  // "Hermes is thinking…" in group rooms.
+  // "Wangsa is thinking…" in group rooms.
   gc.$lastRoster.set([{ name: 'default', display_name: 'Lucy' }])
   assert.equal(gc.groupSpeakerLabel('default'), 'Lucy')
   assert.equal(
@@ -1429,9 +1429,9 @@ test('speaker labels honor friendly identity: Bot Mode title, then display_name,
   gc.$lastRoster.set([])
   assert.equal(gc.groupSpeakerLabel('research'), 'Radar')
 
-  // Untitled rows keep today's behavior: default → Hermes, others verbatim.
+  // Untitled rows keep today's behavior: default → Wangsa, others verbatim.
   gc.$botMeta.set({})
-  assert.equal(gc.groupSpeakerLabel('default'), 'Hermes')
+  assert.equal(gc.groupSpeakerLabel('default'), 'Wangsa')
   assert.equal(gc.groupSpeakerLabel('builder'), 'builder')
 })
 
@@ -1440,7 +1440,7 @@ test('speaker labels never borrow a remote row\u2019s display_name for a local s
   // Only a remote/thin row named default exists — its display_name belongs
   // to that connection, not to the active gateway's default.
   gc.$lastRoster.set([{ name: 'default', display_name: 'HomelabBot', remoteSource: true }])
-  assert.equal(gc.groupSpeakerLabel('default'), 'Hermes')
+  assert.equal(gc.groupSpeakerLabel('default'), 'Wangsa')
 })
 
 test('turn prompt addresses the default profile as @hermes', () => {
@@ -1472,7 +1472,7 @@ test('mention routing: @hermes resolves to the default member', () => {
 })
 
 test('source contract: workspace speaker labels use displayName with a click-to-reveal handle', () => {
-  // Speaker labels come from the roster displayName (default → Hermes)…
+  // Speaker labels come from the roster displayName (default → Wangsa)…
   assert.match(pluginSource, /displayName\(member \|\| \{ name: entry\.from\.name \}, meta\)/)
   // …and clicking a speaker reveals the full disambiguated handle, with the
   // gateway/device name appended for cross-connection speakers.

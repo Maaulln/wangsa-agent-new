@@ -52,10 +52,10 @@ def _bounded_prompt_cache_key(value: Any) -> Optional[str]:
     return f"pck_{digest}"
 
 
-# Wire-name used when Hermes keeps client-side web_search on xAI Responses.
+# Wire-name used when Wangsa keeps client-side web_search on xAI Responses.
 # A function literally named ``web_search`` collides with Grok's native
 # server-side tool (incomplete hang or HTTP 400 duplicate names); this alias
-# avoids that while still dispatching through Hermes's configured provider
+# avoids that while still dispatching through Wangsa's configured provider
 # (Firecrawl / Tavily / …). Mapped back to ``web_search`` in normalize_response.
 _XAI_CLIENT_WEB_SEARCH_ALIAS = "hermes_web_search"
 
@@ -65,7 +65,7 @@ _XAI_CLIENT_WEB_SEARCH_ALIAS = "hermes_web_search"
 # 'X' is reserved"). Reported for grok-4.5 on Go with `search_files` and
 # `web_search` (#85589). Same treatment as the xAI web_search collision:
 # rename on the wire (hermes_<name>), map back in normalize_response so
-# Hermes dispatch is unaffected.
+# Wangsa dispatch is unaffected.
 _OPENCODE_RESERVED_TOOL_NAMES = ("web_search", "search_files")
 _RESERVED_TOOL_ALIAS_PREFIX = "hermes_"
 _RESERVED_ALIAS_TO_NAME = {
@@ -517,7 +517,7 @@ class ResponsesApiTransport(ProviderTransport):
 
         response_tools = _responses_tools(tools)
 
-        # xAI server-side web search vs Hermes web providers.
+        # xAI server-side web search vs Wangsa web providers.
         #
         # grok models on xAI's /v1/responses surface have a *native*,
         # server-executed web search.  A client-side function literally named
@@ -533,7 +533,7 @@ class ResponsesApiTransport(ProviderTransport):
         #    xAI's built-in instead. 1:1 swap only when client ``web_search``
         #    was already present — never an additive grant.
         # 2. **Client** (Firecrawl / Tavily / Exa / … configured or resolved):
-        #    keep Hermes dispatch so ``web.backend`` / ``web.search_backend``
+        #    keep Wangsa dispatch so ``web.backend`` / ``web.search_backend``
         #    is honored, but rename the wire tool to
         #    ``hermes_web_search`` so Grok cannot hijack the name. The alias
         #    is mapped back to ``web_search`` in ``normalize_response``.
@@ -574,7 +574,7 @@ class ResponsesApiTransport(ProviderTransport):
             strip_codex_context_variant_suffix as _strip_ctx_variant,
         )
         kwargs = {
-            # ``-900k`` large-context picker variants are Hermes-side aliases
+            # ``-900k`` large-context picker variants are Wangsa-side aliases
             # (gpt-5.6-sol-900k etc.) — the Codex/OpenAI backend only knows
             # the base slug, so strip the suffix before it hits the wire.
             "model": _strip_ctx_variant(model),
@@ -795,7 +795,7 @@ class ResponsesApiTransport(ProviderTransport):
                 if hasattr(tc, "response_item_id") and tc.response_item_id:
                     provider_data["response_item_id"] = tc.response_item_id
                 name = tc.function.name if hasattr(tc, "function") else getattr(tc, "name", "")
-                # Undo the xAI client-path wire alias so Hermes dispatches
+                # Undo the xAI client-path wire alias so Wangsa dispatches
                 # the real ``web_search`` tool (Firecrawl / etc.).
                 if name == _XAI_CLIENT_WEB_SEARCH_ALIAS:
                     name = "web_search"

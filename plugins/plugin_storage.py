@@ -13,7 +13,7 @@ inventing a storage story, and every plugin's data is inspectable in one
 predictable place.
 
 Secrets are deliberately NOT part of this convention — credential reads go
-through ``agent.secret_scope`` / ``.env`` like everywhere else in Hermes.
+through ``agent.secret_scope`` / ``.env`` like everywhere else in Wangsa.
 
 Usage::
 

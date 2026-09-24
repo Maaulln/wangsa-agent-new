@@ -86,7 +86,7 @@ async def test_hermes_provider_forwards_asend_values(tmp_path, monkeypatch):
 
     metadata = OAuthClientMetadata(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
-        client_name="Hermes Agent",
+        client_name="Wangsa Agent",
     )
     provider = _HERMES_PROVIDER_CLS(
         server_name="srv",
@@ -166,7 +166,7 @@ async def test_hermes_provider_forwards_401_triggers_refresh(tmp_path, monkeypat
 
     metadata = OAuthClientMetadata(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
-        client_name="Hermes Agent",
+        client_name="Wangsa Agent",
     )
     provider = _HERMES_PROVIDER_CLS(
         server_name="srv",

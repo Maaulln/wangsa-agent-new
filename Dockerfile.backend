@@ -29,6 +29,9 @@ COPY . .
 # Install dependencies and project in editable/system mode
 RUN uv pip install --system -e .
 
+# `wangsa` is the user-facing alias of the `hermes` CLI (setup, doctor, ...)
+RUN ln -s "$(command -v hermes)" /usr/local/bin/wangsa
+
 # Expose default Wangsa Mobile port
 EXPOSE 9901 8000
 

@@ -224,7 +224,7 @@ def _computer_use_cfg() -> Dict[str, Any]:
 
 
 def _cua_no_overlay() -> bool:
-    """True when Hermes should pass ``--no-overlay`` to cua-driver.
+    """True when Wangsa should pass ``--no-overlay`` to cua-driver.
 
     Reads ``computer_use.no_overlay``. Default ``None`` (auto-detect):
     disable the overlay where idle CPU burn is a known failure mode —
@@ -254,7 +254,7 @@ def _cua_no_overlay() -> bool:
 
 
 def _cua_telemetry_disabled() -> bool:
-    """True when Hermes should disable cua-driver telemetry for this user.
+    """True when Wangsa should disable cua-driver telemetry for this user.
 
     Reads ``computer_use.cua_telemetry`` (default False → telemetry off).
     Unreadable config falls SAFE toward disabling telemetry.
@@ -269,7 +269,7 @@ def _cua_configured_permission_mode() -> str:
     Reads ``computer_use.permission_mode`` (default ``standard``).  Only
     ``standard`` and ``bounded`` are honored here — ``unrestricted`` is
     deliberately NOT a config value: it stays tied to the explicit
-    per-session Hermes YOLO toggle so a stale config line can never
+    per-session Wangsa YOLO toggle so a stale config line can never
     silently bypass approvals. Unknown values fall closed to ``standard``.
     """
     raw = str(_computer_use_cfg().get("permission_mode", "standard") or "").strip().lower()
@@ -293,7 +293,7 @@ def _cua_grant_existing_profile() -> bool:
     """True when the user pre-authorized existing-profile browser attachment.
 
     Reads ``computer_use.grant_existing_profile`` (default False). This is
-    cua-driver's trusted-launcher grant. Hermes passes
+    cua-driver's trusted-launcher grant. Wangsa passes
     ``--grant existing-profile`` when it launches the standard-mode runtime.
     On macOS it also selects a private socket so the newly configured
     CuaDriver.app runtime cannot collide with an already-running default
@@ -548,10 +548,10 @@ def _select_capture_target(
 
 
 def _wsl_windows_path_to_posix(path: str) -> str:
-    """Translate a Windows absolute manifest command when Hermes runs in WSL.
+    """Translate a Windows absolute manifest command when Wangsa runs in WSL.
 
     Windows cua-driver manifests can report ``C:\\Users\\...\\cua-driver.exe``
-    even though the Hermes process uses POSIX subprocess spawning inside WSL.
+    even though the Wangsa process uses POSIX subprocess spawning inside WSL.
     The same file is reachable through DrvFS as ``/mnt/c/Users/...``.
     Non-Windows paths and non-WSL hosts are returned unchanged.
     """
@@ -575,11 +575,11 @@ class _EmbeddedCuaDaemon:
     """Private host-owned daemon for a non-standard permission mode.
 
     Cua Driver permission mode is immutable after daemon startup.  Reusing the
-    machine-wide daemon would therefore let one Hermes session's YOLO choice
+    machine-wide daemon would therefore let one Wangsa session's YOLO choice
     affect another session.  A private embedded daemon gives the requesting
     session its own socket, process, and launch-time authorization:
 
-    * ``unrestricted`` — explicit Hermes YOLO; launch-time risk
+    * ``unrestricted`` — explicit Wangsa YOLO; launch-time risk
       acknowledgement via ``--dangerously-bypass-approvals``.
     * ``bounded`` — a user-reviewed capability manifest
       (``computer_use.capability_manifest`` in config.yaml) approved at
@@ -804,7 +804,7 @@ def _resolve_mcp_invocation(
     (trycua/cua#1961). The manifest carries a stable ``mcp_invocation``
     pointer with both ``command`` and ``args``, so a future cua-driver
     that renames or relocates the subcommand keeps working without a
-    Hermes patch.
+    Wangsa patch.
 
     Falls back to ``(driver_cmd, ["mcp"])`` for older drivers that don't
     expose ``manifest``, or any indeterminate failure — the wrapper must
@@ -851,7 +851,7 @@ def _resolve_mcp_invocation(
         # The driver knows the subcommand but didn't surface its own path.
         # Keep our resolved driver_cmd; the args are still authoritative.
         return driver_cmd, _mcp_args_with_overlay_flag(args, driver_cmd=driver_cmd)
-    # A Windows-installed cua-driver can hand a WSL-hosted Hermes an absolute
+    # A Windows-installed cua-driver can hand a WSL-hosted Wangsa an absolute
     # ``C:\...`` command; translate it to its DrvFS ``/mnt/<drive>/...`` form
     # BEFORE the path-separator check (backslash is not a separator on POSIX,
     # so the raw Windows string would otherwise be discarded here).
@@ -956,7 +956,7 @@ def _candidate_cua_driver_commands(override: Optional[str] = None) -> List[str]:
     Desktop apps launched from Finder/Dock often inherit a narrow PATH that
     omits user-local install directories. The upstream cua-driver installer
     commonly places the binary under ``~/.local/bin`` on POSIX systems, so a
-    Hermes Desktop/TUI session can otherwise filter out the `computer_use`
+    Wangsa Desktop/TUI session can otherwise filter out the `computer_use`
     tool even though `hermes computer-use doctor` succeeds from a login shell.
     """
     configured = (override if override is not None else os.environ.get(_CUA_DRIVER_CMD_ENV, "")).strip()
@@ -974,7 +974,7 @@ def _candidate_cua_driver_commands(override: Optional[str] = None) -> List[str]:
         candidates.extend([
             # Official cua-driver installer location on Windows. Freshly
             # installed sessions inherit a stale PATH, so PATH lookup alone
-            # misses it until every Hermes process is restarted.
+            # misses it until every Wangsa process is restarted.
             os.path.join(
                 local_app_data, "Programs", "Cua", "cua-driver", "bin", "cua-driver.exe"
             ),
@@ -1030,7 +1030,7 @@ _CUA_DRIVER_RUNTIME_CONTRACT_ARGS = {
 
 
 def cua_driver_runtime_contract_status(binary: Optional[str] = None) -> Dict[str, Any]:
-    """Report whether a local driver can host Hermes' 0.20 integration."""
+    """Report whether a local driver can host Wangsa' 0.20 integration."""
     resolved = binary or resolve_cua_driver_cmd()
     if not resolved:
         return {
@@ -1098,7 +1098,7 @@ def cua_driver_runtime_contract_status(binary: Optional[str] = None) -> Dict[str
             "ready": False,
             "binary": resolved,
             "version": raw_version,
-            "reason": "Hermes computer use requires cua-driver 0.20.0 or newer",
+            "reason": "Wangsa computer use requires cua-driver 0.20.0 or newer",
         }
 
     invocation = manifest.get("mcp_invocation")
@@ -1618,7 +1618,7 @@ class _CuaDriverSession:
                 command=command,
                 args=args,
                 # Apply the telemetry policy first (default: disabled), then
-                # sanitize Hermes-managed secrets out of the child env.
+                # sanitize Wangsa-managed secrets out of the child env.
                 env=_sanitize_subprocess_env(child_env),
             )
 
@@ -2112,7 +2112,7 @@ class _CuaDriverSession:
                 # "daemon is not running" is a PERMANENT condition for this
                 # invocation (`cua-driver call` requires the machine-wide
                 # daemon socket, which Linux installs typically never start —
-                # Hermes talks to the direct `cua-driver mcp` runtime
+                # Wangsa talks to the direct `cua-driver mcp` runtime
                 # instead). Retrying with backoff burns ~3.5s of sleeps per
                 # fallback for an outcome that cannot change; fail fast so
                 # callers surface a diagnosable error immediately.
@@ -2215,7 +2215,7 @@ class _CuaDriverSession:
     def _unknown_transport_outcome(name: str, exc: Exception) -> Dict[str, Any]:
         message = (
             f"cua-driver transport failed during {name}; the action outcome is "
-            "unknown, so Hermes did not replay it. Take fresh state before "
+            "unknown, so Wangsa did not replay it. Take fresh state before "
             "deciding whether to act again."
         )
         return {
@@ -2557,13 +2557,13 @@ class CuaDriverBackend(ComputerUseBackend):
         # the private lifecycle and releases it when the connection closes.
         # start_session/end_session attach this stable label to cursor,
         # recording, and config state within that lifecycle. Doing so:
-        #   - Gets a distinct agent-cursor color per Hermes run, with
+        #   - Gets a distinct agent-cursor color per Wangsa run, with
         #     overlay rendering visualising where actions land
         #     (without moving the real OS cursor).
         #   - Gives config and recording state a stable owner label inside the
         #     transport-private lifecycle.
         # We mint a UUID4-based id once per CuaDriverBackend instance —
-        # one Hermes run = one backend = one label — and pass it as
+        # one Wangsa run = one backend = one label — and pass it as
         # `session` on every cua-driver tool call. Labels are an
         # part of the required Cua Driver 0.20 runtime contract checked at
         # backend startup.
@@ -2598,7 +2598,7 @@ class CuaDriverBackend(ComputerUseBackend):
     def start(self) -> None:
         contract = cua_driver_runtime_contract_status()
         if not contract.get("ready"):
-            # An installed-but-incompatible driver (e.g. predating a Hermes
+            # An installed-but-incompatible driver (e.g. predating a Wangsa
             # version-floor bump) is a state we created — repair it once
             # automatically instead of failing every computer_use call.
             contract = _maybe_repair_runtime_contract(contract)
@@ -2614,7 +2614,7 @@ class CuaDriverBackend(ComputerUseBackend):
             raise RuntimeError(f"cua-driver is not ready: {reason}. {repair}")
         _maybe_nudge_update()
         # The MCP client SDK (`mcp`) is an optional dependency (the
-        # `computer-use` / `mcp` extras), not part of Hermes' minimal core.
+        # `computer-use` / `mcp` extras), not part of Wangsa' minimal core.
         # Lazy-install it on first use — the same pattern every other optional
         # backend uses — so users never hit an opaque `No module named 'mcp'`
         # at invoke time. Auto-install is gated by `security.allow_lazy_installs`
@@ -3529,7 +3529,7 @@ class CuaDriverBackend(ComputerUseBackend):
         process.
 
         The default remains non-disruptive. ``raise_window=True`` is explicit,
-        separately approved by the Hermes adapter, and uses cua-driver's
+        separately approved by the Wangsa adapter, and uses cua-driver's
         standalone ``bring_to_front`` tool rather than an action property.
         """
         try:

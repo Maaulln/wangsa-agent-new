@@ -1,7 +1,7 @@
 """Honcho client initialization and configuration.
 
 Resolution order for config file:
-  1. $HERMES_HOME/honcho.json  (instance-local, enables isolated Hermes instances)
+  1. $HERMES_HOME/honcho.json  (instance-local, enables isolated Wangsa instances)
   2. ~/.honcho/config.json     (global, shared across all Honcho-enabled apps)
   3. Environment variables     (HONCHO_API_KEY, HONCHO_ENVIRONMENT)
 
@@ -57,7 +57,7 @@ HOST = "hermes"
 
 
 def profile_host_key(profile: str | None) -> str:
-    """Return the safe Honcho host key for a Hermes profile."""
+    """Return the safe Honcho host key for a Wangsa profile."""
     if not profile or profile in {"default", "custom"}:
         return HOST
     sanitized = "".join(c if c.isalnum() or c in "_-" else "_" for c in profile).strip("_")
@@ -75,7 +75,7 @@ def _host_block(raw: dict, host: str) -> dict:
 
 
 def resolve_active_host() -> str:
-    """Derive the Honcho host key from the active Hermes profile.
+    """Derive the Honcho host key from the active Wangsa profile.
 
     Resolution order:
       1. HERMES_HONCHO_HOST env var (explicit override)
@@ -95,9 +95,9 @@ def resolve_active_host() -> str:
         profile_host = HOST
 
     # Honcho's generic config can carry a defaultHost (for example "local"),
-    # but applying it before profile resolution makes every named Hermes
+    # but applying it before profile resolution makes every named Wangsa
     # profile share that same host.  Keep named profiles isolated; only the
-    # default Hermes profile may opt into the config's default host.
+    # default Wangsa profile may opt into the config's default host.
     if profile_host == HOST:
         try:
             path = resolve_config_path()
@@ -543,7 +543,7 @@ class HonchoClientConfig:
         """Create config from the resolved Honcho config path.
 
         Resolution: $HERMES_HOME/honcho.json -> ~/.honcho/config.json -> env vars.
-        When host is None, derives it from the active Hermes profile.
+        When host is None, derives it from the active Wangsa profile.
         """
         resolved_host = host or resolve_active_host()
         path = config_path or resolve_config_path()
@@ -604,7 +604,7 @@ class HonchoClientConfig:
         # The Honcho SDK's native config format — and what Claude Desktop
         # writes — nests the URL at endpoint.baseUrl. Read it first: a user
         # who has that block set almost certainly means it, and the flat
-        # baseUrl / base_url keys below are the Hermes-specific spelling.
+        # baseUrl / base_url keys below are the Wangsa-specific spelling.
         endpoint_block = raw.get("endpoint")
         native_base_url = (
             endpoint_block.get("baseUrl")
@@ -879,10 +879,10 @@ class HonchoClientConfig:
 
         Resolution order:
           1. Gateway session key (stable per-chat identifier from gateway platforms)
-          2. per-session strategy — Hermes session_id ({timestamp}_{hex}); authoritative,
+          2. per-session strategy — Wangsa session_id ({timestamp}_{hex}); authoritative,
              so a generated title never remaps a live conversation
           3. Manual directory override from sessions map
-          4. Hermes session title (from /title command; non-per-session)
+          4. Wangsa session title (from /title command; non-per-session)
           5. per-repo strategy — git repo root directory name
           6. per-directory strategy — directory basename
           7. global strategy — workspace name

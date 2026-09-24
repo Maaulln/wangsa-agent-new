@@ -1,7 +1,7 @@
 """Bot Mode agent-to-agent DM tool — ``message_agent``.
 
 A structured, Bot-Chat-only tool that lets a Bot Mode agent message a
-teammate agent (another Hermes profile on this install, or an agent on a
+teammate agent (another Wangsa profile on this install, or an agent on a
 registered peer gateway) WITHOUT hand-assembling shell commands.
 
 Why this exists (Aug 2026): the Bot Mode teammate protocol taught agents to

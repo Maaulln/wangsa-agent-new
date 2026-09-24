@@ -84,7 +84,7 @@ def _doctor_runtime(plugin_path: Path):
         manifests = manager._scan_directory(plugins_root, source="user")
         if not manifests:
             raise _DoctorLoadError(
-                f"Hermes discovery found no valid plugin manifest under {copied}"
+                f"Wangsa discovery found no valid plugin manifest under {copied}"
             )
         if len(manifests) != 1:
             raise _DoctorLoadError(
@@ -228,7 +228,7 @@ def _check_manifest_v2(report: "DoctorReport", manifest: Any) -> None:
     mv = getattr(manifest, "manifest_version", 1)
     if mv > SUPPORTED_MANIFEST_VERSION:
         report.warning(
-            f"manifest_version {mv} is newer than this Hermes supports "
+            f"manifest_version {mv} is newer than this Wangsa supports "
             f"({SUPPORTED_MANIFEST_VERSION}); unknown fields are ignored"
         )
 
@@ -272,7 +272,7 @@ def _check_manifest_v2(report: "DoctorReport", manifest: Any) -> None:
         report.warning(
             "declared python_dependencies not installed: "
             + ", ".join(missing)
-            + " — Hermes never auto-installs plugin dependencies; "
+            + " — Wangsa never auto-installs plugin dependencies; "
             + "install manually: pip install "
             + " ".join(f"'{m}'" for m in missing)
         )
@@ -292,7 +292,7 @@ def _check_manifest_v2(report: "DoctorReport", manifest: Any) -> None:
 
 
 def doctor_plugin(target: str | os.PathLike[str] | None = None) -> DoctorReport:
-    """Validate one plugin through Hermes' real scanner and registration path."""
+    """Validate one plugin through Wangsa' real scanner and registration path."""
     try:
         path = resolve_plugin_path(target)
     except FileNotFoundError as exc:

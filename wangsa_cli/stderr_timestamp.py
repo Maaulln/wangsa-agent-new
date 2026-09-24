@@ -78,9 +78,9 @@ def _is_launchd_supervised(environ: Mapping[str, str] | None = None) -> bool:
 
 
 def _is_hermes_gateway_run_argv(command: Sequence[str]) -> bool:
-    """True for Hermes ``gateway run`` argv this wrapper is allowed to upgrade.
+    """True for Wangsa ``gateway run`` argv this wrapper is allowed to upgrade.
 
-    The wrapper is generic. Only historical/current Hermes gateway shapes
+    The wrapper is generic. Only historical/current Wangsa gateway shapes
     get ``--external-supervisor``; an arbitrary launchd child must not be
     marked as gateway-supervised (#87005).
     """

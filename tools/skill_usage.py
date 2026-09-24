@@ -357,7 +357,7 @@ def list_agent_created_skill_names() -> List[str]:
     names: List[str] = []
     # Top-level SKILL.md files (flat layout) AND nested category/skill/SKILL.md
     for skill_md in base.rglob("SKILL.md"):
-        # Skip Hermes metadata, VCS, virtualenv/dependency, and cache dirs
+        # Skip Wangsa metadata, VCS, virtualenv/dependency, and cache dirs
         if is_excluded_skill_path(skill_md):
             continue
         # External skill dirs can be mounted below the local skills tree.
@@ -615,7 +615,7 @@ def adopt_skill(skill_name: str) -> Tuple[bool, str]:
     if is_bundled(skill_name):
         # Bundled skills already fall under the curator via
         # ``curator.prune_builtins``; stamping created_by=agent on one would
-        # claim Hermes' own shipped skill was agent-authored and change nothing
+        # claim Wangsa' own shipped skill was agent-authored and change nothing
         # about its eligibility.
         return False, (
             f"'{skill_name}' is a bundled built-in — it is governed by "

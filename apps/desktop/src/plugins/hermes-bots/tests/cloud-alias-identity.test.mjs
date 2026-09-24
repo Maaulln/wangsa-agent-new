@@ -6,7 +6,7 @@ import vm from 'node:vm'
 // #89131: a Desktop per-profile Cloud alias ("moxie" → exact Cloud connection
 // → backend targetProfile "default") must keep its friendly identity after
 // the hosted session activates, and must render as the alias — not generic
-// "Hermes" or a hostname label — when Cloud is the only active source.
+// "Wangsa" or a hostname label — when Cloud is the only active source.
 
 const source = readFileSync(new URL('../plugin.js', import.meta.url), 'utf8')
 
@@ -83,7 +83,7 @@ test('alias identity survives hosted-session activation (roster refresh)', () =>
   assert.equal(ctx.__displayName(hostedRow, ctx.__botRosterMeta(hostedRow, metaV1)), 'Moxie ✨')
 })
 
-test('Cloud-only mode: the sole active-gateway default renders as the alias, not Hermes', () => {
+test('Cloud-only mode: the sole active-gateway default renders as the alias, not Wangsa', () => {
   // Global route is Cloud: the active gateway IS the Cloud connection and
   // profiles.list returns one unannotated rich `default` row.
   const ctx = runtime({ connectionId: 'cloud-abc' })
@@ -105,8 +105,8 @@ test('alias never leaks to same-named defaults on other connections', () => {
   assert.equal(ctx.__aliasIdentityFor(otherDefault), null)
   assert.equal(ctx.__displayName(otherDefault, null), 'Personal')
 
-  // Local default while the ACTIVE gateway is local: untouched "Hermes".
-  assert.equal(ctx.__displayName({ name: 'default' }, null), 'Hermes')
+  // Local default while the ACTIVE gateway is local: untouched "Wangsa".
+  assert.equal(ctx.__displayName({ name: 'default' }, null), 'Wangsa')
 })
 
 test('two aliases claiming one backend row fail closed', () => {

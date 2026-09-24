@@ -1,6 +1,6 @@
-"""`llms.txt` is how an LLM learns what Hermes can do.
+"""`llms.txt` is how an LLM learns what Wangsa can do.
 
-It is the index every model reads when pointed at our docs — including Hermes
+It is the index every model reads when pointed at our docs — including Wangsa
 itself, whose `hermes-agent` skill routes unknown-feature questions there.
 `website/` is never packaged, so there is no shipped copy to fall back on.
 

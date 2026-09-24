@@ -1,4 +1,4 @@
-"""Helpers for loading Hermes .env files consistently across entrypoints."""
+"""Helpers for loading Wangsa .env files consistently across entrypoints."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ _SECRET_SOURCE_CACHE_LOCK = threading.RLock()
 
 
 def _known_hermes_env_keys() -> set[str]:
-    """Return the combined set of known Hermes env-var keys.
+    """Return the combined set of known Wangsa env-var keys.
 
     Includes both ``OPTIONAL_ENV_VARS`` (setup-flow vars with metadata) and
     ``_EXTRA_ENV_KEYS`` (provider/platform keys managed outside the setup
@@ -66,7 +66,7 @@ def _known_hermes_env_keys() -> set[str]:
     return set(OPTIONAL_ENV_VARS.keys()) | set(_EXTRA_ENV_KEYS)
 
 
-# Behavioral routing keys a parent Hermes process injects into child env and
+# Behavioral routing keys a parent Wangsa process injects into child env and
 # that silently redirect a profile onto the wrong provider path (ACP auth
 # method, copilot-ACP endpoints). These — and ONLY these — are scrubbed from
 # os.environ at startup when absent from the profile's .env. Credential keys
@@ -112,7 +112,7 @@ def _env_keys_defined_in_dotenv(path: Path) -> set[str]:
 
 
 def _clear_known_keys_missing_from_dotenv(path: Path) -> None:
-    """Remove inherited profile-managed Hermes keys absent from ``.env``.
+    """Remove inherited profile-managed Wangsa keys absent from ``.env``.
 
     After the profile's ``.env`` has been loaded with ``override=True``,
     scan the file for which profile-managed keys it explicitly defines and
@@ -121,7 +121,7 @@ def _clear_known_keys_missing_from_dotenv(path: Path) -> None:
 
     Scope is deliberately NARROW: only ``_PROFILE_MANAGED_ENV_KEYS`` —
     behavioral routing keys (ACP auth method, copilot-ACP endpoints) that a
-    parent Hermes process injects and that silently change *which provider
+    parent Wangsa process injects and that silently change *which provider
     path* a profile uses. Provider API keys (OPENAI_API_KEY, …) are
     intentionally excluded: users legitimately export those in their shell
     (``export OPENAI_API_KEY=…`` is a documented flow — see
@@ -473,7 +473,7 @@ def load_hermes_dotenv(
     project_env: str | os.PathLike | None = None,
     load_external_secrets: bool = True,
 ) -> list[Path]:
-    """Load Hermes environment files with user config taking precedence.
+    """Load Wangsa environment files with user config taking precedence.
 
     Behavior:
     - `~/.hermes/.env` overrides stale shell-exported values when present.
@@ -499,7 +499,7 @@ def load_hermes_dotenv(
     if user_env.exists():
         _load_dotenv_with_fallback(user_env, override=True)
         loaded.append(user_env)
-        # Mirror reload_env() known-key cleanup so inherited Hermes keys
+        # Mirror reload_env() known-key cleanup so inherited Wangsa keys
         # absent from this profile's .env do not leak into the runtime.
         _clear_known_keys_missing_from_dotenv(user_env)
 
@@ -618,7 +618,7 @@ def _apply_external_secret_sources(home_path: Path) -> None:
     """Pull secrets from every enabled external source into env.
 
     Runs AFTER dotenv loads so .env values are visible (sources use them
-    to locate bootstrap tokens) but BEFORE the rest of Hermes reads
+    to locate bootstrap tokens) but BEFORE the rest of Wangsa reads
     ``os.environ`` for credentials.  Any failure here is logged and
     swallowed — external secret sources must never block startup.
 

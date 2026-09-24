@@ -1,5 +1,5 @@
 """
-Hermes CLI - Unified command-line interface for Hermes Agent.
+Wangsa CLI - Unified command-line interface for Wangsa Agent.
 
 Provides subcommands for:
 - hermes chat          - Interactive chat (same as ./hermes)

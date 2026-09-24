@@ -2,7 +2,7 @@
 name: computer-use
 description: "Drive the desktop in the background without stealing focus."
 version: 2.0.0
-author: Francesco Bonacci (f-trycua), Hermes Agent
+author: Francesco Bonacci (f-trycua), Wangsa Agent
 license: MIT
 platforms: [macos, windows, linux]
 metadata:
@@ -24,12 +24,12 @@ Everything here works with any tool-capable model — Claude, GPT, Gemini,
 or an open model on a local OpenAI-compatible endpoint. There is no
 Anthropic-native schema to learn.
 
-Hermes drives [cua-driver](https://github.com/trycua/cua) under the hood.
-This wrapper skill teaches the Hermes `computer_use` workflow and action
+Wangsa drives [cua-driver](https://github.com/trycua/cua) under the hood.
+This wrapper skill teaches the Wangsa `computer_use` workflow and action
 vocabulary. Call the actions documented below instead of raw cua-driver MCP
 tools. For driver internals and platform-specific behavior, follow the Cua
-skill installed by `cua-driver skills install`. Hermes autodetection is a
-planned cua-driver follow-up, so currently point Hermes at the resulting
+skill installed by `cua-driver skills install`. Wangsa autodetection is a
+planned cua-driver follow-up, so currently point Wangsa at the resulting
 `~/.cua-driver/skills/cua-driver` directory or symlink it into your skill space.
 
 ## The canonical workflow
@@ -202,14 +202,14 @@ Authorization paths for `existing_profile`:
 1. **Config grant (standard and unrestricted modes).** When
    `computer_use.grant_existing_profile: true` is set, the runtime is
    launched pre-authorized in standard mode (`--grant existing-profile`) and
-   Hermes applies the same host-side floor in unrestricted mode. If it is not
+   Wangsa applies the same host-side floor in unrestricted mode. If it is not
    set, both modes fail closed. Tell the user to flip that config key and
    restart the session if they want this; do not retry or work around it.
 2. **Bounded manifest.** When `computer_use.permission_mode: bounded` is
    configured with a reviewed `capability_manifest`, prepares inside the
    manifest's scope succeed without prompts and everything else fails closed.
 
-Explicit Hermes YOLO (`--yolo`, `/yolo`, or `approvals.mode: off`) launches an
+Explicit Wangsa YOLO (`--yolo`, `/yolo`, or `approvals.mode: off`) launches an
 unrestricted runtime with no runtime Cua approval prompts, but it does not
 substitute for `grant_existing_profile: true`.
 
@@ -351,7 +351,7 @@ in your conversation context.
 
 ## Going deeper — read the cua-driver skill pack
 
-Hermes intentionally keeps THIS skill focused on the Hermes-side
+Wangsa intentionally keeps THIS skill focused on the Wangsa-side
 `computer_use` action vocabulary. The platform-specific deep dives
 (macOS no-foreground contract, Windows UIA + Session 0, Linux AT-SPI +
 X11/Wayland nuances, recording trajectory + video, browser-page
@@ -383,6 +383,6 @@ These are platform deep dives, not duplicates — when the user reports
 `WINDOWS.md` for the UIA / UWP context that explains why and what to
 do differently.
 
-Hermes autodetection is a planned follow-up in trycua/cua. For now, the command
-installs the pack under `~/.cua-driver/skills/cua-driver`; point Hermes at that
+Wangsa autodetection is a planned follow-up in trycua/cua. For now, the command
+installs the pack under `~/.cua-driver/skills/cua-driver`; point Wangsa at that
 directory or symlink it into the user's skill space.

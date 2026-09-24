@@ -805,7 +805,7 @@ END;
 
 # ── Cross-process full-FTS-rebuild admission (single authority) ──────────────
 #
-# Several independent Hermes processes routinely share one state.db (gateway
+# Several independent Wangsa processes routinely share one state.db (gateway
 # service, the Desktop app's `hermes serve` backend, interactive CLI sessions,
 # the TUI slash worker). A full structural FTS rebuild — the FTS5 'rebuild'
 # command or the drop/recreate script in `_recover_stale_fts` — must only ever

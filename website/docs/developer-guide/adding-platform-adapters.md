@@ -4,7 +4,7 @@ sidebar_position: 9
 
 # Adding a Platform Adapter
 
-This guide covers adding a new messaging platform to the Hermes gateway. A platform adapter connects Hermes to an external messaging service (Telegram, Discord, WeCom, etc.) so users can interact with the agent through that service.
+This guide covers adding a new messaging platform to the Wangsa gateway. A platform adapter connects Wangsa to an external messaging service (Telegram, Discord, WeCom, etc.) so users can interact with the agent through that service.
 
 :::tip
 There are two ways to add a platform:
@@ -30,7 +30,7 @@ Inbound messages are received by the adapter and forwarded via `self.handle_mess
 
 ## Plugin Path (Recommended)
 
-The plugin system lets you add a platform adapter without modifying any core Hermes code. Your plugin is a directory with two files:
+The plugin system lets you add a platform adapter without modifying any core Wangsa code. Your plugin is a directory with two files:
 
 ```
 ~/.hermes/plugins/my-platform/
@@ -76,7 +76,7 @@ provides_tools:
   - my_platform_list
 ```
 
-With `provides_tools` declared, Hermes imports only `tools.py` during plugin
+With `provides_tools` declared, Wangsa imports only `tools.py` during plugin
 discovery and registers the client tools in every process — CLI and TUI
 included — while the adapter stays deferred. Keep the package `__init__.py`
 import-light and pull the adapter in from inside `register()` so the eager
@@ -143,7 +143,7 @@ def _env_enablement() -> dict | None:
 
 
 def register(ctx):
-    """Plugin entry point — called by the Hermes plugin system."""
+    """Plugin entry point — called by the Wangsa plugin system."""
     ctx.register_platform(
         name="my_platform",
         label="My Platform",
@@ -275,7 +275,7 @@ def register(ctx):
         check_fn=check_requirements,
         parse_target_ref_fn=_parse_address,
         validate_target_ref_fn=_validate_address,
-        # May be a regular function or async def. Hermes awaits any awaitable
+        # May be a regular function or async def. Wangsa awaits any awaitable
         # result, including callable objects and functools.partial wrappers.
         send_message_handler=_send_request,
         # Prefer this lower-level hook when cron must send from a process
@@ -430,7 +430,7 @@ label: My Platform
 kind: platform
 version: 1.0.0
 description: >
-  My Platform gateway adapter for Hermes Agent.
+  My Platform gateway adapter for Wangsa Agent.
 author: Your Name
 requires_env:
   - name: MY_PLATFORM_TOKEN
@@ -555,7 +555,7 @@ See `plugins/platforms/irc/` in the repo for a complete working example — a fu
 ## Step-by-Step Checklist (Built-in Path)
 
 :::note
-This checklist is for adding a platform directly to the Hermes core codebase — typically done by core contributors for officially supported platforms. Community/third-party platforms should use the [Plugin Path](#plugin-path-recommended) above.
+This checklist is for adding a platform directly to the Wangsa core codebase — typically done by core contributors for officially supported platforms. Community/third-party platforms should use the [Plugin Path](#plugin-path-recommended) above.
 :::
 
 ### 1. Platform Enum

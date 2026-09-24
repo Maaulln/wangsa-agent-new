@@ -1,7 +1,7 @@
 """Tests for npm ``EBADENGINE`` recovery (``wangsa_cli/npm_engine.py``).
 
 The behaviour under test is a contract about *reacting* to npm's own engine
-check: npm states the range it wants in the failure, Hermes upgrades only an
+check: npm states the range it wants in the failure, Wangsa upgrades only an
 npm it owns, and every other case leaves the original failure alone.
 """
 
@@ -87,7 +87,7 @@ class TestDetection:
 
 class TestManagedDetection:
     """The upgrade must fire for every spelling of the managed npm, and for
-    no other npm — this is the boundary between "Hermes fixes it" and "the
+    no other npm — this is the boundary between "Wangsa fixes it" and "the
     user's own toolchain is left alone"."""
 
     @pytest.fixture
@@ -244,7 +244,7 @@ class TestRepairDecision:
     def test_foreign_npm_provisions_managed_runtime_instead(
         self, tmp_path, monkeypatch
     ):
-        """A system/nvm/brew/Nix npm is never modified — Hermes provisions its
+        """A system/nvm/brew/Nix npm is never modified — Wangsa provisions its
         own managed tree, upgrades THAT npm into range, and returns it."""
         home = tmp_path / ".hermes"
         monkeypatch.setenv("HERMES_HOME", str(home))

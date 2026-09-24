@@ -2,7 +2,7 @@
 name: product-price-monitor
 description: "Watch product, flight, or listing prices; alert on target."
 version: 0.1.0
-author: Ben Barclay (benbarclay), Hermes Agent
+author: Ben Barclay (benbarclay), Wangsa Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:

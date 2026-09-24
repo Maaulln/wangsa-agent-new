@@ -12,7 +12,7 @@ whether the package is importable; the plugin still registers either way so
 Isolation note (#68096): ``ddgs``/``primp`` can block inside native code while
 holding the Python GIL. A ``ThreadPoolExecutor`` + ``future.result(timeout=…)``
 cap (see #52118) cannot fire in that state — the waiter never reacquires the
-GIL — so the whole Hermes process freezes through Ctrl+C/SIGTERM. Each search
+GIL — so the whole Wangsa process freezes through Ctrl+C/SIGTERM. Each search
 therefore runs in a disposable child process the parent can terminate/kill.
 """
 
@@ -305,7 +305,7 @@ class DDGSWebSearchProvider(WebSearchProvider):
 
         The synchronous ``ddgs`` call runs in a disposable child process with
         a hard wall-clock timeout (``_SEARCH_TIMEOUT_SECS``) so a hung native
-        ``primp`` call cannot freeze the Hermes process (#36776, #68096).
+        ``primp`` call cannot freeze the Wangsa process (#36776, #68096).
         """
         try:
             import ddgs  # type: ignore  # noqa: F401 — availability probe

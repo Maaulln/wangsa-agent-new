@@ -1,7 +1,7 @@
 """Authorization plumbing for the cua-driver typed browser route.
 
 Covers the authorization modes that let ``existing_profile`` attachment (and
-bounded automation generally) work from Hermes:
+bounded automation generally) work from Wangsa:
 
 * ``bounded`` permission mode — a private embedded daemon launched with a
   user-reviewed capability manifest (``--capability-manifest`` +

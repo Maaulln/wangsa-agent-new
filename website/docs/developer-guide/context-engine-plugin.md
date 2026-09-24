@@ -250,7 +250,7 @@ See `tests/agent/test_context_engine.py` for the full ABC contract test suite.
 
 ## Thread safety
 
-When `compression.context_timeout_seconds > 0` (the default), Hermes runs the
+When `compression.context_timeout_seconds > 0` (the default), Wangsa runs the
 whole compression pass — including your engine's `compress()` and boundary
 callbacks, and any memory provider's `on_pre_compress` /
 `on_session_switch` — on a pooled daemon thread with a host-side timeout.

@@ -1,5 +1,5 @@
 """
-Wangsa Mobile platform plugin for Hermes Agent.
+Wangsa Mobile platform plugin for Wangsa Agent.
 
 Registers the ``wangsa_mobile`` inbound platform adapter — a two-route REST
 API (GET agent identity, POST a message) consumed by the Wangsa Flutter
@@ -57,7 +57,7 @@ def interactive_setup() -> None:
     )
 
     print_header("Wangsa Mobile")
-    print_info("Expose Hermes to the Wangsa Flutter mobile app over a small REST API.")
+    print_info("Expose Wangsa to the Wangsa Flutter mobile app over a small REST API.")
     print_info("Uses Python stdlib — no extra packages needed.")
     print()
 
@@ -90,7 +90,7 @@ def interactive_setup() -> None:
 
 
 def register(ctx) -> None:
-    """Plugin entry point — called by the Hermes plugin system."""
+    """Plugin entry point — called by the Wangsa plugin system."""
     try:
         from .adapter import WangsaMobileAdapter
         ctx.register_platform(

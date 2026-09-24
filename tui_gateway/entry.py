@@ -2,7 +2,7 @@ import os
 import sys
 
 # Stop a ``utils/`` (or ``proxy/``, ``ui/``) package in the launch directory
-# from shadowing Hermes's own top-level modules.  ``wangsa_bootstrap`` lives at
+# from shadowing Wangsa's own top-level modules.  ``wangsa_bootstrap`` lives at
 # the repo root next to this package, so importing it is safe before the guard
 # runs (its name won't collide with a user package), and it owns the canonical
 # path-hardening logic shared with the other entry points.
@@ -453,7 +453,7 @@ def main():
         _log_exit("startup write failed (broken stdout pipe before first event)")
         sys.exit(0)
 
-    # Live-apply skins Hermes activates mid-conversation.
+    # Live-apply skins Wangsa activates mid-conversation.
     server._ensure_skin_watcher()
 
     # Warm the /model picker's provider-models cache off-thread during this

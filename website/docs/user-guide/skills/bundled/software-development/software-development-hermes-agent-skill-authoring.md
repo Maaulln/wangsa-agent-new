@@ -1,12 +1,12 @@
 ---
-title: "Hermes Agent Skill Authoring — Author in-repo SKILL.md files: frontmatter and structure"
-sidebar_label: "Hermes Agent Skill Authoring"
+title: "Wangsa Agent Skill Authoring — Author in-repo SKILL.md files: frontmatter and structure"
+sidebar_label: "Wangsa Agent Skill Authoring"
 description: "Author in-repo SKILL.md files: frontmatter and structure"
 ---
 
 {/* This page is auto-generated from the skill's SKILL.md by website/scripts/generate-skill-docs.py. Edit the source SKILL.md, not this page. */}
 
-# Hermes Agent Skill Authoring
+# Wangsa Agent Skill Authoring
 
 Author in-repo SKILL.md files: frontmatter and structure.
 
@@ -17,7 +17,7 @@ Author in-repo SKILL.md files: frontmatter and structure.
 | Source | Bundled (installed by default) |
 | Path | `skills/software-development/hermes-agent-skill-authoring` |
 | Version | `2.0.0` |
-| Author | Hermes Agent |
+| Author | Wangsa Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `skills`, `authoring`, `hermes-agent`, `conventions`, `skill-md` |
@@ -26,7 +26,7 @@ Author in-repo SKILL.md files: frontmatter and structure.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Wangsa loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Authoring Hermes-Agent Skills (in-repo)
@@ -76,7 +76,7 @@ Repo-standard shape (all fields expected, even where the validator doesn't enfor
 name: my-skill-name               # lowercase, hyphens, ≤64 chars (MAX_NAME_LENGTH)
 description: Concise capability statement, under sixty chars.
 version: 0.1.0                    # semver; new skills start at 0.1.0
-author: Real Name (github-handle), Hermes Agent
+author: Real Name (github-handle), Wangsa Agent
 license: MIT
 platforms: [linux, macos, windows]   # audit, don't guess — see Platform Gating
 metadata:
@@ -99,9 +99,9 @@ Bad: `Use when a user asks to monitor named competitors or companies for product
 
 ### `author` rules
 
-- Credit the **human first**, then "Hermes Agent" as secondary collaborator: `Ben Barclay (benbarclay), Hermes Agent`.
-- Never `author: Hermes Agent` alone for contributed skills — credit the human, not the tool, even (especially) when an agent drafted the text.
-- Maintainer-authored skills: `Teknium (teknium1), Hermes Agent`.
+- Credit the **human first**, then "Wangsa Agent" as secondary collaborator: `Ben Barclay (benbarclay), Wangsa Agent`.
+- Never `author: Wangsa Agent` alone for contributed skills — credit the human, not the tool, even (especially) when an agent drafted the text.
+- Maintainer-authored skills: `Teknium (teknium1), Wangsa Agent`.
 
 ### `related_skills` rules
 
@@ -114,7 +114,7 @@ Bad: `Use when a user asks to monitor named competitors or companies for product
 
 | Skill uses only… | `platforms:` |
 |---|---|
-| Hermes tools + stdlib Python + cross-platform CLIs | `[linux, macos, windows]` |
+| Wangsa tools + stdlib Python + cross-platform CLIs | `[linux, macos, windows]` |
 | bash pipelines, `grep`/`awk`/`sed` chains, heredocs | `[linux, macos]` |
 | `osascript`, `defaults`, `pmset` | `[macos]` |
 | `apt`/`systemctl`/`/proc` | `[linux]` |
@@ -144,9 +144,9 @@ POSIX-only signals to search for in `scripts/`: `fcntl`, `termios`, `pty`, `os.f
 
 Not every section applies to every skill (a pure-procedure task skill may have no Quick Reference), but When to Use + actionable body + Pitfalls + Verification are the minimum. Cut marketing intros, "Setup Check" no-ops, and re-explanations of env vars already in Prerequisites.
 
-### Reference Hermes tools, not raw shell
+### Reference Wangsa tools, not raw shell
 
-When the skill needs a capability, name the proper Hermes tool in backticks: `terminal`, `read_file`, `write_file`, `patch`, `search_files`, `web_search`, `web_extract`, `browser_navigate`, `vision_analyze`, `delegate_task`, `cronjob`. Do NOT name shell utilities the agent already has wrapped (`grep` → `search_files`, `cat` → `read_file`, `sed`/`awk` → `patch`, `find`/`ls` → `search_files target='files'`). A CLI-wrapper skill should frame invocations as `terminal(command="<tool> ...", timeout=...)` — bare shell prose ("run `foo --version`") is a review-blocking non-conformance. If the skill depends on an MCP server, name it and document setup in Prerequisites.
+When the skill needs a capability, name the proper Wangsa tool in backticks: `terminal`, `read_file`, `write_file`, `patch`, `search_files`, `web_search`, `web_extract`, `browser_navigate`, `vision_analyze`, `delegate_task`, `cronjob`. Do NOT name shell utilities the agent already has wrapped (`grep` → `search_files`, `cat` → `read_file`, `sed`/`awk` → `patch`, `find`/`ls` → `search_files target='files'`). A CLI-wrapper skill should frame invocations as `terminal(command="<tool> ...", timeout=...)` — bare shell prose ("run `foo --version`") is a review-blocking non-conformance. If the skill depends on an MCP server, name it and document setup in Prerequisites.
 
 ### Never use machine-local paths
 
@@ -203,7 +203,7 @@ A skill exists to make the agent's process more predictable — the agent reliab
 
 1. **Using `skill_manage(action='create')` for an in-repo skill.** It writes to `~/.hermes/skills/`, not the repo tree. Use `write_file`.
 2. **Trusting the validator's limits as the standard.** The validator allows 1024-char descriptions; review rejects anything over 60. The validator doesn't check `platforms:`, author format, tests, or docs — review does.
-3. **`author: Hermes Agent` on a contributed skill.** Credit the human first.
+3. **`author: Wangsa Agent` on a contributed skill.** Credit the human first.
 4. **Leading whitespace before `---`.** Validation fails on any leading blank line or BOM.
 5. **Description too generic or trigger buried past char 57.**
 6. **`related_skills` pointing at skills that don't exist in-repo** (user-local, planned, or in a sibling PR).
@@ -222,7 +222,7 @@ A skill exists to make the agent's process more predictable — the agent reliab
 - [ ] `author` credits the human contributor first
 - [ ] `platforms:` audited against actual prose/scripts, not copied from a sibling
 - [ ] Every `related_skills` entry resolves in-repo
-- [ ] Body follows the modern section order; commands framed through Hermes tools
+- [ ] Body follows the modern section order; commands framed through Wangsa tools
 - [ ] No machine-local paths anywhere in the file
 - [ ] Each ordered step has a checkable completion criterion
 - [ ] Tests at `tests/skills/test_<skill>_skill.py` pass under `scripts/run_tests.sh`

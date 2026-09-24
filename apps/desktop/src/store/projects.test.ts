@@ -341,7 +341,7 @@ describe('startWorkInRepo remote capability gate (#81724)', () => {
     desktopGit.mockReturnValue({
       worktreeAdd: vi.fn(async () => {
         throw new Error(
-          'Expected JSON from https://vps/api/git/worktree/add but got HTML (status 404). The endpoint is likely missing on the Hermes backend.'
+          'Expected JSON from https://vps/api/git/worktree/add but got HTML (status 404). The endpoint is likely missing on the Wangsa backend.'
         )
       })
     } as never)
@@ -597,7 +597,7 @@ describe('repository discovery policy', () => {
     expect(getHermesConfig).not.toHaveBeenCalled()
     // The desktop can't crawl the remote host's filesystem, so it asks the
     // host to scan its own discovery roots (`projects.discover_repos` with
-    // `scan: true`) — repos with zero Hermes sessions must still surface —
+    // `scan: true`) — repos with zero Wangsa sessions must still surface —
     // then refreshes the tree to pick up the merged list. Regression for
     // #81723: the sidebar used to go silent in remote mode and never
     // refresh again.

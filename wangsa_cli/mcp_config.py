@@ -843,7 +843,7 @@ def _reauth_oauth_server(name: str, server_config: dict) -> bool:
     # path in web_server.py so CLI and dashboard behave identically.
     #
     # force_interactive_oauth: `hermes mcp login` is *explicitly* user-
-    # initiated even when stdin isn't a TTY (Hermes desktop / agent-
+    # initiated even when stdin isn't a TTY (Wangsa desktop / agent-
     # spawned terminals). Without this, OAuth refuses before opening a
     # browser because _is_interactive() only checks sys.stdin.isatty().
     try:

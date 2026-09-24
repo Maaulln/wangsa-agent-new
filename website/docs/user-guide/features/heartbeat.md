@@ -12,7 +12,7 @@ description: "A recurring prompt that re-enters your current session whenever it
 /heartbeat every 10m Check the deployment and report meaningful changes
 ```
 
-Inspired by Prime-Agent's `/heartbeat`. The Hermes adaptation keeps the strict message-flow invariants: the heartbeat is injected only between turns (never mid-run), as a plain user-role message.
+Inspired by Prime-Agent's `/heartbeat`. The Wangsa adaptation keeps the strict message-flow invariants: the heartbeat is injected only between turns (never mid-run), as a plain user-role message.
 
 ## Heartbeat vs cron: which one do I want?
 
@@ -57,7 +57,7 @@ You: /heartbeat every 15m Check whether the CI run for PR #1234 finished; summar
 
 [15 minutes of you working on other things in the same session]
 
-Hermes: [Heartbeat — recurring instruction, fires every 15m]
+Wangsa: [Heartbeat — recurring instruction, fires every 15m]
   💻 gh pr checks 1234   (1.2s)
   CI is still running (14/37 checks complete). Nothing to report yet.
 ```

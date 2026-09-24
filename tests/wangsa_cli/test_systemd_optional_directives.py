@@ -47,7 +47,7 @@ RestartSteps=5
         )
         # What the installed unit looks like on older systemd (directives stripped)
         installed = """[Unit]
-Description=Hermes Gateway
+Description=Wangsa Gateway
 After=network-online.target
 
 [Service]
@@ -63,7 +63,7 @@ WantedBy=default.target
 """
         # What generate_systemd_unit produces (with the directives)
         expected = """[Unit]
-Description=Hermes Gateway
+Description=Wangsa Gateway
 After=network-online.target
 
 [Service]
@@ -127,7 +127,7 @@ RestartPreventExitStatus=78
         from wangsa_cli import gateway as gw
 
         installed = """[Unit]
-Description=Hermes Gateway
+Description=Wangsa Gateway
 
 [Service]
 Type=simple

@@ -92,7 +92,7 @@ _DESTRUCTIVE_ACTIONS = frozenset({
 })
 
 # Hard-blocked key combinations. Mirrored from #4562 — these are destructive
-# regardless of approval level (e.g. logout kills the session Hermes runs in).
+# regardless of approval level (e.g. logout kills the session Wangsa runs in).
 _BLOCKED_KEY_COMBOS = {
     frozenset({"cmd", "shift", "backspace"}),   # empty trash
     frozenset({"cmd", "option", "backspace"}),   # force delete
@@ -174,7 +174,7 @@ def _is_blocked_type(text: str) -> Optional[str]:
 # Backend selection — env-swappable for tests
 # ---------------------------------------------------------------------------
 
-# Per-Hermes-session cached backends. Each backend owns its own cua-driver
+# Per-Wangsa-session cached backends. Each backend owns its own cua-driver
 # session, native target, typed-browser binding, refs, and grant namespace.
 _backend_lock = threading.Lock()
 # Backward-compatible empty-session injection hook used by older tests.
@@ -238,9 +238,9 @@ def _warn_bypass_escalation(session_id: str) -> None:
 
 
 def _cua_permission_mode(session_id: str) -> str:
-    """Map Hermes's explicit approval bypass onto Cua's immutable mode.
+    """Map Wangsa's explicit approval bypass onto Cua's immutable mode.
 
-    Hermes has TWO session-identity namespaces: the tool-dispatch path passes
+    Wangsa has TWO session-identity namespaces: the tool-dispatch path passes
     the DB ``session_id`` (``agent.session_id``), while gateway ``/yolo``
     keys approval state off the gateway ``session_key`` (set per turn via the
     ``set_current_session_key`` contextvar in tools/approval.py). CLI and TUI
@@ -377,7 +377,7 @@ def release_computer_use_session(session_id: str) -> bool:
     removes the exact session backend, its call lock, and its recorded
     permission mode before stopping the backend, so new lookups cannot retain
     the stale target/ref namespace — and stops a private embedded daemon when
-    Hermes YOLO selected unrestricted mode. Approval state is cleared even
+    Wangsa YOLO selected unrestricted mode. Approval state is cleared even
     when no backend was started.
 
     Returns ``True`` when a backend was found and released, ``False`` when the
@@ -405,7 +405,7 @@ def release_computer_use_session(session_id: str) -> bool:
     try:
         # Let an in-flight action finish before ending the driver session and
         # dropping its target/ref state. Do not hold the global cache lock
-        # while waiting: unrelated Hermes sessions remain independent.
+        # while waiting: unrelated Wangsa sessions remain independent.
         if call_lock is not None:
             with call_lock:
                 backend.stop()
@@ -424,7 +424,7 @@ def _shutdown_backend_atexit() -> None:
     """Stop all cached backends so cua-driver children don't outlive us.
 
     Each session backend holds a long-lived ``cua-driver`` subprocess, so
-    without this a driver can survive the Hermes process that spawned it
+    without this a driver can survive the Wangsa process that spawned it
     (#28152 item 3). #69903 kept the orphan from burning a core by disabling
     the cursor overlay; the process itself still lingered.
 
@@ -733,7 +733,7 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
     # cua-driver's typed browser surface is namespaced inside the existing
     # computer_use tool so it cannot collide with native browser/MCP tools.
     # The backend owns the opaque driver session, target, tab and ref state;
-    # none of those capabilities can be supplied across Hermes sessions.
+    # none of those capabilities can be supplied across Wangsa sessions.
     if action == "cua_browser_state":
         state_args: Dict[str, Any] = {}
         for public, internal in (
@@ -1034,7 +1034,7 @@ def _text_response(res: ActionResult) -> str:
 # Window classes of browsers whose page content the typed cua_browser_* route
 # can drive with trusted input and ZERO focus steal. When background text
 # delivery is refused for one of these surfaces, the driver's only hint is
-# "foreground" (it doesn't know Hermes has a typed page route), so the model
+# "foreground" (it doesn't know Wangsa has a typed page route), so the model
 # flashes the user's window to front for every keystroke batch. The hint below
 # offers the no-flash rung first; foreground remains valid for browser chrome,
 # native dialogs, and anything the typed route can't bind exactly.
@@ -1671,7 +1671,7 @@ _MAX_CAPTURE_FILES = 20
 
 
 def _persist_capture_image(cap: CaptureResult) -> Optional[str]:
-    """Save a capture in Hermes' media cache and return its absolute path.
+    """Save a capture in Wangsa' media cache and return its absolute path.
 
     Captures are normally embedded only in the model's tool context. Persisting
     a bounded copy gives attachment-capable surfaces a real file to deliver

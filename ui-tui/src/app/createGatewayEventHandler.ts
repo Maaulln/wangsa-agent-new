@@ -658,7 +658,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
     // "too many re-renders" guard in embedded dashboard PTYs.
     ensureAgentsNudgeConfig()
 
-    // Arm "Hey Hermes" if this surface owns it (server gates on config).
+    // Arm "Hey Wangsa" if this surface owns it (server gates on config).
     // Fire-and-forget + idempotent server-side, so reconnects are harmless.
     // Skipped when the user explicitly ran `/wake off` this session — an
     // explicit opt-out must survive gateway reconnects (see wakeState.ts).
@@ -1015,7 +1015,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
       }
 
       case 'wake.detected': {
-        // "Hey Hermes": optionally open a fresh session (start_new_session),
+        // "Hey Wangsa": optionally open a fresh session (start_new_session),
         // then arm voice capture so the user can speak hands-free. Mirrors CLI.
         void (async () => {
           // Multi-profile routing: the TUI is a single-profile process, so a

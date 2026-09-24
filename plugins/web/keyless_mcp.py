@@ -8,7 +8,7 @@ path):
 - Parallel: https://search.parallel.ai/mcp   (tools: web_search, web_fetch)
 
 This module implements a minimal JSON-RPC ``tools/call`` client for those
-two endpoints so a fresh Hermes install with **zero web credentials** still
+two endpoints so a fresh Wangsa install with **zero web credentials** still
 gets working ``web_search`` / ``web_extract`` tools. The keyless tier is
 resolved strictly LAST — after every keyed backend, the managed tool
 gateway, ddgs, and custom plugin providers — so it never pre-empts a

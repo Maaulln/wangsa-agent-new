@@ -8,8 +8,8 @@ Exposes an HTTP server with endpoints:
 - DELETE /v1/responses/{response_id} — Delete a stored response
 - GET  /v1/models                  — lists hermes-agent and any configured model_routes aliases
 - GET  /v1/capabilities            — machine-readable API capabilities for external UIs
-- GET  /api/sessions               — list client-visible Hermes sessions
-- POST /api/sessions               — create an empty Hermes session
+- GET  /api/sessions               — list client-visible Wangsa sessions
+- POST /api/sessions               — create an empty Wangsa session
 - GET/PATCH/DELETE /api/sessions/{session_id} — read/update/delete a session
 - GET  /api/sessions/{session_id}/messages — read session message history
 - POST /api/sessions/{session_id}/fork — branch a session using SessionDB lineage
@@ -233,7 +233,7 @@ def _browser_controller_ws_sender(ws, loop, *, wait_timeout: float = 10.0):
 
 
 def _hermes_version() -> str:
-    """Return the canonical Hermes Agent version string.
+    """Return the canonical Wangsa Agent version string.
 
     ``wangsa_cli.__version__`` is the runtime source of truth used by the CLI,
     dashboard, portal tags, and release script. Prefer it over installed
@@ -504,9 +504,9 @@ def _request_agent_overrides(
     hardcode model names ("gpt-4o", ...), and existing deployments rely on
     those falling back to the gateway default on the OpenAI-compatible
     surfaces — so those handlers pass the opt-in
-    ``direct_model_requests`` config value here, while Hermes-native
+    ``direct_model_requests`` config value here, while Wangsa-native
     endpoints (session chat, /v1/runs) always allow it.  A request that
-    sends an explicit ``provider`` is unambiguously Hermes-aware and is
+    sends an explicit ``provider`` is unambiguously Wangsa-aware and is
     always honored.
     """
     if not isinstance(body, dict):
@@ -1400,7 +1400,7 @@ def _derive_chat_session_id(
     conversation history with every request.  The system prompt and first user
     message are constant across all turns of the same conversation, so hashing
     them produces a deterministic session ID that lets the API server reuse
-    the same Hermes session (and therefore the same Docker container sandbox
+    the same Wangsa session (and therefore the same Docker container sandbox
     directory) across turns.
     """
     seed = f"{system_prompt or ''}\n{first_user_message}"
@@ -1537,7 +1537,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # OpenAI clients routinely hardcode model names ("gpt-4o", ...), and
         # existing deployments rely on those falling back to the gateway
         # default rather than switching the executing model.  Requests that
-        # send an explicit ``provider`` — and the Hermes-native session-chat
+        # send an explicit ``provider`` — and the Wangsa-native session-chat
         # and /v1/runs endpoints — are always honored regardless of this flag.
         # (Idea credit: PR #22825 by @mssteuer.)
         self._direct_model_requests: bool = _coerce_request_bool(
@@ -3274,11 +3274,11 @@ class APIServerAdapter(BasePlatformAdapter):
         return web.json_response({"object": "list", "data": models})
 
     async def _handle_model_options(self, request: "web.Request") -> "web.Response":
-        """GET /api/model/options — return Hermes provider/model inventory.
+        """GET /api/model/options — return Wangsa provider/model inventory.
 
         This mirrors the dashboard/TUI model picker inventory endpoint so
         external clients using the API server can sync to the user's configured
-        Hermes provider catalog instead of scraping the single OpenAI-compatible
+        Wangsa provider catalog instead of scraping the single OpenAI-compatible
         `/v1/models` alias.
         """
         auth_err = self._check_auth(request)
@@ -3315,7 +3315,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
         External UIs and orchestrators use this endpoint to discover the API
         server's plugin-safe contract without scraping docs or assuming that
-        every Hermes version exposes the same endpoints.
+        every Wangsa version exposes the same endpoints.
         """
         auth_err = self._check_auth(request)
         if auth_err:
@@ -3334,7 +3334,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 "tool_execution": "server",
                 "split_runtime": False,
                 "description": (
-                    "The API server creates a server-side Hermes AIAgent; "
+                    "The API server creates a server-side Wangsa AIAgent; "
                     "tools execute on the API-server host unless a future "
                     "explicit split-runtime mode is enabled."
                 ),
@@ -3820,7 +3820,7 @@ class APIServerAdapter(BasePlatformAdapter):
         except Exception:
             # Unscoped fallback used only when profile resolution is
             # unavailable (tests/manual wiring): keep the controlled root
-            # under the Hermes home.
+            # under the Wangsa home.
             try:
                 from wangsa_state import get_hermes_home
 
@@ -4226,7 +4226,7 @@ class APIServerAdapter(BasePlatformAdapter):
             return []
 
     async def _handle_list_sessions(self, request: "web.Request") -> "web.Response":
-        """GET /api/sessions — list persisted Hermes sessions."""
+        """GET /api/sessions — list persisted Wangsa sessions."""
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
@@ -4302,7 +4302,7 @@ class APIServerAdapter(BasePlatformAdapter):
         })
 
     async def _handle_create_session(self, request: "web.Request") -> "web.Response":
-        """POST /api/sessions -- create an empty Hermes session row.
+        """POST /api/sessions -- create an empty Wangsa session row.
 
         The existence check, insert, title handling, and invalid-title
         rollback run as a single off-loop operation to avoid a TOCTOU
@@ -5154,7 +5154,7 @@ class APIServerAdapter(BasePlatformAdapter):
         else:
             # Derive a stable session ID from the conversation fingerprint so
             # that consecutive messages from the same Open WebUI (or similar)
-            # conversation map to the same Hermes session.  The first user
+            # conversation map to the same Wangsa session.  The first user
             # message + system prompt are constant across all turns.
             first_user = ""
             for cm in conversation_messages:
@@ -5362,7 +5362,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
         # Soft-partial path: we have *some* text but the run did not complete
         # (e.g. truncation with partial buffered output). Still 200 but signal
-        # truncation via finish_reason="length" + Hermes-specific extras.
+        # truncation via finish_reason="length" + Wangsa-specific extras.
         response_data = {
             "id": completion_id,
             "object": "chat.completion",
@@ -7089,7 +7089,7 @@ class APIServerAdapter(BasePlatformAdapter):
                         "id": f"fc_{uuid.uuid4().hex[:24]}",
                         "type": "function_call",
                         # These calls were already executed server-side by the
-                        # Hermes agent; they are replayed for structured tool
+                        # Wangsa agent; they are replayed for structured tool
                         # UI only.  Mark them completed (matching the SSE
                         # streaming path) so OpenAI clients don't interpret
                         # them as pending calls the client must execute.

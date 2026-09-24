@@ -1,7 +1,7 @@
 """Bot-relay JSON-RPC handlers — the gateway side of cross-connection A2A.
 
 Connections ARE the peer set: every gateway the Desktop holds a socket to
-(local, remote URL, SSH, Hermes Cloud, docker) must be able to find every
+(local, remote URL, SSH, Wangsa Cloud, docker) must be able to find every
 other connection's agents and message them. The Desktop is the relay — it
 owns every socket — and these four methods are the door it uses on EACH
 connected gateway:

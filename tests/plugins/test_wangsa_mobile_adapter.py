@@ -69,6 +69,15 @@ def _post_json(url, body, headers=None, timeout=15):
         return e.code, json.loads(e.read().decode())
 
 
+def _delete_json(url, headers=None, timeout=15):
+    req = urllib.request.Request(url, headers=headers or {}, method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode())
+
+
 class TestWangsaMobileRoutes:
     def test_get_agent_identity(self, monkeypatch):
         monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
@@ -108,6 +117,47 @@ class TestWangsaMobileRoutes:
             assert data["success"] is True
             assert "ECHO: hello there" in data["data"]["response"]
             assert data["data"]["sessionId"]  # server-generated
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_post_message_user_profile_reaches_source(self, monkeypatch):
+        """userName/userBio from the mobile app's local Profile screen must
+        land on MessageEvent.source (user_name/user_bio) — that's the only
+        path that makes it into the agent's per-session context (see
+        gateway/session.py::build_session_context_prompt's "User notes"
+        line). Absent fields fall back to the pre-profile "mobile" default,
+        not an error."""
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        seen_sources = []
+
+        def reply_fn(event):
+            seen_sources.append(event.source)
+            return "ok"
+
+        adapter, base = _make_live_adapter(monkeypatch, reply_fn=reply_fn)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/agents/agent1/messages",
+                {
+                    "message": "halo",
+                    "userName": "Doni",
+                    "userBio": "prefers casual tone, replies in Indonesian",
+                },
+            )
+            assert status == 200, data
+            assert seen_sources[0].user_name == "Doni"
+            assert seen_sources[0].user_bio == "prefers casual tone, replies in Indonesian"
+
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/agents/agent1/messages",
+                {"message": "halo lagi"},
+            )
+            assert status == 200, data
+            assert seen_sources[1].user_name == "mobile"
+            assert seen_sources[1].user_bio is None
             await adapter.disconnect()
 
         asyncio.run(run())
@@ -780,6 +830,208 @@ class TestWangsaMobileOutboundFiles:
             assert len(data["data"]["images"]) == 1
             assert len(data["data"]["files"]) == 1
             assert data["data"]["files"][0]["filename"] == "data.csv"
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+
+class TestWangsaMobileAuthProviders:
+    """Regression coverage for the /api/v1/auth/providers routes.
+
+    These routes shipped importing straight from ``hermes_cli.*`` with no
+    fallback, so on any checkout where that package is renamed (this repo's
+    ``wangsa_cli`` fork included) every one of them 500'd with a bare
+    ``ModuleNotFoundError`` — the mobile app's provider setup screen was
+    completely unusable. The fix routes every import through
+    ``_hermes_cli_module()``, which tries ``hermes_cli.<name>`` first and
+    falls back to ``wangsa_cli.<name>``.
+    """
+
+    def test_list_providers_does_not_500(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(_get_json, base + "/api/v1/auth/providers")
+            assert status == 200
+            assert data["success"] is True
+            ids = {p["id"] for p in data["data"]["providers"]}
+            # Every provider the mobile app can pick from must be listed,
+            # and every one of them must be a provider that save/delete can
+            # actually act on (see test_save_and_delete_every_listed_provider).
+            assert {"copilot", "anthropic", "openai-api", "gemini", "openrouter", "deepseek", "nous", "custom"} <= ids
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_save_and_list_reflects_configured_state(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/providers/anthropic", {"apiKey": "sk-ant-test-key-0001"},
+            )
+            assert status == 200, data
+            assert data["success"] is True
+
+            status, data = await asyncio.to_thread(_get_json, base + "/api/v1/auth/providers")
+            row = next(p for p in data["data"]["providers"] if p["id"] == "anthropic")
+            assert row["configured"] is True
+            assert row["keyPreview"]
+
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_save_openrouter_does_not_404(self, monkeypatch):
+        """OpenRouter has no row in hermes_cli.auth.PROVIDER_REGISTRY — it's
+        only registered in the separate model-providers plugin catalog. The
+        original save handler used PROVIDER_REGISTRY.get(provider_id) as its
+        only source of truth and 404'd for exactly this provider."""
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/providers/openrouter", {"apiKey": "sk-or-test-0002"},
+            )
+            assert status == 200, data
+            assert data["success"] is True
+
+            status, data = await asyncio.to_thread(_get_json, base + "/api/v1/auth/providers")
+            row = next(p for p in data["data"]["providers"] if p["id"] == "openrouter")
+            assert row["configured"] is True
+
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_save_unknown_provider_rejected(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/providers/not-a-real-provider", {"apiKey": "x"},
+            )
+            assert status == 404
+            assert data["success"] is False
+            assert data["error"]["code"] == "NOT_FOUND"
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_delete_clears_configured_state(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+
+            await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/providers/deepseek", {"apiKey": "sk-ds-test-0003"},
+            )
+            status, data = await asyncio.to_thread(_get_json, base + "/api/v1/auth/providers")
+            assert next(p for p in data["data"]["providers"] if p["id"] == "deepseek")["configured"] is True
+
+            status, data = await asyncio.to_thread(_delete_json, base + "/api/v1/auth/providers/deepseek")
+            assert status == 200
+            assert data["success"] is True
+
+            status, data = await asyncio.to_thread(_get_json, base + "/api/v1/auth/providers")
+            assert next(p for p in data["data"]["providers"] if p["id"] == "deepseek")["configured"] is False
+
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+
+class TestWangsaMobileSessionHistory:
+    """Regression coverage for GET /sessions/{id}/messages.
+
+    Before this route existed, selecting a past session in the app's drawer
+    only updated which sessionId new messages would be sent under
+    (ChatBloc._onSessionSelected) — it cleared the on-screen transcript and
+    never fetched anything to refill it, so switching sessions looked
+    completely broken even though the server-side conversation was intact.
+    """
+
+    def test_returns_empty_list_without_a_live_gateway_runner(self, monkeypatch):
+        """No gateway runner (as in this test harness) must degrade to an
+        empty transcript, never a 500 — the route existing at all is the
+        behavior under test; DB wiring is covered by the mocked-runner test
+        below."""
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _get_json, base + "/api/v1/agents/agentX/sessions/sess-1/messages",
+            )
+            assert status == 200
+            assert data["success"] is True
+            assert data["data"]["turns"] == []
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_reads_transcript_through_the_gateway_session_store(self, monkeypatch):
+        """Drives the real resolution chain: build_source -> session_key ->
+        peek_session_id -> SessionDB.get_messages_as_conversation, exactly
+        the path _dispatch_and_wait/_apply_model_override use to route a
+        live turn, so a session switch reads back what a live turn wrote."""
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        class FakeDB:
+            def get_messages_as_conversation(self, session_id):
+                assert session_id == "db-session-42"
+                return [
+                    {"role": "user", "content": "halo"},
+                    {"role": "assistant", "content": "halo juga!"},
+                    {"role": "assistant", "content": [{"type": "text", "text": "bagian dua"}]},
+                    {"role": "tool", "content": "hasil tool, tidak boleh muncul"},
+                    {"role": "assistant", "content": ""},
+                ]
+
+        class FakeSessionStore:
+            _db = FakeDB()
+
+            def peek_session_id(self, session_key):
+                assert session_key == "resolved-key"
+                return "db-session-42"
+
+        class FakeRunner:
+            session_store = FakeSessionStore()
+
+            def _session_key_for_source(self, source):
+                assert source.chat_id == "mobile:agentX:sess-1"
+                return "resolved-key"
+
+        import gateway.run as gateway_run
+
+        monkeypatch.setattr(gateway_run, "_gateway_runner_ref", lambda: FakeRunner())
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _get_json, base + "/api/v1/agents/agentX/sessions/sess-1/messages",
+            )
+            assert status == 200
+            assert data["success"] is True
+            assert data["data"]["turns"] == [
+                {"role": "user", "content": "halo"},
+                {"role": "agent", "content": "halo juga!"},
+                {"role": "agent", "content": "bagian dua"},
+            ]
             await adapter.disconnect()
 
         asyncio.run(run())

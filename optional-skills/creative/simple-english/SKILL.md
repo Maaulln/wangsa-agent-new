@@ -2,7 +2,7 @@
 name: simple-english
 description: "Rewrite text to ASD-STE100 Simplified Technical English."
 version: 1.2.0
-author: AminBlg (https://github.com/AminBlg/SimpleEnglish), ported by Hermes Agent
+author: AminBlg (https://github.com/AminBlg/SimpleEnglish), ported by Wangsa Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
@@ -20,7 +20,7 @@ Write technical text with the rules of ASD-STE100 Simplified Technical English. 
 
 Write for that tired reader. Each sentence must survive one read.
 
-## How to use it in Hermes
+## How to use it in Wangsa
 
 The text usually arrives one of three ways:
 

@@ -1,5 +1,5 @@
 """
-Wangsa Mobile inbound platform adapter — exposes Hermes to the Wangsa Flutter
+Wangsa Mobile inbound platform adapter — exposes Wangsa to the Wangsa Flutter
 mobile app over two simple REST routes (not JSON-RPC/SSE like a2a).
 
 Design (mirrors plugins/platforms/a2a/adapter.py's simpler cousin):
@@ -18,7 +18,7 @@ Design (mirrors plugins/platforms/a2a/adapter.py's simpler cousin):
   5607, 5614, 6881). ``chat_id`` is passed at every call site; ``reply_to``/
   ``message_id`` threading is inconsistent (often None or a different id than
   what we sent in). So — exactly like a2a — we key pending futures by
-  chat_id (our per-session Hermes thread id), with a FIFO queue per chat_id
+  chat_id (our per-session Wangsa thread id), with a FIFO queue per chat_id
   to avoid cross-talk if two requests for the same sessionId race.
 
 Outbound images/files/audio (agent -> mobile app): the normal turn
@@ -84,7 +84,7 @@ _MAX_MESSAGE_LEN = 4000
 _MAX_BODY = 1_048_576  # 1MB
 
 _AGENT_ID_RE = re.compile(
-    r"^/api/v1/agents/([^/]+)(/(messages(/stream)?|models|sessions(/[^/]+)?))?/?$"
+    r"^/api/v1/agents/([^/]+)(/(messages(/stream)?|models|sessions(/[^/]+(/messages)?)?))?/?$"
 )
 
 _THINK_RE = re.compile(
@@ -104,6 +104,142 @@ def _extract_think_blocks(text: str) -> tuple[str, str]:
             thoughts.append(content)
     clean = _THINK_RE.sub("", text).strip()
     return "\n\n".join(thoughts).strip(), clean
+
+
+def _hermes_cli_module(name: str):
+    """Import ``<name>`` from the ``hermes_cli`` package, falling back to
+    this fork's ``wangsa_cli`` rename.
+
+    Every provider-auth handler below needs this — without the fallback,
+    a bare ``from hermes_cli.x import y`` raises ``ModuleNotFoundError`` on
+    any checkout where the package was renamed (this repo included), and
+    every one of those endpoints 500s.
+    """
+    import importlib
+
+    try:
+        return importlib.import_module(f"hermes_cli.{name}")
+    except ImportError:
+        return importlib.import_module(f"wangsa_cli.{name}")
+
+
+# Providers surfaced to the mobile app's "Setup Provider & Login AI" screen.
+# Each non-copilot/custom entry's ``env_var`` is the credential the save/
+# delete handlers write/clear directly — this list, not
+# ``hermes_cli.auth.PROVIDER_REGISTRY``, is the source of truth for what the
+# mobile app can configure, since some providers here (e.g. openrouter) are
+# only registered in the separate model-providers plugin catalog and are
+# absent from PROVIDER_REGISTRY entirely.
+def _get_all_providers_meta():
+    try:
+        models_mod = _hermes_cli_module("models")
+        CANONICAL_PROVIDERS = getattr(models_mod, "CANONICAL_PROVIDERS", [])
+    except Exception:
+        CANONICAL_PROVIDERS = []
+    try:
+        auth_mod = _hermes_cli_module("auth")
+        PROVIDER_REGISTRY = getattr(auth_mod, "PROVIDER_REGISTRY", {})
+    except Exception:
+        PROVIDER_REGISTRY = {}
+
+    known_urls = {
+        "opencode-free": "https://opencode.ai",
+        "opencode-zen": "https://opencode.ai",
+        "opencode-go": "https://opencode.ai",
+        "copilot": "https://github.com/settings/tokens",
+        "anthropic": "https://console.anthropic.com/settings/keys",
+        "openai-api": "https://platform.openai.com/api-keys",
+        "openai-codex": "https://chatgpt.com",
+        "gemini": "https://aistudio.google.com/app/apikey",
+        "deepseek": "https://platform.deepseek.com/api_keys",
+        "openrouter": "https://openrouter.ai/keys",
+        "groq": "https://console.groq.com/keys",
+        "nous": "https://portal.nousresearch.com",
+        "xai": "https://console.x.ai",
+        "xai-oauth": "https://x.ai",
+        "nvidia": "https://build.nvidia.com",
+        "huggingface": "https://huggingface.co/settings/tokens",
+        "fireworks": "https://fireworks.ai/api-keys",
+        "novita": "https://novita.ai/settings/key-management",
+        "lmstudio": "https://lmstudio.ai",
+        "ollama-cloud": "https://ollama.com",
+        "alibaba": "https://dashscope.console.aliyun.com",
+        "alibaba-coding-plan": "https://dashscope.console.aliyun.com",
+        "zai": "https://open.bigmodel.cn",
+        "kimi-coding": "https://platform.moonshot.cn/console/api-keys",
+        "minimax": "https://platform.minimaxi.com",
+        "deepinfra": "https://deepinfra.com/dash/api_keys",
+        "upstage": "https://console.upstage.ai/api-keys",
+    }
+
+    meta = []
+    seen = set()
+
+    for cp in CANONICAL_PROVIDERS:
+        pid = cp.slug
+        if pid in seen:
+            continue
+        seen.add(pid)
+
+        label = cp.label
+        desc = cp.tui_desc or label
+        pconfig = PROVIDER_REGISTRY.get(pid)
+        auth_type = "api_key"
+        env_var = None
+
+        if pid == "copilot":
+            auth_type = "copilot"
+            env_var = "COPILOT_GITHUB_TOKEN"
+        elif pid == "nous":
+            auth_type = "nous"
+            env_var = "NOUS_API_KEY"
+        elif pid == "custom":
+            auth_type = "custom"
+            env_var = None
+        elif pid == "opencode-free":
+            auth_type = "free"
+            env_var = None
+            desc = "OpenCode Free — model inferensi gratis keyless tanpa akun (hy3-free, laguna-s-2.1-free, dll.)."
+        elif pid == "opencode-zen":
+            auth_type = "api_key"
+            env_var = "OPENCODE_ZEN_API_KEY"
+            desc = "OpenCode Zen — inferensi model terkurasi pay-as-you-go."
+        elif pid == "opencode-go":
+            auth_type = "api_key"
+            env_var = "OPENCODE_GO_API_KEY"
+            desc = "OpenCode Go — langganan model open-source."
+        elif pconfig:
+            auth_type = getattr(pconfig, "auth_type", "api_key") or "api_key"
+            if getattr(pconfig, "api_key_env_vars", None):
+                env_var = pconfig.api_key_env_vars[0]
+        elif pid == "openrouter":
+            env_var = "OPENROUTER_API_KEY"
+        elif pid == "groq":
+            env_var = "GROQ_API_KEY"
+
+        url = known_urls.get(pid, getattr(pconfig, "help_url", "") or "")
+
+        meta.append({
+            "id": pid,
+            "name": label,
+            "auth_type": auth_type,
+            "env_var": env_var,
+            "description": desc,
+            "help_url": url,
+        })
+
+    # Pastikan custom provider terdaftar
+    if "custom" not in seen:
+        meta.append({
+            "id": "custom",
+            "name": "Custom (Ollama / Local / OpenAI)",
+            "auth_type": "custom",
+            "env_var": None,
+            "description": "Hubungkan server lokal atau kustom (Ollama, LM Studio, vLLM).",
+            "help_url": "",
+        })
+
+    return meta
 
 
 def _reply_timeout() -> float:
@@ -130,6 +266,8 @@ _RATE_LIMIT_WINDOW = 60  # seconds
 _MAX_MODEL_LEN = 200
 _MAX_PROVIDER_LEN = 100
 _MAX_IMAGES = 5
+_MAX_USER_NAME_LEN = 100
+_MAX_USER_BIO_LEN = 500
 
 # Outbound (agent -> mobile) image caps and buffering. See the module
 # docstring's "Outbound images" section for why buffering exists at all.
@@ -415,7 +553,11 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         )
 
     def do_GET(self):  # noqa: N802
-        m = _AGENT_ID_RE.match(self.path.split("?", 1)[0])
+        path = self.path.split("?", 1)[0]
+        if path == "/api/v1/auth/providers":
+            self._handle_auth_providers_get()
+            return
+        m = _AGENT_ID_RE.match(path)
         if not m:
             self._json(
                 404,
@@ -433,6 +575,11 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         if suffix == "/sessions":
             sessions = self.adapter._list_sessions(agent_id)
             self._json(200, {"success": True, "data": {"sessions": sessions}})
+            return
+        if suffix.startswith("/sessions/") and suffix.endswith("/messages"):
+            session_id = suffix[len("/sessions/"):-len("/messages")]
+            turns = self.adapter._get_session_messages(agent_id, session_id)
+            self._json(200, {"success": True, "data": {"turns": turns}})
             return
         if suffix:
             self._json(
@@ -456,7 +603,12 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         )
 
     def do_DELETE(self):  # noqa: N802
-        m = _AGENT_ID_RE.match(self.path.split("?", 1)[0])
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/api/v1/auth/providers/"):
+            provider_id = path[len("/api/v1/auth/providers/") :].strip("/")
+            self._handle_auth_provider_delete(provider_id)
+            return
+        m = _AGENT_ID_RE.match(path)
         if not m:
             self._json(
                 404,
@@ -479,21 +631,29 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_models(self, agent_id: str) -> None:  # noqa: ARG002
-        """Serve the model picker payload for the current provider.
+        """Serve the model picker payload for available providers and models.
 
         Uses the same ``build_model_options_payload(load_picker_context())``
         substrate as the dashboard's ``/api/model/options`` and the TUI
         ``ModelPickerDialog`` — no new model-listing logic. Responds with
-        the narrow mobile shape: provider, current model, and that
-        provider's model ids.
+        provider, current model, active provider's models, and full providers list.
         """
         try:
-            from wangsa_cli.inventory import (
-                build_model_options_payload,
-                load_picker_context,
-            )
+            try:
+                from hermes_cli.inventory import (
+                    build_model_options_payload,
+                    load_picker_context,
+                )
+            except ImportError:
+                from wangsa_cli.inventory import (
+                    build_model_options_payload,
+                    load_picker_context,
+                )
 
-            payload = build_model_options_payload(load_picker_context())
+            try:
+                payload = build_model_options_payload(load_picker_context(), include_unconfigured=True)
+            except TypeError:
+                payload = build_model_options_payload(load_picker_context())
         except Exception:
             logger.debug("wangsa_mobile: model options build failed", exc_info=True)
             self._error(502, "RUNTIME_ERROR", "failed to list models")
@@ -501,13 +661,22 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         provider = str(payload.get("provider") or "")
         current = str(payload.get("model") or "")
         models: list = []
+        providers_out: list = []
         try:
             for row in payload.get("providers") or []:
                 if not isinstance(row, dict):
                     continue
-                if str(row.get("slug") or "") == provider:
-                    models = [str(m) for m in (row.get("models") or [])]
-                    break
+                slug = str(row.get("slug") or "")
+                name = str(row.get("name") or slug)
+                row_models = [str(m) for m in (row.get("models") or [])]
+                providers_out.append({
+                    "id": slug,
+                    "slug": slug,
+                    "name": name,
+                    "models": row_models,
+                })
+                if slug == provider:
+                    models = row_models
         except Exception:
             logger.debug("wangsa_mobile: model row extraction failed", exc_info=True)
             models = []
@@ -515,13 +684,317 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             200,
             {
                 "success": True,
-                "data": {"provider": provider, "current": current, "models": models},
+                "data": {
+                    "provider": provider,
+                    "current": current,
+                    "models": models,
+                    "providers": providers_out,
+                },
             },
         )
+
+    def _handle_auth_providers_get(self) -> None:
+        """Return list of supported LLM inference providers and current connection status."""
+        try:
+            config_mod = _hermes_cli_module("config")
+            auth_mod = _hermes_cli_module("auth")
+            get_env_value, load_config = config_mod.get_env_value, config_mod.load_config
+            get_auth_status, PROVIDER_REGISTRY = auth_mod.get_auth_status, auth_mod.PROVIDER_REGISTRY
+
+            cfg = load_config()
+            custom_providers = cfg.get("custom_providers") or []
+
+            providers_meta = _get_all_providers_meta()
+            data = []
+            for p in providers_meta:
+                pid = p["id"]
+                configured = False
+                preview = None
+
+                if pid == "opencode-free":
+                    configured = True
+                    preview = "Aktif (Keyless / Gratis)"
+                elif pid == "copilot":
+                    try:
+                        cst = get_auth_status("copilot")
+                        if cst.get("configured") or cst.get("logged_in"):
+                            configured = True
+                            preview = "Aktif (" + str(cst.get("key_source") or "GitHub") + ")"
+                    except Exception:
+                        pass
+                    if not configured:
+                        t = (get_env_value("COPILOT_GITHUB_TOKEN") or os.getenv("COPILOT_GITHUB_TOKEN") or "").strip()
+                        if t:
+                            configured = True
+                            preview = t[:6] + "..." + t[-4:] if len(t) > 10 else "Tersimpan"
+                elif pid == "nous":
+                    try:
+                        nst = get_auth_status("nous")
+                        if nst.get("logged_in") or nst.get("configured"):
+                            configured = True
+                            preview = "Aktif (Nous Portal)"
+                    except Exception:
+                        pass
+                    if not configured:
+                        k = (get_env_value("NOUS_API_KEY") or os.getenv("NOUS_API_KEY") or "").strip()
+                        if k:
+                            configured = True
+                            preview = k[:6] + "..." + k[-4:] if len(k) > 10 else "Tersimpan"
+                elif pid == "custom":
+                    if custom_providers and isinstance(custom_providers, list):
+                        configured = True
+                        preview = f"{len(custom_providers)} endpoint terdaftar"
+                else:
+                    env_var = p.get("env_var")
+                    val = ""
+                    if env_var:
+                        val = (get_env_value(env_var) or os.getenv(env_var) or "").strip()
+                    if not val:
+                        pconfig = PROVIDER_REGISTRY.get(pid) if PROVIDER_REGISTRY else None
+                        if pconfig and getattr(pconfig, "api_key_env_vars", None):
+                            for alt in pconfig.api_key_env_vars:
+                                val = (get_env_value(alt) or os.getenv(alt) or "").strip()
+                                if val:
+                                    break
+                    if val:
+                        configured = True
+                        preview = val[:6] + "..." + val[-4:] if len(val) > 10 else "Tersimpan"
+
+                data.append({
+                    "id": pid,
+                    "name": p["name"],
+                    "authType": p["auth_type"],
+                    "configured": configured,
+                    "envVar": p.get("env_var"),
+                    "keyPreview": preview,
+                    "description": p["description"],
+                    "helpUrl": p["help_url"],
+                })
+
+            self._json(200, {"success": True, "data": {"providers": data}})
+        except Exception as e:
+            logger.exception("wangsa_mobile: failed to list auth providers")
+            self._error(500, "INTERNAL_ERROR", str(e))
+
+    def _handle_auth_provider_save(self, provider_id: str) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            body = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self._error(400, "VALIDATION_ERROR", "invalid JSON body")
+            return
+
+        try:
+            config_mod = _hermes_cli_module("config")
+            auth_mod = _hermes_cli_module("auth")
+            save_env_value, load_config, save_config = (
+                config_mod.save_env_value,
+                config_mod.load_config,
+                config_mod.save_config,
+            )
+            read_credential_pool, write_credential_pool = (
+                auth_mod.read_credential_pool,
+                auth_mod.write_credential_pool,
+            )
+
+            if provider_id == "custom":
+                name = str(body.get("name") or "").strip() or "Custom Endpoint"
+                base_url = str(body.get("baseUrl") or "").strip()
+                api_key = str(body.get("apiKey") or "").strip()
+                model = str(body.get("model") or "").strip()
+                if not base_url:
+                    self._error(400, "VALIDATION_ERROR", "baseUrl is required for custom provider")
+                    return
+                try:
+                    main_mod = _hermes_cli_module("main")
+                    main_mod._save_custom_provider(base_url, api_key=api_key, model=model, name=name)
+                    self._json(200, {"success": True, "data": {"message": f"Endpoint {name} berhasil disimpan."}})
+                except Exception as e:
+                    self._error(500, "INTERNAL_ERROR", str(e))
+                return
+
+            if provider_id == "copilot":
+                token = str(body.get("token") or body.get("apiKey") or "").strip()
+                if not token:
+                    self._error(400, "VALIDATION_ERROR", "Token diperlukan untuk GitHub Copilot")
+                    return
+                save_env_value("COPILOT_GITHUB_TOKEN", token)
+                os.environ["COPILOT_GITHUB_TOKEN"] = token
+                self._json(200, {"success": True, "data": {"message": "Kredensial GitHub Copilot berhasil disimpan."}})
+                return
+
+            if provider_id == "opencode-free":
+                self._json(200, {"success": True, "data": {"message": "OpenCode Free selalu aktif dan tidak memerlukan kunci API."}})
+                return
+
+            all_meta = _get_all_providers_meta()
+            meta = next((p for p in all_meta if p["id"] == provider_id), None)
+            if meta is None:
+                self._error(404, "NOT_FOUND", f"Provider {provider_id} tidak dikenal.")
+                return
+
+            api_key = str(body.get("apiKey") or body.get("token") or "").strip()
+            if not api_key:
+                self._error(400, "VALIDATION_ERROR", f"Kunci API untuk {meta['name']} tidak boleh kosong.")
+                return
+
+            env_var = meta.get("env_var") or f"{provider_id.upper()}_API_KEY"
+            save_env_value(env_var, api_key)
+            os.environ[env_var] = api_key
+
+            try:
+                pool = read_credential_pool()
+                if provider_id in pool:
+                    pool[provider_id] = [it for it in pool[provider_id] if it.get("last_status") != "exhausted"]
+                    write_credential_pool(pool)
+            except Exception:
+                pass
+
+            self._json(200, {"success": True, "data": {"message": f"Kunci API untuk {meta['name']} berhasil disimpan."}})
+        except Exception as e:
+            logger.exception("wangsa_mobile: failed to save provider auth")
+            self._error(500, "INTERNAL_ERROR", str(e))
+
+    def _handle_auth_provider_delete(self, provider_id: str) -> None:
+        try:
+            config_mod = _hermes_cli_module("config")
+            auth_mod = _hermes_cli_module("auth")
+            save_env_value, load_config, save_config = (
+                config_mod.save_env_value,
+                config_mod.load_config,
+                config_mod.save_config,
+            )
+            read_credential_pool, write_credential_pool = (
+                auth_mod.read_credential_pool,
+                auth_mod.write_credential_pool,
+            )
+
+            if provider_id == "custom":
+                cfg = load_config()
+                cfg["custom_providers"] = []
+                save_config(cfg)
+                self._json(200, {"success": True, "data": {"message": "Custom provider dibersihkan."}})
+                return
+
+            if provider_id == "opencode-free":
+                self._json(200, {"success": True, "data": {"message": "OpenCode Free adalah layanan bawaan."}})
+                return
+
+            all_meta = _get_all_providers_meta()
+            meta = next((p for p in all_meta if p["id"] == provider_id), None)
+            env_vars = [meta["env_var"]] if (meta and meta.get("env_var")) else [f"{provider_id.upper().replace('-', '_')}_API_KEY"]
+            for ev in env_vars:
+                try:
+                    save_env_value(ev, "")
+                    os.environ.pop(ev, None)
+                except Exception:
+                    pass
+
+            try:
+                pool = read_credential_pool()
+                if provider_id in pool:
+                    pool.pop(provider_id, None)
+                    write_credential_pool(pool)
+            except Exception:
+                pass
+
+            self._json(200, {"success": True, "data": {"message": f"Kredensial {provider_id} berhasil dihapus."}})
+        except Exception as e:
+            logger.exception("wangsa_mobile: failed to delete provider auth")
+            self._error(500, "INTERNAL_ERROR", str(e))
+
+    def _handle_copilot_device_code(self) -> None:
+        try:
+            import urllib.request, urllib.parse
+            COPILOT_OAUTH_CLIENT_ID = _hermes_cli_module("copilot_auth").COPILOT_OAUTH_CLIENT_ID
+            data = urllib.parse.urlencode({
+                "client_id": COPILOT_OAUTH_CLIENT_ID,
+                "scope": "read:user",
+            }).encode()
+            req = urllib.request.Request(
+                "https://github.com/login/device/code",
+                data=data,
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "HermesAgent/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                device_data = json.loads(resp.read().decode())
+            self._json(200, {"success": True, "data": device_data})
+        except Exception as e:
+            logger.exception("wangsa_mobile: copilot device code failed")
+            self._error(502, "UPSTREAM_ERROR", f"Gagal memulai otorisasi GitHub: {e}")
+
+    def _handle_copilot_poll(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            body = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self._error(400, "VALIDATION_ERROR", "invalid JSON")
+            return
+        device_code = str(body.get("device_code") or "").strip()
+        if not device_code:
+            self._error(400, "VALIDATION_ERROR", "device_code is required")
+            return
+
+        try:
+            import urllib.request, urllib.parse
+            COPILOT_OAUTH_CLIENT_ID = _hermes_cli_module("copilot_auth").COPILOT_OAUTH_CLIENT_ID
+            save_env_value = _hermes_cli_module("config").save_env_value
+
+            poll_data = urllib.parse.urlencode({
+                "client_id": COPILOT_OAUTH_CLIENT_ID,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            }).encode()
+            poll_req = urllib.request.Request(
+                "https://github.com/login/oauth/access_token",
+                data=poll_data,
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "HermesAgent/1.0",
+                },
+            )
+            with urllib.request.urlopen(poll_req, timeout=10) as resp:
+                result = json.loads(resp.read().decode())
+
+            if result.get("access_token"):
+                token = result["access_token"]
+                save_env_value("COPILOT_GITHUB_TOKEN", token)
+                os.environ["COPILOT_GITHUB_TOKEN"] = token
+                self._json(200, {
+                    "success": True,
+                    "data": {
+                        "status": "authorized",
+                        "message": "GitHub Copilot berhasil diotorisasi!",
+                    },
+                })
+                return
+
+            err = result.get("error", "authorization_pending")
+            self._json(200, {"success": True, "data": {"status": err, "interval": result.get("interval")}})
+        except Exception as e:
+            logger.exception("wangsa_mobile: copilot poll failed")
+            self._error(502, "UPSTREAM_ERROR", f"Poll request failed: {e}")
 
     def do_POST(self):  # noqa: N802
         adapter = self.adapter
         path = self.path.split("?", 1)[0]
+        if path.startswith("/api/v1/auth/providers/"):
+            provider_id = path[len("/api/v1/auth/providers/") :].strip("/")
+            self._handle_auth_provider_save(provider_id)
+            return
+        if path == "/api/v1/auth/copilot/device-code":
+            self._handle_copilot_device_code()
+            return
+        if path == "/api/v1/auth/copilot/poll":
+            self._handle_copilot_poll()
+            return
         m = _AGENT_ID_RE.match(path)
         if not m or (m.group(2) or "") not in ("/messages", "/messages/stream"):
             self._json(
@@ -608,6 +1081,29 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+        # Local device profile (name + short preferences the user filled in
+        # on the app's Profile screen — see ProfilePage/UserProfileController
+        # on the Flutter side). Both optional; absent/blank means "no
+        # profile set", not an error. Folded into the session's pinned
+        # "Current Session Context" block (SessionSource.user_name/user_bio)
+        # rather than the system prompt directly, so an edited profile busts
+        # the prompt cache exactly once (same class of event as a rename or
+        # topic edit) instead of on every turn.
+        raw_user_name = body.get("userName", None)
+        raw_user_bio = body.get("userBio", None)
+        user_name: Optional[str] = None
+        user_bio: Optional[str] = None
+        if raw_user_name is not None:
+            if not isinstance(raw_user_name, str):
+                self._error(400, "VALIDATION_ERROR", "userName must be a string")
+                return
+            user_name = raw_user_name.strip()[:_MAX_USER_NAME_LEN] or None
+        if raw_user_bio is not None:
+            if not isinstance(raw_user_bio, str):
+                self._error(400, "VALIDATION_ERROR", "userBio must be a string")
+                return
+            user_bio = raw_user_bio.strip()[:_MAX_USER_BIO_LEN] or None
+
         try:
             media_urls, media_types = _decode_request_images(body)
         except ValueError as e:
@@ -628,11 +1124,16 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         effective_session_id = session_id or uuid.uuid4().hex
         thread_id = f"mobile:{agent_id}:{effective_session_id or 'anon'}"
 
-        if model is not None:
-            err = adapter._apply_model_override(thread_id, model, provider)
+        if model is not None and str(model).strip():
+            err = adapter._apply_model_override(thread_id, str(model).strip(), provider)
             if err:
                 self._error(400, "VALIDATION_ERROR", err)
                 return
+        else:
+            try:
+                adapter._clear_model_override(thread_id)
+            except Exception:
+                logger.debug("wangsa_mobile: failed to clear model override", exc_info=True)
 
         state, reply = adapter._dispatch_and_wait(
             agent_id,
@@ -640,6 +1141,8 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             message,
             media_urls=media_urls,
             media_types=media_types,
+            user_name=user_name,
+            user_bio=user_bio,
         )
         reply_text = reply.get("text", "") if isinstance(reply, dict) else (reply or "")
         reply_images = reply.get("images") if isinstance(reply, dict) else None
@@ -796,6 +1299,84 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         with self._pending_lock:
             removed = self._mobile_sessions.pop(session_id, None)
             return removed is not None
+
+    def _get_session_messages(self, agent_id: str, session_id: str) -> list:
+        """Load the persisted transcript for a mobile session as
+        ``[{"role": "user"|"agent", "content": "..."}, ...]``.
+
+        ``_mobile_sessions`` only ever held a lightweight title/last-message
+        summary for the drawer list — it was never the transcript, so
+        switching to a past session in the app showed an empty chat even
+        though the server-side conversation was intact and the app kept
+        replying into it. The real transcript lives in the gateway's
+        SessionDB under the same ``mobile:{agent_id}:{session_id}`` routing
+        key every other handler here uses (``_dispatch_and_wait``,
+        ``_apply_model_override``) — resolve that key the same way, then
+        read the messages back. Returns ``[]`` (never raises/404s) on any
+        resolution failure — a session the client already knows about from
+        ``GET /sessions`` must not look like it vanished just because
+        history couldn't be read back.
+        """
+        try:
+            from gateway.run import _gateway_runner_ref
+
+            runner = _gateway_runner_ref()
+        except Exception:
+            runner = None
+        if runner is None:
+            return []
+
+        chat_id = f"mobile:{agent_id}:{session_id}"
+        try:
+            source = self.build_source(
+                chat_id=chat_id,
+                chat_name=f"wangsa-mobile:{agent_id}",
+                chat_type="dm",
+                user_id=chat_id,
+                user_name="mobile",
+            )
+            try:
+                session_key = runner._session_key_for_source(source)
+            except Exception:
+                from gateway.session import build_session_key
+
+                session_key = build_session_key(source)
+
+            store = getattr(runner, "session_store", None)
+            if store is None:
+                return []
+            db_session_id = store.peek_session_id(session_key)
+            if not db_session_id:
+                return []
+
+            db = store._db
+            if db is None:
+                return []
+            rows = db.get_messages_as_conversation(db_session_id)
+        except Exception:
+            logger.debug(
+                "wangsa_mobile: failed to load session history for %s", session_id, exc_info=True
+            )
+            return []
+
+        turns = []
+        for row in rows:
+            role = row.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            content = row.get("content")
+            if isinstance(content, list):
+                text = "\n".join(
+                    str(part.get("text") or "")
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                ).strip()
+            else:
+                text = str(content or "").strip()
+            if not text:
+                continue
+            turns.append({"role": "user" if role == "user" else "agent", "content": text})
+        return turns
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -1001,6 +1582,50 @@ class WangsaMobileAdapter(BasePlatformAdapter):
 
     # ── Dispatch ──────────────────────────────────────────────────────────
 
+    def _clear_model_override(self, chat_id: str) -> None:
+        """Clear per-session model override and evict cached agent."""
+        try:
+            from gateway.run import _gateway_runner_ref
+
+            runner = _gateway_runner_ref()
+        except Exception:
+            runner = None
+        if runner is None:
+            return
+        try:
+            source = self.build_source(
+                chat_id=chat_id,
+                chat_name="wangsa-mobile:model-override",
+                chat_type="dm",
+                user_id=chat_id,
+                user_name="mobile",
+            )
+            try:
+                session_key = runner._session_key_for_source(source)
+            except Exception:
+                from gateway.session import build_session_key
+
+                session_key = build_session_key(source)
+            if hasattr(runner, "_session_model_overrides") and isinstance(runner._session_model_overrides, dict):
+                runner._session_model_overrides.pop(session_key, None)
+                runner._session_model_overrides.pop(chat_id, None)
+            try:
+                if hasattr(runner, "_session_state"):
+                    s = runner._session_state(session_key)
+                    if s and hasattr(s, "conversation") and hasattr(s.conversation, "model_override"):
+                        s.conversation.model_override = None
+            except Exception:
+                pass
+            try:
+                if hasattr(runner, "_session_store") and runner._session_store:
+                    runner._session_store.clear_model_override(session_key)
+            except Exception:
+                pass
+            if hasattr(runner, "_evict_cached_agent"):
+                runner._evict_cached_agent(session_key)
+        except Exception:
+            logger.debug("wangsa_mobile: _clear_model_override failed", exc_info=True)
+
     def _apply_model_override(
         self,
         chat_id: str,
@@ -1018,14 +1643,21 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         """
         target_provider: Optional[str] = provider
         try:
-            from wangsa_cli.inventory import build_models_payload, load_picker_context
+            try:
+                from hermes_cli.inventory import build_models_payload, load_picker_context
+            except ImportError:
+                from wangsa_cli.inventory import build_models_payload, load_picker_context
 
-            payload = build_models_payload(load_picker_context())
+            try:
+                payload = build_models_payload(load_picker_context(), include_unconfigured=True)
+            except TypeError:
+                payload = build_models_payload(load_picker_context())
         except Exception:
             logger.debug("wangsa_mobile: model catalog unavailable", exc_info=True)
             return "could not validate model"
         rows = [r for r in (payload.get("providers") or []) if isinstance(r, dict)]
         current_provider = str(payload.get("provider") or "")
+        current_model = str(payload.get("model") or "")
         if provider:
             row = next(
                 (
@@ -1056,6 +1688,40 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             if target_provider is None:
                 return f"unknown model '{model}'"
 
+        override: Dict[str, Any] = {"model": model}
+        if target_provider:
+            override["provider"] = target_provider
+
+        try:
+            try:
+                from hermes_cli.model_switch import switch_model
+            except ImportError:
+                try:
+                    from wangsa_cli.model_switch import switch_model
+                except ImportError:
+                    switch_model = None
+
+            if switch_model is not None:
+                res = switch_model(
+                    model,
+                    current_provider=current_provider,
+                    current_model=current_model,
+                    explicit_provider=target_provider,
+                )
+                if res.success:
+                    if res.new_model:
+                        override["model"] = res.new_model
+                    if res.target_provider:
+                        override["provider"] = res.target_provider
+                    if res.api_key:
+                        override["api_key"] = res.api_key
+                    if res.base_url:
+                        override["base_url"] = res.base_url
+                    if res.api_mode:
+                        override["api_mode"] = res.api_mode
+        except Exception:
+            logger.debug("wangsa_mobile: switch_model resolution failed", exc_info=True)
+
         try:
             from gateway.run import _gateway_runner_ref
 
@@ -1078,12 +1744,15 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                 from gateway.session import build_session_key
 
                 session_key = build_session_key(source)
-            override: Dict[str, str] = {"model": model}
-            if target_provider:
-                override["provider"] = target_provider
-            runner._session_state(session_key).conversation.model_override = dict(
-                override
-            )
+
+            if not hasattr(runner, "_session_model_overrides"):
+                runner._session_model_overrides = {}
+            runner._session_model_overrides[session_key] = dict(override)
+
+            sess_state = runner._session_state(session_key)
+            if sess_state and hasattr(sess_state, "conversation"):
+                sess_state.conversation.model_override = dict(override)
+
             try:
                 store = getattr(runner, "session_store", None)
                 if store is not None:
@@ -1112,6 +1781,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         message: str,
         media_urls: Optional[list] = None,
         media_types: Optional[list] = None,
+        user_name: Optional[str] = None,
+        user_bio: Optional[str] = None,
     ) -> tuple:
         """Runs on an HTTP worker thread. Returns (state, payload_dict)."""
         if self._loop is None or self._message_handler is None:
@@ -1134,7 +1805,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                 chat_name=f"wangsa-mobile:{agent_id}",
                 chat_type="dm",
                 user_id=chat_id,
-                user_name="mobile",
+                user_name=user_name or "mobile",
+                user_bio=user_bio,
             ),
             message_id=message_id,
             media_urls=list(media_urls or []),

@@ -23,7 +23,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Hermes</title>
+<title>Wangsa</title>
 <style>
   :root {
     --background: #ffffff;
@@ -107,8 +107,8 @@
   <div class="wrap">
     <div id="loader" role="status" aria-label="Updating"></div>
     <div id="glyph"></div>
-    <h2 id="title">Updating Hermes</h2>
-    <p id="line">Hermes will open once done.</p>
+    <h2 id="title">Updating Wangsa</h2>
+    <p id="line">Wangsa will open once done.</p>
   </div>
 <script>
   /* ── Fourier Flow loader, ported verbatim from loader.tsx ─────────────── */
@@ -226,15 +226,15 @@
     } else if (state.status === 'done') {
       settle('done')
       glyphEl.textContent = '\u2713'
-      lineEl.textContent = 'Opening Hermes\u2026'
+      lineEl.textContent = 'Opening Wangsa\u2026'
     } else if (state.status === 'manual') {
-      // Update landed but Hermes will NOT reopen itself (package skew,
+      // Update landed but Wangsa will NOT reopen itself (package skew,
       // sandbox helper, launch rejected). The orchestrator leaves this
       // window up; the message says what to do.
       settle('done')
       glyphEl.textContent = '\u2713'
       titleEl.textContent = 'Update complete'
-      lineEl.textContent = state.message || 'Reopen Hermes to finish.'
+      lineEl.textContent = state.message || 'Reopen Wangsa to finish.'
     } else if (state.status === 'error') {
       settle('error')
       glyphEl.textContent = '\u2715'

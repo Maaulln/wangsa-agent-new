@@ -1,4 +1,4 @@
-"""Pydantic request/response models for the Hermes dashboard web server.
+"""Pydantic request/response models for the Wangsa dashboard web server.
 
 Extracted verbatim from ``wangsa_cli/web_server.py`` (pure schema move).
 ``web_server`` re-exports every name here, so existing imports like

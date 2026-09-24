@@ -5,7 +5,7 @@ Plugin Guard — Security scanner for externally-installed plugins.
 Inspired by Claude Cowork's skill & plugin security scanning (announced
 2026-08-06: third-party skills and plugins are automatically checked for
 malicious content when someone uploads or edits them, returning pass /
-warn / fail). Hermes already scans hub-installed *skills* via
+warn / fail). Wangsa already scans hub-installed *skills* via
 ``tools/skills_guard.py``; this module extends the same static-analysis
 engine to ``hermes plugins install`` and ``hermes plugins update``, which
 previously cloned and executed arbitrary Git repositories unscanned.

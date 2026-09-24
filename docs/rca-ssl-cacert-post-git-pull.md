@@ -9,7 +9,7 @@ A partial `hermes update`, interrupted venv repair, or stale CA-bundle environme
 
 ## Root cause
 
-Hermes uses OpenAI/httpx and requests-based clients for provider calls, model metadata, gateway delivery, and web tools. Those clients inherit CA bundle settings from:
+Wangsa uses OpenAI/httpx and requests-based clients for provider calls, model metadata, gateway delivery, and web tools. Those clients inherit CA bundle settings from:
 
 - `HERMES_CA_BUNDLE`
 - `SSL_CERT_FILE`
@@ -17,7 +17,7 @@ Hermes uses OpenAI/httpx and requests-based clients for provider calls, model me
 - `CURL_CA_BUNDLE`
 - the bundled `certifi` package's `cacert.pem`
 
-When the venv is partially refreshed, or when one of those env vars points at a file that no longer exists, provider client construction can fail before Hermes has enough context to produce a useful message.
+When the venv is partially refreshed, or when one of those env vars points at a file that no longer exists, provider client construction can fail before Wangsa has enough context to produce a useful message.
 
 ## Fix
 
@@ -41,13 +41,13 @@ Repair: python -m pip install --force-reinstall certifi openai httpx
 If you configured a custom corporate CA bundle, fix or unset the broken CA bundle environment variable.
 ```
 
-For a normal corrupted Hermes venv, reinstall the affected client dependencies:
+For a normal corrupted Wangsa venv, reinstall the affected client dependencies:
 
 ```bash
 python -m pip install --force-reinstall certifi openai httpx
 ```
 
-For a custom/corporate CA setup, fix the env var so it points at a real PEM bundle, or unset it if Hermes should use the bundled `certifi` store.
+For a custom/corporate CA setup, fix the env var so it points at a real PEM bundle, or unset it if Wangsa should use the bundled `certifi` store.
 
 ## Environment escape hatch
 

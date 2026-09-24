@@ -31,7 +31,7 @@ def setup_mcp_tool(
     """Ask the desktop GUI to run an MCP setup flow; return its JSON outcome."""
     if callback is None:
         return tool_error(
-            "setup_mcp is only available in the Hermes desktop app. Use the "
+            "setup_mcp is only available in the Wangsa desktop app. Use the "
             "terminal instead: `hermes mcp install <name>` for catalog entries, "
             "`hermes mcp login <name>` for OAuth."
         )
@@ -75,7 +75,7 @@ SETUP_MCP_SCHEMA = {
     "name": "setup_mcp",
     "description": (
         "Propose an MCP server to the user as an inline consent card in the "
-        "Hermes desktop chat. The card lets them install a catalog entry, "
+        "Wangsa desktop chat. The card lets them install a catalog entry, "
         "re-enable a disabled server, or run an OAuth login — right there, "
         "without opening the Capabilities tab — and blocks until they act or "
         "decline. Use when the user asks to add/set up an MCP (e.g. \"add the "

@@ -530,7 +530,7 @@ def to_agent_visible_cache_path(
 
     Per-backend base (mirrors ``_agent_cache_base_for_env`` in
     tools/image_generation_tool.py, the proven heuristics for where each
-    backend's Hermes cache lands):
+    backend's Wangsa cache lands):
 
     * docker / modal — bind-mounted (docker) or per-file-synced (modal) at
       ``/root/.hermes`` (the *container_base* default).

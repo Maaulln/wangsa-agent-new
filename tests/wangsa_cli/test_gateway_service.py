@@ -1631,7 +1631,7 @@ class TestLegacyHermesUnitDetection:
 
     # Minimal ExecStart that looks like our gateway
     _OUR_UNIT_TEXT = (
-        "[Unit]\nDescription=Hermes Gateway\n[Service]\n"
+        "[Unit]\nDescription=Wangsa Gateway\n[Service]\n"
         "ExecStart=/usr/bin/python -m wangsa_cli.main gateway run --replace\n"
     )
 
@@ -1686,7 +1686,7 @@ class TestLegacyHermesUnitDetection:
             name = "hermes.service" if i == 0 else "hermes.service"  # same name
             # Test each variant fresh
             (user_dir / "hermes.service").write_text(
-                f"[Unit]\nDescription=Old Hermes\n[Service]\n{execstart}\n",
+                f"[Unit]\nDescription=Old Wangsa\n[Service]\n{execstart}\n",
                 encoding="utf-8",
             )
             results = gateway_cli._find_legacy_hermes_units()
@@ -1710,7 +1710,7 @@ class TestRemoveLegacyHermesUnits:
     """Tests for remove_legacy_hermes_units (the migration action)."""
 
     _OUR_UNIT_TEXT = (
-        "[Unit]\nDescription=Hermes Gateway\n[Service]\n"
+        "[Unit]\nDescription=Wangsa Gateway\n[Service]\n"
         "ExecStart=/usr/bin/python -m wangsa_cli.main gateway run --replace\n"
     )
 

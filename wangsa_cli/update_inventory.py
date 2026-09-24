@@ -1,6 +1,6 @@
 """Runtime inventory + update plan for the fleet-update pipeline (#91277 Phase 2).
 
-One read-only pass that answers, BEFORE any mutation: what Hermes runtimes
+One read-only pass that answers, BEFORE any mutation: what Wangsa runtimes
 are running on this machine, how is each one deployed, which of them will
 this update touch, and how will each be restarted?
 
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RuntimeRecord:
-    """One running (or expected) Hermes runtime on this machine."""
+    """One running (or expected) Wangsa runtime on this machine."""
 
     kind: str                     # gateway | dashboard | serve
     profile: str                  # profile name ("default", ...)
@@ -311,7 +311,7 @@ def print_update_plan(plan: UpdatePlan) -> None:
     profiles = ", ".join(plan.profiles) if plan.profiles else "(none found)"
     print(f"  Profiles: {profiles}")
     if not plan.runtimes:
-        print("  Running Hermes services: none detected — code swap only.")
+        print("  Running Wangsa services: none detected — code swap only.")
         return
     print(f"  Running services to restart ({len(plan.runtimes)}):")
     for runtime in plan.runtimes:

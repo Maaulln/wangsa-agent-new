@@ -134,7 +134,7 @@ class TestEnginesAreSatisfiable:
     def test_managed_node_bundles_an_npm_the_engines_accept(self):
         """The Node major install.sh fetches must ship an npm that clears
         engines.npm. Node 22 bundles 11.16.0, which is in the excluded
-        11.10–11.16 band — fresh Hermes-managed installs then die at
+        11.10–11.16 band — fresh Wangsa-managed installs then die at
         `npm ci` with EBADENGINE (#80769).
         """
         npm_range = _root_manifest()["engines"]["npm"]
@@ -153,7 +153,7 @@ class TestEnginesAreSatisfiable:
         assert _satisfies_range(stock_npm, npm_range), (
             f"install.sh provisions Node {managed_major}.x (stock npm "
             f"{stock_npm}), but engines.npm is {npm_range!r}. A fresh "
-            "Hermes-managed install cannot run npm ci."
+            "Wangsa-managed install cannot run npm ci."
         )
 
     def test_desktop_node_floor_is_not_stricter_than_its_toolchain(self):

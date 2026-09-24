@@ -19,7 +19,7 @@ closes and ``Invoke-HermesStep`` blocks for the life of the gateway.
 Everything the hand-off owes the Desktop is downstream of that call:
 ``.hermes-update-result.json`` is never written, ``.hermes-update-in-progress``
 is never cleared, and the Desktop is never relaunched -- so the app sits on
-"Updating Hermes" until the user kills the gateway by hand, and the stale marker
+"Updating Wangsa" until the user kills the gateway by hand, and the stale marker
 then refuses the next update too.
 
 **Trickling toward EOF.** The fix reads in chunks so an abandoned pipe still
@@ -116,7 +116,7 @@ def test_pipe_drain_survives_a_leak_without_metering_a_chatty_step(
     assert "PIPE-DRAIN SELF-TEST: PASS" in result.stdout, (
         "The Windows update hand-off's step drain regressed: it either waited "
         "on a descendant holding the pipe open (the Desktop parks on 'Updating "
-        "Hermes' forever) or metered a chatty step (backpressure on the running "
+        "Wangsa' forever) or metered a chatty step (backpressure on the running "
         f"update). Fixture diagnosis follows.\n--- stdout ---\n{result.stdout}\n"
         f"--- stderr ---\n{result.stderr}"
     )

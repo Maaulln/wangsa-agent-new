@@ -1152,7 +1152,7 @@ class ShellFileOperations(FileOperations):
         form (``/c/Users/x``) so bash builtins resolve them. But native
         Windows binaries invoked from that bash (ripgrep installed via
         winget/cargo/choco, native git, etc.) do not understand ``/c/...``
-        paths — and Hermes disables MSYS argument conversion for its bash
+        paths — and Wangsa disables MSYS argument conversion for its bash
         subprocesses (``MSYS_NO_PATHCONV=1`` / ``MSYS2_ARG_CONV_EXCL=*``,
         see ``_apply_windows_msys_bash_env_defaults``), so nothing ever
         translates the MSYS form back. The native tool then fails with
@@ -3160,7 +3160,7 @@ class ShellFileOperations(FileOperations):
         cmd_parts.append(self._escape_shell_arg(pattern))
         # rg is a native Windows binary when installed via winget/cargo/choco:
         # it needs the C:/... path form, not the MSYS /c/... form (which
-        # nothing converts back — Hermes sets MSYS_NO_PATHCONV for its bash).
+        # nothing converts back — Wangsa sets MSYS_NO_PATHCONV for its bash).
         cmd_parts.append(self._escape_native_tool_arg(path))
         
         # Fetch extra rows so we can report the true total before slicing.

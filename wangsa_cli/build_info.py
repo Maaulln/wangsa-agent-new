@@ -1,5 +1,5 @@
 """
-Baked-in build metadata for Hermes Agent.
+Baked-in build metadata for Wangsa Agent.
 
 Source installs report their git revision live via ``git rev-parse`` (see
 ``wangsa_cli/dump.py`` and ``wangsa_cli/banner.py``).  That doesn't work inside

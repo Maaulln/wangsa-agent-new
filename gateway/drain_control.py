@@ -25,7 +25,7 @@ Contract (presence-based, mirroring ``.restart_notify.json``):
     marker from a *prior* instantiation) means "not draining" (revert to
     ``running`` if we had flipped it).
 
-Why the epoch (NS-570). ``HERMES_HOME`` is a **durable** store — on Hermes
+Why the epoch (NS-570). ``HERMES_HOME`` is a **durable** store — on Wangsa
 Cloud it is a persistent Fly volume (``/opt/data``). A begin-drain marker
 written there *survives a machine restart*. But the disruptive lifecycle
 actions a drain protects (auto-update / image migrate / env edit / profile
@@ -303,7 +303,7 @@ def drain_requested(*, home: Optional[Path] = None) -> bool:
 
     A marker whose ``epoch`` does not match the current instantiation epoch is
     treated as absent: it survived a container/VM restart (HERMES_HOME is a
-    durable Fly volume on Hermes Cloud) and the lifecycle action that triggered
+    durable Fly volume on Wangsa Cloud) and the lifecycle action that triggered
     the drain has already completed — honouring it would wedge the
     freshly-restarted gateway in ``draining`` (NS-570). A marker whose
     ``requested_at`` is older than :data:`DRAIN_REQUEST_MAX_AGE_SECONDS` is

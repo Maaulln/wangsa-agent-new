@@ -54,8 +54,8 @@ test('mentionNameForms: slugged + collapsed, reserved tokens dropped', () => {
 
   assert.deepEqual(JSON.parse(JSON.stringify(mentionNameForms('Research Buddy'))), ['research-buddy', 'researchbuddy'])
   assert.deepEqual(JSON.parse(JSON.stringify(mentionNameForms('Ops'))), ['ops'])
-  // A bot renamed "Hermes" or "everyone" cannot hijack reserved tags.
-  assert.equal(mentionNameForms('Hermes').length, 0)
+  // A bot renamed "Wangsa" or "everyone" cannot hijack reserved tags.
+  assert.equal(mentionNameForms('Wangsa').length, 0)
   assert.equal(mentionNameForms('@everyone').length, 0)
   assert.equal(mentionNameForms('').length, 0)
 })

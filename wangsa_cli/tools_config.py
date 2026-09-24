@@ -1,5 +1,5 @@
 """
-Unified tool configuration for Hermes Agent.
+Unified tool configuration for Wangsa Agent.
 
 `hermes tools` and `hermes setup tools` both enter this module.
 Select a platform → toggle toolsets on/off → for newly enabled tools
@@ -574,7 +574,7 @@ TOOL_CATEGORIES = {
         "name": "X (Twitter) Search",
         "setup_title": "Select xAI Credential Source",
         "setup_note": (
-            "Hermes routes X searches through xAI's built-in x_search "
+            "Wangsa routes X searches through xAI's built-in x_search "
             "Responses tool for read-only public X discovery. Use the xurl "
             "skill for authenticated X API reads and account actions. Both "
             "credential sources hit the same "
@@ -795,7 +795,7 @@ def _resolved_cua_driver_cmd() -> Optional[str]:
 
 
 def _cua_driver_env() -> dict:
-    """cua-driver child env with the Hermes telemetry policy applied.
+    """cua-driver child env with the Wangsa telemetry policy applied.
 
     Delegates to ``cua_backend.cua_driver_child_env`` (telemetry disabled by
     default; user opt-in via ``computer_use.cua_telemetry``). Falls back to the
@@ -814,7 +814,7 @@ _CUA_DRIVER_CONTRACT_CACHE: dict = {}
 
 
 def _cua_driver_contract_status(binary: Optional[str] = None) -> dict:
-    """Inspect whether an installed driver supports Hermes' runtime contract."""
+    """Inspect whether an installed driver supports Wangsa' runtime contract."""
     import time
 
     from tools.computer_use.cua_backend import cua_driver_runtime_contract_status
@@ -879,7 +879,7 @@ def _pip_install(
     uv_env = {**os.environ, "VIRTUAL_ENV": str(venv_root)}
 
     # Managed uv first: $HERMES_HOME/bin is never on PATH, so a bare which()
-    # misses the uv Hermes installed and prefers a system one when both exist.
+    # misses the uv Wangsa installed and prefers a system one when both exist.
     # ensure_uv() rather than a pure lookup because this runs during setup,
     # where installing uv is in scope — and tier 2 is a pip that the Windows
     # installer's `uv venv` does not seed, so failing to find uv here is the
@@ -1072,9 +1072,9 @@ def install_cua_driver(
         # baked in by CD and errors cleanly on missing-arch assets.
         return _run_cua_driver_installer(label="Installing")
 
-    # An installed driver that fails Hermes' runtime contract (version floor,
+    # An installed driver that fails Wangsa' runtime contract (version floor,
     # missing manifest verbs) is repaired regardless of the caller's mode.
-    # Hermes' own minimum requirement IS the confirmation that an upgrade is
+    # Wangsa' own minimum requirement IS the confirmation that an upgrade is
     # needed, so the ``upgrade=True`` path must not defer to the driver's
     # ``check-update`` verb here — a cached/indeterminate "no update" answer
     # would otherwise pin users on an unusable driver forever (observed:
@@ -1115,7 +1115,7 @@ def install_cua_driver(
         version = contract.get("version") or "unknown version"
         reason = contract.get("reason") or "required runtime features are missing"
         _print_warning(
-            f"    Found cua-driver {version}, but Hermes cannot use its current "
+            f"    Found cua-driver {version}, but Wangsa cannot use its current "
             f"runtime contract: {reason}."
         )
         if os.environ.get("HERMES_CUA_DRIVER_CMD", "").strip():
@@ -1731,7 +1731,7 @@ def _run_cua_driver_installer(
                     _print_info("    IMPORTANT — grant macOS permissions now:")
                     _print_info("      System Settings > Privacy & Security > Accessibility")
                     _print_info("      System Settings > Privacy & Security > Screen Recording")
-                    _print_info("    Both must allow the terminal / Hermes process.")
+                    _print_info("    Both must allow the terminal / Wangsa process.")
             return True
         _print_warning(f"    cua-driver {label.lower()} did not complete. Re-run manually:")
         _print_info(f"      {manual_hint}")
@@ -1773,9 +1773,9 @@ def _ensure_browser_use_cli(*, verbose_hints: bool = False) -> None:
     remain the final fallback.
 
     MANAGED-FIRST: a browser-use on the user's PATH does NOT satisfy this
-    check — only the Hermes-managed ``$HERMES_HOME/bin`` copy does.
+    check — only the Wangsa-managed ``$HERMES_HOME/bin`` copy does.
     ``install_cli()`` short-circuits on the managed copy and otherwise
-    provisions it, so resolution always lands on a binary Hermes installs
+    provisions it, so resolution always lands on a binary Wangsa installs
     and updates rather than a user-level side install.
     """
     _print_info("    Ensuring browser-use CLI (managed install)...")
@@ -1809,7 +1809,7 @@ def _run_post_setup(post_setup_key: str):
         # explicit "Browser Use" picker row.
         _ensure_browser_use_cli()
         # agent-browser is no longer a root package.json dependency (#43564)
-        # — it resolves lazily via npx (or a global/Hermes-managed install)
+        # — it resolves lazily via npx (or a global/Wangsa-managed install)
         # instead of a local `npm install`, so there's no node_modules/
         # population step here anymore.
         try:
@@ -1828,8 +1828,8 @@ def _run_post_setup(post_setup_key: str):
             return
 
         # Reuse the same resolution cascade browser tools use at runtime
-        # (PATH -> Homebrew/Hermes-managed node -> npx) rather than a bare
-        # shutil.which — Hermes-managed-Node-only setups resolve agent-browser
+        # (PATH -> Homebrew/Wangsa-managed node -> npx) rather than a bare
+        # shutil.which — Wangsa-managed-Node-only setups resolve agent-browser
         # / npx only through the extended fallback path, which a bare
         # shutil.which("npx") lookup misses.
         try:
@@ -1868,12 +1868,12 @@ def _run_post_setup(post_setup_key: str):
             return
 
         # browser_cmd was already resolved above (same PATH -> Homebrew ->
-        # Hermes-managed-node -> npx cascade _find_agent_browser uses at
+        # Wangsa-managed-node -> npx cascade _find_agent_browser uses at
         # runtime), so this can't diverge from what actually gets invoked.
         if _is_npx_agent_browser_sentinel(browser_cmd):
             # Re-resolve via the same PATH + extended-PATH cascade
             # _find_agent_browser used, rather than a bare shutil.which("npx")
-            # — Hermes-managed-Node-only setups resolve npx only through the
+            # — Wangsa-managed-Node-only setups resolve npx only through the
             # extended fallback path, and a bare lookup here would silently
             # diverge and hand subprocess.run a None argument.
             npx_bin = _resolve_npx_bin()
@@ -2097,7 +2097,7 @@ def _run_post_setup(post_setup_key: str):
         except Exception as exc:
             _print_warning(f"    Could not enable plugin automatically: {exc}")
             _print_info("    Run manually: hermes plugins enable observability/langfuse")
-        _print_info("    Restart Hermes for tracing to take effect.")
+        _print_info("    Restart Wangsa for tracing to take effect.")
         _print_info("    Verify: hermes plugins list")
 
     elif post_setup_key == "xai_grok":
@@ -5381,7 +5381,7 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
                 print(color("    (none enabled)", Colors.DIM))
         print()
         return
-    print(color("⚕ Hermes Tool Configuration", Colors.CYAN, Colors.BOLD))
+    print(color("⚕ Wangsa Tool Configuration", Colors.CYAN, Colors.BOLD))
     print(color("  Enable or disable tools per platform.", Colors.DIM))
     print(color("  Tools that need API keys will be configured when enabled.", Colors.DIM))
     print(color("  Guide: https://hermes-agent.nousresearch.com/docs/user-guide/features/tools", Colors.DIM))

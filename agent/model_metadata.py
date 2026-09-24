@@ -407,7 +407,7 @@ def _warn_context_length_fallback(model: str, base_url: str) -> None:
         model, base_url or "default", f"{DEFAULT_FALLBACK_CONTEXT:,}",
     )
 
-# Minimum context length required to run Hermes Agent.  Models with fewer
+# Minimum context length required to run Wangsa Agent.  Models with fewer
 # tokens cannot maintain enough working memory for tool-calling workflows.
 # Sessions, model switches, and cron jobs should reject models below this.
 MINIMUM_CONTEXT_LENGTH = 64_000
@@ -524,7 +524,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     "glm-5.3": 1_048_576,
     "glm": 202752,
     # xAI Grok — xAI /v1/models does not return context_length metadata,
-    # so these hardcoded fallbacks prevent Hermes from probing-down to
+    # so these hardcoded fallbacks prevent Wangsa from probing-down to
     # the default 128k when the user points at https://api.x.ai/v1
     # via a custom provider. Values sourced from models.dev (2026-04).
     # Keys use substring matching (longest-first), so e.g. "grok-4.20"
@@ -739,7 +739,7 @@ _URL_TO_PROVIDER: Dict[str, str] = {
     "models.github.ai": "copilot",
     # GitHub Models free tier (Azure-hosted prototyping endpoint) — same
     # canonical provider as the Copilot API.  Hard per-request token cap
-    # (often 8K) makes it unusable for Hermes' system prompt, but mapping
+    # (often 8K) makes it unusable for Wangsa' system prompt, but mapping
     # it here lets us recognize the endpoint and emit a targeted hint
     # instead of falling through the unknown-custom-endpoint path.
     "models.inference.ai.azure.com": "copilot",
@@ -863,7 +863,7 @@ def _maybe_cache_local_context_length(
     base_url: str,
     length: int,
 ) -> None:
-    """Persist a locally probed context length only when it meets Hermes minimum.
+    """Persist a locally probed context length only when it meets Wangsa minimum.
 
     Sub-minimum live windows (e.g. vLLM ``--max-model-len 32768``) are still
     returned to callers so ``agent_init`` can fail with the existing
@@ -2317,7 +2317,7 @@ def _query_local_context_length_uncached(model: str, base_url: str, api_key: str
                     # the *runtime* context Ollama will actually allocate KV cache
                     # for. The GGUF model_info.context_length is the training max,
                     # which can be larger than num_ctx — using it here would let
-                    # Hermes grow conversations past the runtime limit and Ollama
+                    # Wangsa grow conversations past the runtime limit and Ollama
                     # would silently truncate. Matches query_ollama_num_ctx().
                     params = data.get("parameters", "")
                     if "num_ctx" in params:
@@ -2511,7 +2511,7 @@ _CODEX_OAUTH_CONTEXT_FALLBACK: Dict[str, int] = {
 # explicit ``-900k`` picker variants (e.g. ``gpt-5.6-sol-900k``) — the base
 # slugs keep the advertised 272K so the cheaper limit is the default. A
 # week of the 900K default burned through subscription usage for people
-# who never asked for it. The variant suffix is a Hermes-side alias: it is
+# who never asked for it. The variant suffix is a Wangsa-side alias: it is
 # stripped before the model id hits the wire (see
 # ``strip_codex_context_variant_suffix`` callers in agent/transports/codex.py
 # and agent/auxiliary_client.py).
@@ -2536,7 +2536,7 @@ _CODEX_OAUTH_VERIFIED_ABOVE_ADVERTISED_EXACT: Dict[str, int] = {
 # The advertised value the verified-above table is allowed to override.
 _CODEX_OAUTH_STALE_ADVERTISED_CTX = 272_000
 
-# Hermes-side picker suffix that opts a Codex slug into the live-verified
+# Wangsa-side picker suffix that opts a Codex slug into the live-verified
 # large window. Never sent on the wire.
 CODEX_CONTEXT_VARIANT_SUFFIX = "-900k"
 
@@ -2603,7 +2603,7 @@ def is_codex_context_variant(model: Optional[str]) -> bool:
 def strip_codex_context_variant_suffix(model: Optional[str]) -> str:
     """Return the wire-safe slug with a VALID ``-900k`` suffix removed.
 
-    The suffix is a Hermes picker alias (``gpt-5.6-sol-900k``); the Codex
+    The suffix is a Wangsa picker alias (``gpt-5.6-sol-900k``); the Codex
     backend only knows the base slug. Stripping is conditional on base
     eligibility: an ineligible alias like ``gpt-5.5-900k`` is returned
     unchanged so it fails honestly at the API instead of silently running
@@ -2796,7 +2796,7 @@ def _resolve_codex_oauth_context_length_with_source(
             return bumped, source
         return ctx, source
 
-    # ``-900k`` variants are Hermes picker aliases — the Codex catalog only
+    # ``-900k`` variants are Wangsa picker aliases — the Codex catalog only
     # knows the base slug, so resolve against the stripped id. Also drop any
     # ``vendor/`` namespace (``openai/gpt-5.6-sol-900k``): the main-agent
     # path normalizes it away before reaching here, but display/auxiliary
@@ -3417,7 +3417,7 @@ def get_model_context_length(
                 return or_ctx
 
     # 7. Query local server before hardcoded defaults — model names like
-    # ``Hermes-3-Llama-3.1-70B`` substring-match ``llama`` (131072) even when
+    # ``Llama-3.1-70B`` substring-match ``llama`` (131072) even when
     # vLLM is running at a lower ``--max-model-len`` (e.g. 32768 on limited VRAM).
     if base_url and is_local_endpoint(base_url):
         local_ctx = _query_local_context_length(model, base_url, api_key=api_key)
@@ -3739,7 +3739,7 @@ def estimate_request_tokens_rough(
 ) -> int:
     """Rough token estimate for a full chat-completions request.
 
-    Includes the major payload buckets Hermes sends to providers:
+    Includes the major payload buckets Wangsa sends to providers:
     system prompt, conversation messages, and tool schemas.  With 50+
     tools enabled, schemas alone can add 20-30K tokens — a significant
     blind spot when only counting messages. Image content is counted

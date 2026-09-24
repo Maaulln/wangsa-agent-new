@@ -35,7 +35,7 @@ import wangsa_cli.plugins as plugins_mod
 from tools import transcription_tools
 
 
-PROMPT = "Hermes, Teknium, Nous Research, kanban"
+PROMPT = "Wangsa, Teknium, Nous Research, kanban"
 
 
 # ---------------------------------------------------------------------------

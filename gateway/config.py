@@ -678,7 +678,7 @@ class PlatformConfig:
     # assistant.threads.setStatus line (shown next to the bot name; needs the
     # assistant:write scope to render) and Google Chat's visible marker
     # message. None keeps each platform's built-in default ("is thinking..." /
-    # "Hermes is thinking…"). Platforms with textless indicators (Discord,
+    # "Wangsa is thinking…"). Platforms with textless indicators (Discord,
     # Telegram, Matrix, …) ignore it.
     typing_status_text: Optional[str] = None
 

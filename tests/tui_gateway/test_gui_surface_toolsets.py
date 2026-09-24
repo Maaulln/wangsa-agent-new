@@ -1,11 +1,11 @@
 """GUI capability follows the SESSION's client, not the backend's process env.
 
 The desktop app is a client. It can drive a backend that Electron spawned
-locally, one reached over SSH, one behind a plain URL+token, or Hermes Cloud —
+locally, one reached over SSH, one behind a plain URL+token, or Wangsa Cloud —
 and only the first two run with ``HERMES_DESKTOP=1`` in their environment.
 Gating the pane/browser/reaction tools on that env var therefore stripped every
 one of them from URL and cloud gateways, while the same backend still told the
-model "You are chatting inside the Hermes desktop app".
+model "You are chatting inside the Wangsa desktop app".
 
 These tests pin the contract that replaced it: eligibility is resolved from the
 session's own ``source`` (``session.create``'s ``source: 'desktop'``), so the

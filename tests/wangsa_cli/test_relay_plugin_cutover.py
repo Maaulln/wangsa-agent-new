@@ -1,4 +1,4 @@
-"""Regression tests for migration from the removed Hermes Relay plugin."""
+"""Regression tests for migration from the removed Wangsa Relay plugin."""
 
 from __future__ import annotations
 

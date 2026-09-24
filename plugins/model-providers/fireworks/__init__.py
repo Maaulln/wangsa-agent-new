@@ -24,12 +24,12 @@ fireworks = ProviderProfile(
     base_url="https://api.fireworks.ai/inference/v1",
     auth_type="api_key",
     # Attribution headers sent on every Fireworks request. Values match the
-    # canonical Hermes set in agent/auxiliary_client.py. Applied through the
+    # canonical Wangsa set in agent/auxiliary_client.py. Applied through the
     # generic profile.default_headers path, so they survive switch_model and
     # credential rotation.
     default_headers={
         "HTTP-Referer": "https://hermes-agent.nousresearch.com",
-        "X-Title": "Hermes Agent",
+        "X-Title": "Wangsa Agent",
         "User-Agent": f"HermesAgent/{_HERMES_VERSION}",
     },
     # Auxiliary model for cheap tasks (compaction, title generation, vision).

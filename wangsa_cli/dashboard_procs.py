@@ -43,7 +43,7 @@ def _scan_dashboard_processes(
     the kill path because we can't know their original launch args.
 
     *exclude_pids* is an optional set of PIDs that must never be returned.
-    This is used by the Hermes Desktop Electron app to protect its own
+    This is used by the Wangsa Desktop Electron app to protect its own
     backend child process: when the desktop spawns ``hermes serve`` as
     a backend and triggers an auto-update, the update must not kill the
     backend that the desktop itself manages.  The desktop sets the
@@ -169,7 +169,7 @@ def _hermes_home_for_pid(pid: int) -> str | None:
 def _is_ephemeral_port_zero_backend(argv: list[str]) -> bool:
     """True for Desktop-style ``serve|dashboard --port 0`` backends (#78821).
 
-    Ephemeral-port backends are owned by Hermes Desktop (or become PPID-1
+    Ephemeral-port backends are owned by Wangsa Desktop (or become PPID-1
     orphans after a prior update respawn).  Replaying them after
     ``hermes update`` multiplies listening backends because ``--port 0``
     always binds a fresh free port.  Covers both ``serve`` and the legacy
@@ -332,7 +332,7 @@ def _kill_stale_dashboard_processes(
     if restart_managed and _m()._restart_managed_dashboard_service(reason):
         return {"matched": [], "killed": [], "failed": []}
 
-    # When the Hermes Desktop Electron app spawns this dashboard as a
+    # When the Wangsa Desktop Electron app spawns this dashboard as a
     # backend child, it sets HERMES_DESKTOP_CHILD_PID so that the update
     # path can skip killing the desktop-managed process.  (#37532)
     exclude: set[int] | None = None
@@ -527,7 +527,7 @@ def _detect_concurrent_hermes_instances(
 
     Windows blocks DELETE/REPLACE on a running .exe — and even RENAME on the
     same .exe when another process opened it without ``FILE_SHARE_DELETE``.
-    The Hermes Desktop Electron app spawns ``hermes.EXE`` as a backend child,
+    The Wangsa Desktop Electron app spawns ``hermes.EXE`` as a backend child,
     so during ``hermes update`` the user-invoked process and the desktop's
     child both hold the same file. The quarantine rename then fails with
     ``[WinError 32]`` and uv inherits the lock.
@@ -577,7 +577,7 @@ def _detect_concurrent_hermes_instances(
     #      across session/elevation boundaries), leaving the launcher shim in
     #      the candidate set and re-triggering the false positive.
     #   2. Only exclude ancestors whose exe is itself a shim. A genuine second
-    #      hermes.exe sitting *under* a non-Hermes parent (e.g. a Hermes
+    #      hermes.exe sitting *under* a non-Wangsa parent (e.g. a Wangsa
     #      Desktop backend child) must still be flagged, so we don't blanket-
     #      exclude unrelated ancestors like the shell or terminal.
     # Broad ``except Exception`` guards against partially-stubbed psutil in
@@ -731,7 +731,7 @@ _HEX16 = _HEX32
 
 
 def _hermes_home_dir() -> Path:
-    """Resolved Hermes home (HERMES_HOME override or ~/.hermes)."""
+    """Resolved Wangsa home (HERMES_HOME override or ~/.hermes)."""
     override = os.environ.get("HERMES_HOME", "").strip()
     if override:
         return Path(override).expanduser()

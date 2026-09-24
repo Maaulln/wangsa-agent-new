@@ -103,7 +103,7 @@ def test_progress_advances_while_the_orchestrator_blocks(tmp_path: Path) -> None
 
         # The URL prints BEFORE the orchestrator publishes its held stage —
         # sampling immediately races the publish and can catch the page's
-        # boot default instead ('Hermes will open once done.' ==
+        # boot default instead ('Wangsa will open once done.' ==
         # 'Testing quiet update', PR #90358 first run). Wait for the held
         # stage to actually land, THEN start the stability window.
         held_stage = "Testing quiet update"

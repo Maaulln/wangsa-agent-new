@@ -162,7 +162,7 @@ _EXTERNAL_PREFIX = "_external/"
 
 
 class BackupInProgressError(RuntimeError):
-    """Raised when another process already owns the Hermes backup slot."""
+    """Raised when another process already owns the Wangsa backup slot."""
 
 
 class _SQLiteSnapshotError(RuntimeError):
@@ -196,7 +196,7 @@ def _backup_operation_lock(hermes_home: Path, timeout_seconds: float = 0.25):
                     break
                 except (OSError, PermissionError):
                     if time.monotonic() >= deadline:
-                        raise BackupInProgressError("another Hermes backup is already running")
+                        raise BackupInProgressError("another Wangsa backup is already running")
                     time.sleep(0.05)
         else:
             import fcntl
@@ -208,7 +208,7 @@ def _backup_operation_lock(hermes_home: Path, timeout_seconds: float = 0.25):
                     break
                 except (BlockingIOError, OSError):
                     if time.monotonic() >= deadline:
-                        raise BackupInProgressError("another Hermes backup is already running")
+                        raise BackupInProgressError("another Wangsa backup is already running")
                     time.sleep(0.05)
 
         yield
@@ -640,11 +640,11 @@ def copy_db_and_verify(src: Path, dst: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 def run_backup(args) -> None:
-    """Create a zip backup of the Hermes home directory."""
+    """Create a zip backup of the Wangsa home directory."""
     hermes_root = get_default_hermes_root()
 
     if not hermes_root.is_dir():
-        print(f"Error: Hermes home directory not found at {hermes_root}")
+        print(f"Error: Wangsa home directory not found at {hermes_root}")
         sys.exit(1)
 
     try:
@@ -868,7 +868,7 @@ def _run_backup_locked(args, hermes_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _validate_backup_zip(zf: zipfile.ZipFile) -> tuple[bool, str]:
-    """Check that a zip looks like a Hermes backup.
+    """Check that a zip looks like a Wangsa backup.
 
     Returns (ok, reason).
     """
@@ -887,7 +887,7 @@ def _validate_backup_zip(zf: zipfile.ZipFile) -> tuple[bool, str]:
 
     if not found:
         return False, (
-            "zip does not appear to be a Hermes backup "
+            "zip does not appear to be a Wangsa backup "
             "(no config.yaml, .env, or state databases found)"
         )
 
@@ -999,7 +999,7 @@ def _extract_member_atomically(
         # Carrying the elevated bits across would let archive-controlled bytes
         # take over an existing setuid/setgid file, so ``hermes import`` would
         # hand whoever produced the zip the identity that file runs as.  Nothing
-        # constrains that to Hermes' own state either: the ``_external/`` branch
+        # constrains that to Wangsa' own state either: the ``_external/`` branch
         # of ``run_import`` publishes members anywhere under ``$HOME``.  The
         # sticky bit is kept — it is inert on a regular file.
         mode &= ~(stat.S_ISUID | stat.S_ISGID)
@@ -1043,7 +1043,7 @@ def _extract_member_atomically(
 
 
 def run_import(args) -> None:
-    """Restore a Hermes backup from a zip file."""
+    """Restore a Wangsa backup from a zip file."""
     zip_path = Path(args.zipfile).expanduser().resolve()
 
     if not zip_path.is_file():
@@ -1079,7 +1079,7 @@ def run_import(args) -> None:
 
         if (has_config or has_env) and not args.force:
             print()
-            print("Warning: Target directory already has Hermes configuration.")
+            print("Warning: Target directory already has Wangsa configuration.")
             print("Importing will overwrite existing files with backup contents.")
             print()
             try:
@@ -1276,7 +1276,7 @@ def run_import(args) -> None:
             print("\nStart the gateway to activate cron jobs and messaging:")
             print("  hermes gateway install")
 
-        print("Done. Your Hermes configuration has been restored.")
+        print("Done. Your Wangsa configuration has been restored.")
 
 
 # ---------------------------------------------------------------------------
@@ -1739,7 +1739,7 @@ def restore_cron_jobs_if_emptied(
     Args:
         snapshot_id: The pre-update quick-snapshot id (from
             :func:`create_quick_snapshot`).
-        hermes_home: Override for the Hermes home directory (tests).
+        hermes_home: Override for the Wangsa home directory (tests).
 
     Returns:
         ``None`` when no action was taken (the common, healthy path). On a

@@ -1,18 +1,18 @@
 ---
 sidebar_position: 16
-title: "Manage Hermes Cloud with MCP"
-description: "Connect Hermes Agent to the Nous Portal MCP server so your local agent can list, start, stop, and manage your Hermes Cloud instances conversationally"
+title: "Manage Wangsa Cloud with MCP"
+description: "Connect Wangsa Agent to the Nous Portal MCP server so your local agent can list, start, stop, and manage your Wangsa Cloud instances conversationally"
 ---
 
-# Manage Hermes Cloud with MCP
+# Manage Wangsa Cloud with MCP
 
-[Hermes Cloud](https://portal.nousresearch.com/cloud) runs hosted Hermes Agent instances for you. Normally you manage them from the `/agents` page in the [Nous Portal](/integrations/nous-portal). This guide connects your **local** Hermes Agent to the Portal's MCP server so you can manage those cloud instances by just asking — "list my cloud agents", "restart the stopped one", "what's it costing me" — without leaving your terminal.
+[Wangsa Cloud](https://portal.nousresearch.com/cloud) runs hosted Wangsa Agent instances for you. Normally you manage them from the `/agents` page in the [Nous Portal](/integrations/nous-portal). This guide connects your **local** Wangsa Agent to the Portal's MCP server so you can manage those cloud instances by just asking — "list my cloud agents", "restart the stopped one", "what's it costing me" — without leaving your terminal.
 
-It's a standard [MCP](/user-guide/features/mcp) server hosted by Nous Research, gated by the same OAuth login you already use for the Portal. Once connected, Hermes gets two tools it can call on your behalf.
+It's a standard [MCP](/user-guide/features/mcp) server hosted by Nous Research, gated by the same OAuth login you already use for the Portal. Once connected, Wangsa gets two tools it can call on your behalf.
 
 ## What you can do with it
 
-Once connected, the model can call these on your Hermes Cloud org:
+Once connected, the model can call these on your Wangsa Cloud org:
 
 | Ask for… | Under the hood |
 |----------|----------------|
@@ -28,7 +28,7 @@ Every call runs against **your** org with your Portal identity, and membership i
 
 ## Prerequisites
 
-- A [Nous Portal](/integrations/nous-portal) account with [Hermes Cloud](https://portal.nousresearch.com/cloud) access (at least one instance, or the ability to create one).
+- A [Nous Portal](/integrations/nous-portal) account with [Wangsa Cloud](https://portal.nousresearch.com/cloud) access (at least one instance, or the ability to create one).
 - MCP support installed. If you used the standard install script it's already there; otherwise:
 
   ```bash
@@ -44,7 +44,7 @@ You do **not** need a separate API key or client secret — the server uses OAut
 hermes mcp add --url https://portal.nousresearch.com/mcp --auth oauth hermes-cloud
 ```
 
-`--auth oauth` tells Hermes this is an OAuth-protected HTTP server. On first connect Hermes:
+`--auth oauth` tells Wangsa this is an OAuth-protected HTTP server. On first connect Wangsa:
 
 1. Discovers the server's OAuth endpoints automatically (RFC 9728 / 8414 metadata).
 2. Registers itself as a client (RFC 7591 Dynamic Client Registration) — no secret to copy.
@@ -76,7 +76,7 @@ hermes chat
 Ask a read-only question to confirm the tools are live:
 
 ```text
-List my Hermes Cloud agents and their current status.
+List my Wangsa Cloud agents and their current status.
 ```
 
 You should get back the same instances you see on the Portal's `/agents` page.
@@ -96,10 +96,10 @@ Restart the instance called research-bot.
 ```
 
 ```text
-Create a new Hermes Cloud instance named scratch, then tell me when it's ready.
+Create a new Wangsa Cloud instance named scratch, then tell me when it's ready.
 ```
 
-Hermes reports what each tool returned — the instance list, the new status, the created instance's details — so you can confirm the action landed.
+Wangsa reports what each tool returned — the instance list, the new status, the created instance's details — so you can confirm the action landed.
 
 ## Configuration
 
@@ -127,13 +127,13 @@ mcp_servers:
       include: [agents]
 ```
 
-Run `/reload-mcp` after changing the config. See [Use MCP with Hermes](/guides/use-mcp-with-hermes) for the full filtering model (`include`/`exclude`, `prompts`, `resources`).
+Run `/reload-mcp` after changing the config. See [Use MCP with Wangsa](/guides/use-mcp-with-hermes) for the full filtering model (`include`/`exclude`, `prompts`, `resources`).
 
 ## Troubleshooting
 
 ### The browser shows an org picker and I'm not sure which to choose
 
-You belong to multiple Portal organizations. Pick the org whose Hermes Cloud instances you want to manage from this connection. If you're unsure, it's the org that owns the instances you see on the Portal `/agents` page. You can re-choose later by removing and re-adding the server.
+You belong to multiple Portal organizations. Pick the org whose Wangsa Cloud instances you want to manage from this connection. If you're unsure, it's the org that owns the instances you see on the Portal `/agents` page. You can re-choose later by removing and re-adding the server.
 
 ### "invalid_client" or "unknown client" on connect
 
@@ -165,12 +165,12 @@ OAuth tokens refresh automatically, but if the Portal invalidates your session (
 
 ### Headless / SSH / remote host
 
-The OAuth browser callback runs on the machine where Hermes is running. On a remote host, forward the loopback port over SSH — the same pattern as any other OAuth login. See [OAuth over SSH / Remote Hosts](/guides/oauth-over-ssh).
+The OAuth browser callback runs on the machine where Wangsa is running. On a remote host, forward the loopback port over SSH — the same pattern as any other OAuth login. See [OAuth over SSH / Remote Hosts](/guides/oauth-over-ssh).
 
 ## See also
 
 - **[Nous Portal](/integrations/nous-portal)** — the subscription, models, and Tool Gateway behind the same login
-- **[Use MCP with Hermes](/guides/use-mcp-with-hermes)** — connecting and filtering MCP servers in general
-- **[MCP feature overview](/user-guide/features/mcp)** — what MCP is and how Hermes uses it
+- **[Use MCP with Wangsa](/guides/use-mcp-with-hermes)** — connecting and filtering MCP servers in general
+- **[MCP feature overview](/user-guide/features/mcp)** — what MCP is and how Wangsa uses it
 - **[MCP configuration reference](/reference/mcp-config-reference)** — every `mcp_servers` field, including `auth: oauth`
 - **[OAuth over SSH](/guides/oauth-over-ssh)** — logging in from remote or browser-only environments

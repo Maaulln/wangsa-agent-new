@@ -93,7 +93,7 @@ def get_env_value(name: str, default=None):
 
 
 def hermes_xai_user_agent() -> str:
-    """Return a stable Hermes-specific User-Agent for xAI HTTP calls."""
+    """Return a stable Wangsa-specific User-Agent for xAI HTTP calls."""
     try:
         from wangsa_cli import __version__
     except Exception:
@@ -105,14 +105,14 @@ def hermes_xai_default_headers() -> Dict[str, str]:
     """Default headers for OpenAI-SDK and raw HTTP clients talking to xAI.
 
     Replaces the OpenAI Python SDK's identifying ``User-Agent: OpenAI/Python …``
-    so chat/completions and Responses traffic is attributed as Hermes Agent,
+    so chat/completions and Responses traffic is attributed as Wangsa Agent,
     matching the direct HTTP integrations (search, TTS, STT, image, video).
     """
     return {"User-Agent": hermes_xai_user_agent()}
 
 
 def _load_config_section(section_name: str) -> Dict[str, Any]:
-    """Return a top-level Hermes config section as a dict, or empty."""
+    """Return a top-level Wangsa config section as a dict, or empty."""
     try:
         from wangsa_cli.config import load_config
 
@@ -236,7 +236,7 @@ def xai_storage_notice_text(section_name: str) -> str:
 
 
 def maybe_mark_xai_storage_notice_seen(section_name: str) -> Optional[str]:
-    """Return the storage notice once per Hermes home, then mark it seen."""
+    """Return the storage notice once per Wangsa home, then mark it seen."""
     notice = xai_storage_notice_text(section_name)
     if not notice:
         return None
@@ -301,9 +301,9 @@ def resolve_xai_http_credentials(
 ) -> Dict[str, str]:
     """Resolve bearer credentials for direct xAI HTTP endpoints.
 
-    Prefers Hermes-managed xAI OAuth credentials when available, then falls back
+    Prefers Wangsa-managed xAI OAuth credentials when available, then falls back
     to ``XAI_API_KEY`` resolved via ``wangsa_cli.config.get_env_value`` so keys
-    stored in ``~/.hermes/.env`` (the standard Hermes location) are honored —
+    stored in ``~/.hermes/.env`` (the standard Wangsa location) are honored —
     not just ones already exported into ``os.environ``. This keeps direct xAI
     endpoints (images, TTS, STT, etc.) aligned with the main runtime auth model
     and preserves the regression contract from PR #17140 / #17163.

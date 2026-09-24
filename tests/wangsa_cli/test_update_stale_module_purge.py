@@ -10,7 +10,7 @@ aborted, and the running gateway kept serving pre-update code.
 
 The old mitigation (_UPDATE_RUNTIME_RELOAD_MODULES) reloaded 3 hardcoded
 modules — re-fixed per symptom. The purge evicts EVERY cached module under
-the Hermes package prefixes so later imports rebuild a self-consistent
+the Wangsa package prefixes so later imports rebuild a self-consistent
 module graph from the updated checkout.
 """
 
@@ -29,7 +29,7 @@ from wangsa_cli import update_cmd
 def _restore_sys_modules():
     """Snapshot & restore sys.modules around each test.
 
-    The purge under test evicts real Hermes modules from the cache; later
+    The purge under test evicts real Wangsa modules from the cache; later
     tests in the same process may hold references to the evicted module
     objects (e.g. `patch.object` targets), so put the originals back.
     """

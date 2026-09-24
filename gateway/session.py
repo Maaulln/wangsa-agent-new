@@ -161,6 +161,11 @@ class SessionSource:
     chat_type: str = "dm"  # "dm", "group", "channel", "thread"
     user_id: Optional[str] = None
     user_name: Optional[str] = None
+    # Short free-text the user supplied about themselves (tone/language
+    # preference, how they'd like to be addressed, ...) — surfaced to the
+    # agent as a "User notes" line alongside user_name. Platforms that have
+    # no such per-user profile concept simply never set it (None = no line).
+    user_bio: Optional[str] = None
     thread_id: Optional[str] = None  # For forum topics, Discord threads, etc.
     chat_topic: Optional[str] = None  # Channel topic/description (Discord, Slack)
     user_id_alt: Optional[str] = None  # Platform-specific stable alt ID (Signal UUID, Feishu union_id)
@@ -261,6 +266,8 @@ class SessionSource:
             "thread_id": self.thread_id,
             "chat_topic": self.chat_topic,
         }
+        if self.user_bio:
+            d["user_bio"] = self.user_bio
         if self.user_id_alt:
             d["user_id_alt"] = self.user_id_alt
         if self.chat_id_alt:
@@ -296,6 +303,7 @@ class SessionSource:
             chat_type=data.get("chat_type", "dm"),
             user_id=data.get("user_id"),
             user_name=data.get("user_name"),
+            user_bio=data.get("user_bio"),
             thread_id=data.get("thread_id"),
             chat_topic=data.get("chat_topic"),
             user_id_alt=data.get("user_id_alt"),
@@ -583,15 +591,24 @@ def build_session_context_prompt(
             f"**Session type:** {session_label} — messages are prefixed "
             "with [sender name]. Multiple users may participate."
         )
-    elif context.source.user_name:
-        lines.append(
-            f"**User:** {_format_untrusted_prompt_value(context.source.user_name)}"
-        )
-    elif context.source.user_id:
-        uid = context.source.user_id
-        if redact_pii:
-            uid = _hash_sender_id(uid)
-        lines.append(f"**User ID:** {_format_untrusted_prompt_value(uid)}")
+    else:
+        if context.source.user_name:
+            lines.append(
+                f"**User:** {_format_untrusted_prompt_value(context.source.user_name)}"
+            )
+        elif context.source.user_id:
+            uid = context.source.user_id
+            if redact_pii:
+                uid = _hash_sender_id(uid)
+            lines.append(f"**User ID:** {_format_untrusted_prompt_value(uid)}")
+        # Short user-supplied bio/preferences (tone, language, how to be
+        # addressed, ...). Same reasoning as user_name for skipping this in
+        # shared multi-user sessions: it would pin one device's profile onto
+        # a conversation multiple people share.
+        if context.source.user_bio:
+            lines.append(
+                f"**User notes:** {_format_untrusted_prompt_value(context.source.user_bio)}"
+            )
 
     # Platform-specific behavioral notes
     if context.source.platform == Platform.SLACK:
@@ -1037,7 +1054,7 @@ def build_channel_continuity_note(
 
     where = "thread" if source.thread_id else "channel"
     return (
-        f"[System note: This {where} had an earlier Hermes session "
+        f"[System note: This {where} had an earlier Wangsa session "
         f"(session_id: {prev}) that was auto-reset. If the user refers to "
         f"earlier work here, or the request depends on this {where}'s history, "
         f"use the session_search tool to recall that prior session before "

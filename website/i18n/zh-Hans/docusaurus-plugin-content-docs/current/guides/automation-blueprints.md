@@ -6,7 +6,7 @@ description: "开箱即用的自动化蓝图——定时任务、GitHub 事件�
 
 # 自动化蓝图
 
-常见自动化模式的复制粘贴蓝图。每个蓝图使用 Hermes 内置的 [cron 调度器](/user-guide/features/cron) 实现基于时间的触发，使用 [webhook 平台](/user-guide/messaging/webhooks) 实现事件驱动触发。
+常见自动化模式的复制粘贴蓝图。每个蓝图使用 Wangsa 内置的 [cron 调度器](/user-guide/features/cron) 实现基于时间的触发，使用 [webhook 平台](/user-guide/messaging/webhooks) 实现事件驱动触发。
 
 所有蓝图适用于**任意模型**——不绑定单一提供商。
 
@@ -336,7 +336,7 @@ Keep each item to 1-2 sentences. Include links. Total under 600 words." \
 
 ```bash
 hermes cron create "0 8 * * *" \
-  "Search arXiv for the 3 most interesting papers on 'language model reasoning' OR 'tool-use agents' from the past day. For each paper, create an Obsidian note with the title, authors, abstract summary, key contribution, and potential relevance to Hermes Agent development." \
+  "Search arXiv for the 3 most interesting papers on 'language model reasoning' OR 'tool-use agents' from the past day. For each paper, create an Obsidian note with the title, authors, abstract summary, key contribution, and potential relevance to Wangsa Agent development." \
   --skill arxiv --skill obsidian \
   --name "Paper digest" \
   --deliver local

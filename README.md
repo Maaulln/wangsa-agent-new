@@ -256,4 +256,4 @@ scripts/run_tests.sh
 
 MIT — see [LICENSE](LICENSE).
 
-Based on [Hermes Agent](https://github.com/NousResearch/hermes-agent) by [Nous Research](https://nousresearch.com).
+Based on [Wangsa Agent](https://github.com/NousResearch/hermes-agent) by [Nous Research](https://nousresearch.com).

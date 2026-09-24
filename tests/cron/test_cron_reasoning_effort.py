@@ -4,7 +4,7 @@ A cron job may pin its own reasoning effort, independent of global config.
 Contract under test:
 
 - Job store (cron/jobs.py): the field is validated at the storage choke
-  point against the canonical Hermes effort grammar (parse_reasoning_effort
+  point against the canonical Wangsa effort grammar (parse_reasoning_effort
   in wangsa_constants — the SAME parser every other effort surface uses).
   Garbage never persists; absent field keeps the job record byte-identical
   to pre-feature behavior. Capability clamping (xhigh on a model that caps

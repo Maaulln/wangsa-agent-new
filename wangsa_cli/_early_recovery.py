@@ -298,7 +298,7 @@ def _find_uv_binary() -> str | None:
 
     uv-managed base interpreters carry an ``EXTERNALLY-MANAGED`` marker, so
     the stdlib ``pip`` fallback below refuses to touch them.  In that state
-    the only sanctioned installer is uv itself, which Hermes already vendors
+    the only sanctioned installer is uv itself, which Wangsa already vendors
     (``~/.hermes/bin/uv.exe``) or the user has on PATH.  Stdlib-only.
     """
     exe = "uv.exe" if sys.platform == "win32" else "uv"
