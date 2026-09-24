@@ -1,29 +1,25 @@
 part of 'chat_bloc.dart';
 
-enum ChatStatus { initial, loading, ready, notFound, failed }
+enum ChatStatus {
+  initial,
+  loading,
+  ready,
+  notFound,
+  failed,
+}
 
-enum TurnRole { user, agent }
+enum TurnRole {
+  user,
+  agent,
+}
 
 class Turn extends Equatable {
   final TurnRole role;
   final String content;
-
-  /// Jumlah gambar yang dikirim bersama giliran pengguna ini (0 bila
-  /// tidak ada). Dipakai gelembung pesan untuk menandai lampiran.
   final int imageCount;
-
-  /// Gambar yang dikirim Agent bersama giliran ini (kosong pada giliran
-  /// pengguna — lampiran pengguna hanya dihitung lewat [imageCount],
-  /// isinya tidak disimpan balik di state). Lihat [ReplyImage].
   final List<ReplyImage> images;
-
-  /// Dokumen/audio yang dikirim Agent bersama giliran ini. Lihat [ReplyFile].
   final List<ReplyFile> files;
-
-  /// Penalaran / pemikiran internal model (Thought/Chain of Thought).
   final String thought;
-
-  /// Riwayat pemanggilan alat (tool calls) oleh AI pada giliran ini.
   final List<ToolCallInfo> toolCalls;
 
   const Turn({
@@ -56,6 +52,15 @@ class ChatState extends Equatable {
   /// dimuat — bukan fatal, kirim tetap jalan dengan bawaan server).
   final List<String> models;
 
+  /// Seluruh provider dan daftar modelnya yang tersedia di server.
+  final List<ProviderOption> providers;
+
+  /// Provider yang sedang aktif di server (bawaan deployment).
+  final String? currentProvider;
+
+  /// Provider pilihan pengguna. Null berarti ikut [currentProvider].
+  final String? selectedProvider;
+
   /// Model yang sedang aktif di server untuk sesi ini.
   final String? currentModel;
 
@@ -71,6 +76,9 @@ class ChatState extends Equatable {
 
   final bool isLoadingSessions;
 
+  /// Sedang memuat transkrip sesi yang baru dipilih dari drawer.
+  final bool isLoadingHistory;
+
   const ChatState({
     this.status = ChatStatus.initial,
     this.agent,
@@ -78,12 +86,20 @@ class ChatState extends Equatable {
     this.isSending = false,
     this.errorMessage,
     this.models = const [],
+    this.providers = const [],
+    this.currentProvider,
+    this.selectedProvider,
     this.currentModel,
     this.selectedModel,
     this.sessionId,
     this.sessions = const [],
     this.isLoadingSessions = false,
+    this.isLoadingHistory = false,
   });
+
+  /// Provider yang dikirim ke server: pilihan pengguna bila ada,
+  /// kalau tidak provider aktif server.
+  String? get effectiveProvider => selectedProvider ?? currentProvider;
 
   /// Model yang benar-benar dikirim ke server: pilihan pengguna bila
   /// ada, kalau tidak model aktif server.
@@ -97,6 +113,10 @@ class ChatState extends Equatable {
     String? errorMessage,
     bool clearError = false,
     List<String>? models,
+    List<ProviderOption>? providers,
+    String? currentProvider,
+    String? selectedProvider,
+    bool clearSelectedProvider = false,
     String? currentModel,
     String? selectedModel,
     bool clearSelectedModel = false,
@@ -104,6 +124,7 @@ class ChatState extends Equatable {
     bool clearSessionId = false,
     List<SessionSummary>? sessions,
     bool? isLoadingSessions,
+    bool? isLoadingHistory,
   }) =>
       ChatState(
         status: status ?? this.status,
@@ -112,11 +133,16 @@ class ChatState extends Equatable {
         isSending: isSending ?? this.isSending,
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
         models: models ?? this.models,
+        providers: providers ?? this.providers,
+        currentProvider: currentProvider ?? this.currentProvider,
+        selectedProvider:
+            clearSelectedProvider ? null : (selectedProvider ?? this.selectedProvider),
         currentModel: currentModel ?? this.currentModel,
         selectedModel: clearSelectedModel ? null : (selectedModel ?? this.selectedModel),
         sessionId: clearSessionId ? null : (sessionId ?? this.sessionId),
         sessions: sessions ?? this.sessions,
         isLoadingSessions: isLoadingSessions ?? this.isLoadingSessions,
+        isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
       );
 
   @override
@@ -127,10 +153,14 @@ class ChatState extends Equatable {
         isSending,
         errorMessage,
         models,
+        providers,
+        currentProvider,
+        selectedProvider,
         currentModel,
         selectedModel,
         sessionId,
         sessions,
         isLoadingSessions,
+        isLoadingHistory,
       ];
 }

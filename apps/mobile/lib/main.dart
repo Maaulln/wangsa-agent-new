@@ -12,6 +12,7 @@ import 'chat/view/chat_page.dart';
 import 'config/app_config.dart';
 import 'config/config_loader.dart';
 import 'llm/llm_settings_controller.dart';
+import 'profile/user_profile_controller.dart';
 import 'theme/theme_controller.dart';
 import 'theme/wangsa_theme.dart';
 import 'voice/native_voice_input.dart';
@@ -41,9 +42,9 @@ String get configUrl {
 
 /// Dipakai bila berkas konfigurasi tidak terjangkau.
 ///
-/// v1 Hermes wangsa_mobile plugin: tidak ada config server terpisah lagi
+/// v1 Wangsa wangsa_mobile plugin: tidak ada config server terpisah lagi
 /// (dulu `http://localhost:5173/config.json`) — agen dijangkau langsung
-/// lewat plugin REST `wangsa_mobile` di gateway Hermes, default port 9901
+/// lewat plugin REST `wangsa_mobile` di gateway Wangsa, default port 9901
 /// (lihat WANGSA_MOBILE_PORT di plugins/platforms/wangsa_mobile).
 AppConfig get fallbackConfig {
   const envApiUrl = String.fromEnvironment('WANGSA_API_BASE_URL');
@@ -142,6 +143,7 @@ Future<void> main() async {
   unawaited(voiceInput.startWakeWordWatch());
   final themeController = await ThemeController.load();
   final llmSettings = await LlmSettingsController.load();
+  final userProfile = await UserProfileController.load();
 
   runApp(
     WangsaApp(
@@ -149,6 +151,7 @@ Future<void> main() async {
       voiceInput: voiceInput,
       themeController: themeController,
       llmSettings: llmSettings,
+      userProfile: userProfile,
     ),
   );
 }
@@ -158,6 +161,7 @@ class WangsaApp extends StatelessWidget {
   final VoiceInput voiceInput;
   final ThemeController themeController;
   final LlmSettingsController llmSettings;
+  final UserProfileController userProfile;
 
   const WangsaApp({
     super.key,
@@ -165,6 +169,7 @@ class WangsaApp extends StatelessWidget {
     required this.voiceInput,
     required this.themeController,
     required this.llmSettings,
+    required this.userProfile,
   });
 
   @override
@@ -183,6 +188,7 @@ class WangsaApp extends StatelessWidget {
       create: (_) => ChatBloc(
         apiClient: WangsaApiClient(baseUrl: config.apiBaseUrl),
         agentId: config.defaultAgentId,
+        userProfile: userProfile,
       )..add(const ChatOpened()),
       child: ChatPage(
         config: config,
@@ -190,6 +196,7 @@ class WangsaApp extends StatelessWidget {
         voiceInput: voiceInput,
         themeController: themeController,
         llmSettings: llmSettings,
+        userProfile: userProfile,
       ),
     );
 

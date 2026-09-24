@@ -1,9 +1,9 @@
 import { execSync } from 'child_process';
 
-// Adapted from wangsa/scripts/setup-adb.js: forwards the Hermes wangsa_mobile
+// Adapted from wangsa/scripts/setup-adb.js: forwards the Wangsa wangsa_mobile
 // plugin's port (default 9901) instead of the old wangsa web app's 3001/5173,
 // so a physical Android device reaching `localhost:9901` gets routed to the
-// Hermes gateway running on the host machine.
+// Wangsa gateway running on the host machine.
 const PORT = process.env.WANGSA_MOBILE_PORT || '9901';
 
 try {

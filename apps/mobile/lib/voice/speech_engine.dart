@@ -3,6 +3,7 @@
 /// `wake_word_engine.dart`.
 library;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -46,9 +47,13 @@ class DeviceSpeechEngine implements SpeechEngine {
   Future<bool> initialize() async {
     if (_initialized) return true;
     _initialized = await _speech.initialize(
-      onStatus: (_) {},
-      onError: (SpeechRecognitionError error) => _activeOnError?.call(error.errorMsg),
+      onStatus: (status) => debugPrint('[DeviceSpeechEngine] onStatus: $status'),
+      onError: (SpeechRecognitionError error) {
+        debugPrint('[DeviceSpeechEngine] onError: ${error.errorMsg} (permanent=${error.permanent})');
+        _activeOnError?.call(error.errorMsg);
+      },
     );
+    debugPrint('[DeviceSpeechEngine] initialize() result: $_initialized');
     return _initialized;
   }
 
@@ -63,14 +68,17 @@ class DeviceSpeechEngine implements SpeechEngine {
 
     final ready = _initialized || await initialize();
     if (!ready) {
+      debugPrint('[DeviceSpeechEngine] Speech recognition tidak tersedia/gagal inisialisasi.');
       onError('Pengenalan suara tidak tersedia di perangkat ini.');
       return;
     }
 
+    debugPrint('[DeviceSpeechEngine] Mulai mendengarkan ucapan pengguna...');
     await _speech.listen(
       // ignore: deprecated_member_use
       localeId: 'id_ID',
       onResult: (SpeechRecognitionResult result) {
+        debugPrint('[DeviceSpeechEngine] onResult (final=${result.finalResult}): "${result.recognizedWords}"');
         if (result.finalResult) {
           onFinal(result.recognizedWords);
         } else {
@@ -82,7 +90,10 @@ class DeviceSpeechEngine implements SpeechEngine {
   }
 
   @override
-  Future<void> cancel() => _speech.cancel();
+  Future<void> cancel() async {
+    debugPrint('[DeviceSpeechEngine] cancel() dipanggil');
+    await _speech.cancel();
+  }
 }
 
 typedef SpeechEngineFactory = SpeechEngine Function();

@@ -97,6 +97,29 @@ class WangsaApiClient {
     );
   }
 
+  /// Ambil transkrip tersimpan satu sesi lampau, dipakai saat pengguna
+  /// beralih sesi dari drawer supaya layar tidak tiba-tiba kosong padahal
+  /// percakapan di server masih ada.
+  Future<ApiResult<List<HistoryTurn>>> getSessionMessages(String agentId, String sessionId) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions/${Uri.encodeComponent(sessionId)}/messages',
+    );
+    return _send(
+      () => _httpClient.get(uri),
+      (json) {
+        final list = json['turns'];
+        if (list is List) {
+          return [
+            for (final item in list)
+              if (item is Map<String, dynamic>) HistoryTurn.fromJson(item),
+          ];
+        }
+        return <HistoryTurn>[];
+      },
+      requestTimeout,
+    );
+  }
+
   /// Hapus riwayat sesi di server.
   Future<ApiResult<bool>> deleteSession(String agentId, String sessionId) async {
     final uri = Uri.parse(
@@ -105,6 +128,87 @@ class WangsaApiClient {
     return _send(
       () => _httpClient.delete(uri),
       (json) => json['deleted'] as bool? ?? true,
+      requestTimeout,
+    );
+  }
+
+  /// Ambil daftar provider AI dan status autentikasinya dari server.
+  Future<ApiResult<List<AuthProviderItem>>> getAuthProviders() async {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/providers');
+    return _send(
+      () => _httpClient.get(uri),
+      (json) {
+        final list = json['providers'];
+        if (list is List) {
+          return [
+            for (final item in list)
+              if (item is Map<String, dynamic>) AuthProviderItem.fromJson(item),
+          ];
+        }
+        return <AuthProviderItem>[];
+      },
+      requestTimeout,
+    );
+  }
+
+  /// Simpan kredensial untuk provider AI tertentu di server.
+  Future<ApiResult<String>> saveProviderCredentials(
+    String providerId, {
+    String? apiKey,
+    String? token,
+    String? name,
+    String? baseUrl,
+    String? model,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/providers/${Uri.encodeComponent(providerId)}');
+    final body = jsonEncode({
+      'apiKey': ?apiKey,
+      'token': ?token,
+      'name': ?name,
+      'baseUrl': ?baseUrl,
+      'model': ?model,
+    });
+    return _send(
+      () => _httpClient.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      ),
+      (json) => json['message'] as String? ?? 'Berhasil disimpan',
+      requestTimeout,
+    );
+  }
+
+  /// Hapus kredensial provider AI dari server.
+  Future<ApiResult<String>> deleteProviderCredentials(String providerId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/providers/${Uri.encodeComponent(providerId)}');
+    return _send(
+      () => _httpClient.delete(uri),
+      (json) => json['message'] as String? ?? 'Berhasil dihapus',
+      requestTimeout,
+    );
+  }
+
+  /// Memulai OAuth Device Flow untuk GitHub Copilot.
+  Future<ApiResult<Map<String, dynamic>>> startCopilotDeviceCode() async {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/copilot/device-code');
+    return _send(
+      () => _httpClient.post(uri),
+      (json) => json,
+      requestTimeout,
+    );
+  }
+
+  /// Polling status GitHub Copilot Device Flow.
+  Future<ApiResult<Map<String, dynamic>>> pollCopilotDeviceCode(String deviceCode) async {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/copilot/poll');
+    return _send(
+      () => _httpClient.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'device_code': deviceCode}),
+      ),
+      (json) => json,
       requestTimeout,
     );
   }
@@ -126,13 +230,21 @@ class WangsaApiClient {
   /// Pemanggil wajib mengirim balik nilai itu pada pesan berikutnya di
   /// percakapan yang sama — tanpanya server memperlakukan setiap pesan
   /// sebagai percakapan baru.
+  ///
+  /// [userName] dan [userBio] berasal dari profil lokal pengguna (lihat
+  /// `UserProfileController`) — nama panggilan dan preferensi singkat
+  /// (gaya bicara, bahasa, dll.). Keduanya opsional; kosong berarti Agent
+  /// memakai identitas bawaan "mobile" seperti sebelum profil ada.
   Future<ApiResult<AgentReply>> sendMessage(
     String agentId,
     String message, {
     LlmOverride? llm,
     String? model,
+    String? provider,
     List<ChatImage>? images,
     String? sessionId,
+    String? userName,
+    String? userBio,
   }) {
     final lampiran = images ?? const <ChatImage>[];
     if (message.trim().isEmpty && lampiran.isEmpty) {
@@ -156,6 +268,7 @@ class WangsaApiClient {
       'message': message,
       if (llm != null) 'llm': llm.toJson(),
       if (model != null && model.trim().isNotEmpty) 'model': model.trim(),
+      if (provider != null && provider.trim().isNotEmpty) 'provider': provider.trim(),
       if (lampiran.isNotEmpty)
         'images': [
           for (final img in lampiran)
@@ -166,6 +279,8 @@ class WangsaApiClient {
             },
         ],
       if (sessionId != null && sessionId.isNotEmpty) 'sessionId': sessionId,
+      if (userName != null && userName.trim().isNotEmpty) 'userName': userName.trim(),
+      if (userBio != null && userBio.trim().isNotEmpty) 'userBio': userBio.trim(),
     };
     return _send(
       () => _httpClient.post(

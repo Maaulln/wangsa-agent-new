@@ -13,6 +13,7 @@ import 'package:wangsa_mobile/chat/view/message_bubble.dart';
 import 'package:wangsa_mobile/chat/view/widgets/voice_orb.dart';
 import 'package:wangsa_mobile/config/app_config.dart';
 import 'package:wangsa_mobile/llm/llm_settings_controller.dart';
+import 'package:wangsa_mobile/profile/user_profile_controller.dart';
 import 'package:wangsa_mobile/theme/theme_controller.dart';
 import 'package:wangsa_mobile/theme/wangsa_theme.dart';
 import 'package:wangsa_mobile/voice/voice_input.dart';
@@ -62,6 +63,7 @@ Widget _buildApp(
             voiceInput: voiceInput,
             themeController: ThemeController.withMode(ThemeMode.light),
             llmSettings: LlmSettingsController.fake(),
+            userProfile: UserProfileController.fake(),
           ),
         ),
       ),
@@ -505,6 +507,7 @@ void main() {
                 voiceInput: voiceInput,
                 themeController: ThemeController.withMode(ThemeMode.light),
                 llmSettings: LlmSettingsController.fake(),
+                userProfile: UserProfileController.fake(),
               ),
             ),
           ),
@@ -580,6 +583,7 @@ void main() {
                 voiceInput: voiceInput,
                 themeController: ThemeController.withMode(ThemeMode.light),
                 llmSettings: LlmSettingsController.fake(),
+                userProfile: UserProfileController.fake(),
                 pickImage: () async => gambar,
               ),
             ),

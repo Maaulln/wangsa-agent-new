@@ -75,6 +75,27 @@ class SessionSummary {
       );
 }
 
+/// Satu giliran bicara dari riwayat sesi lampau, dari
+/// `GET .../sessions/:sessionId/messages`.
+///
+/// Bentuknya sengaja jauh lebih sederhana daripada [AgentReply] — server
+/// membaca ini langsung dari transkrip tersimpan (bukan giliran baru yang
+/// baru dijawab Agent), jadi lampiran gambar/berkas/tool call giliran lama
+/// tidak diikutsertakan, hanya teksnya.
+class HistoryTurn {
+  final String role;
+  final String content;
+
+  const HistoryTurn({required this.role, required this.content});
+
+  bool get isUser => role == 'user';
+
+  factory HistoryTurn.fromJson(Map<String, dynamic> json) => HistoryTurn(
+        role: json['role'] as String? ?? 'agent',
+        content: json['content'] as String? ?? '',
+      );
+}
+
 /// Balasan satu giliran percakapan.
 ///
 /// [sessionId] harus disimpan pemanggil dan dikirim balik pada pesan
@@ -227,26 +248,66 @@ class ReplyFile {
   }
 }
 
+/// Satu pilihan provider yang terdaftar di konfigurasi agent/gateway.
+class ProviderOption {
+  final String id;
+  final String name;
+  final List<String> models;
+
+  const ProviderOption({
+    required this.id,
+    required this.name,
+    required this.models,
+  });
+
+  factory ProviderOption.fromJson(Map<String, dynamic> json) {
+    final rawModels = json['models'];
+    return ProviderOption(
+      id: json['id'] as String? ?? json['slug'] as String? ?? '',
+      name: json['name'] as String? ?? json['slug'] as String? ?? '',
+      models: rawModels is List ? [for (final m in rawModels) m.toString()] : const [],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'models': models,
+      };
+}
+
 /// Daftar model dari deployment — persis seperti yang diberikan
 /// `GET /api/v1/agents/:agentId/models`: provider yang sedang aktif,
-/// model yang sedang aktif, dan id model yang bisa dipilih di provider itu.
+/// model yang sedang aktif, model id di provider itu, dan seluruh daftar provider.
 class ModelOptions {
   final String provider;
   final String current;
   final List<String> models;
+  final List<ProviderOption> providers;
 
   const ModelOptions({
     required this.provider,
     required this.current,
     required this.models,
+    this.providers = const [],
   });
 
   factory ModelOptions.fromJson(Map<String, dynamic> json) {
     final raw = json['models'];
+    final rawProviders = json['providers'];
     return ModelOptions(
       provider: json['provider'] as String? ?? '',
       current: json['current'] as String? ?? '',
       models: raw is List ? [for (final m in raw) m.toString()] : const [],
+      providers: rawProviders is List
+          ? [
+              for (final p in rawProviders)
+                if (p is Map<String, dynamic>)
+                  ProviderOption.fromJson(p)
+                else if (p is Map)
+                  ProviderOption.fromJson(Map<String, dynamic>.from(p)),
+            ]
+          : const [],
     );
   }
 }
@@ -266,4 +327,51 @@ class ChatImage {
     this.mimeType = 'image/jpeg',
     this.filename = 'gambar.jpg',
   });
+}
+
+/// Informasi status autentikasi provider inference AI (persis seperti di hermes setup / hermes auth).
+class AuthProviderItem {
+  final String id;
+  final String name;
+  final String authType;
+  final bool configured;
+  final String? envVar;
+  final String? keyPreview;
+  final String description;
+  final String helpUrl;
+
+  const AuthProviderItem({
+    required this.id,
+    required this.name,
+    required this.authType,
+    required this.configured,
+    this.envVar,
+    this.keyPreview,
+    this.description = "",
+    this.helpUrl = "",
+  });
+
+  factory AuthProviderItem.fromJson(Map<String, dynamic> json) {
+    return AuthProviderItem(
+      id: json["id"] as String? ?? "",
+      name: json["name"] as String? ?? "",
+      authType: json["authType"] as String? ?? "api_key",
+      configured: json["configured"] as bool? ?? false,
+      envVar: json["envVar"] as String?,
+      keyPreview: json["keyPreview"] as String?,
+      description: json["description"] as String? ?? "",
+      helpUrl: json["helpUrl"] as String? ?? "",
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "name": name,
+        "authType": authType,
+        "configured": configured,
+        "envVar": envVar,
+        "keyPreview": keyPreview,
+        "description": description,
+        "helpUrl": helpUrl,
+      };
 }

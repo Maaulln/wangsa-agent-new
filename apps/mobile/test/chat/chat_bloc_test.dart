@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:wangsa_mobile/api/models.dart';
 import 'package:wangsa_mobile/api/wangsa_api_client.dart';
 import 'package:wangsa_mobile/chat/bloc/chat_bloc.dart';
+import 'package:wangsa_mobile/profile/user_profile_controller.dart';
 
 WangsaApiClient clientYangMenjawab(http.Response Function(http.Request) jawab) => WangsaApiClient(
       baseUrl: 'https://api.wangsa.test',
@@ -202,6 +203,52 @@ void main() {
         expect(terkirim.containsKey('llm'), isFalse);
       },
     );
+
+    test('profil kosong tidak mengirim userName/userBio sama sekali', () async {
+      late Map<String, dynamic> terkirim;
+      final bloc = ChatBloc(
+        apiClient: clientYangMenjawab((request) {
+          if (request.method == 'POST') {
+            terkirim = jsonDecode(request.body) as Map<String, dynamic>;
+            return balasanOk('ok');
+          }
+          return agentOk();
+        }),
+        agentId: 'agent-1',
+        userProfile: UserProfileController.fake(),
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const MessageSubmitted('Halo'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(terkirim.containsKey('userName'), isFalse);
+      expect(terkirim.containsKey('userBio'), isFalse);
+    });
+
+    test('profil terisi mengirim userName/userBio apa adanya', () async {
+      late Map<String, dynamic> terkirim;
+      final bloc = ChatBloc(
+        apiClient: clientYangMenjawab((request) {
+          if (request.method == 'POST') {
+            terkirim = jsonDecode(request.body) as Map<String, dynamic>;
+            return balasanOk('ok');
+          }
+          return agentOk();
+        }),
+        agentId: 'agent-1',
+        userProfile: UserProfileController.fake(
+          initial: const UserProfile(name: 'Doni', preferences: 'santai, bahasa Indonesia'),
+        ),
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const MessageSubmitted('Halo'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(terkirim['userName'], 'Doni');
+      expect(terkirim['userBio'], 'santai, bahasa Indonesia');
+    });
 
     test(
       'tanpa pilihan, model aktif server yang dikirim',
@@ -412,6 +459,74 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(bloc.state.sessions, hasLength(1));
       expect(bloc.state.sessions.first.sessionId, 'sess-2');
+    });
+
+    test('SessionSelected memuat transkrip sesi lampau, bukan mengosongkannya', () async {
+      final bloc = ChatBloc(
+        apiClient: WangsaApiClient(
+          baseUrl: 'https://api.wangsa.test',
+          httpClient: MockClient((request) async {
+            if (request.url.path.endsWith('/messages') && request.method == 'GET') {
+              return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'data': {
+                    'turns': [
+                      {'role': 'user', 'content': 'Halo dari sesi lama'},
+                      {'role': 'agent', 'content': 'Halo juga!'},
+                    ],
+                  },
+                }),
+                200,
+              );
+            }
+            return agentOk();
+          }),
+        ),
+        agentId: 'agent-1',
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const SessionSelected('sess-lama'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(bloc.state.sessionId, 'sess-lama');
+      expect(bloc.state.turns, hasLength(2));
+      expect(bloc.state.turns.first.role, TurnRole.user);
+      expect(bloc.state.turns.first.content, 'Halo dari sesi lama');
+      expect(bloc.state.turns.last.role, TurnRole.agent);
+      expect(bloc.state.turns.last.content, 'Halo juga!');
+      expect(bloc.state.isLoadingHistory, isFalse);
+    });
+
+    test('SessionSelected yang gagal memuat tetap menampilkan galat, bukan diam-diam kosong', () async {
+      final bloc = ChatBloc(
+        apiClient: WangsaApiClient(
+          baseUrl: 'https://api.wangsa.test',
+          httpClient: MockClient((request) async {
+            if (request.url.path.endsWith('/messages') && request.method == 'GET') {
+              return http.Response(
+                jsonEncode({
+                  'success': false,
+                  'error': {'code': 'RUNTIME_ERROR', 'message': 'Server bermasalah.'},
+                }),
+                500,
+              );
+            }
+            return agentOk();
+          }),
+        ),
+        agentId: 'agent-1',
+      );
+      addTearDown(bloc.close);
+
+      bloc.add(const SessionSelected('sess-lama'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(bloc.state.sessionId, 'sess-lama');
+      expect(bloc.state.turns, isEmpty);
+      expect(bloc.state.errorMessage, 'Server bermasalah.');
+      expect(bloc.state.isLoadingHistory, isFalse);
     });
   });
 }

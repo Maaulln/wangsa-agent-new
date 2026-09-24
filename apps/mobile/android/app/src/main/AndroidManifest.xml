@@ -100,5 +100,12 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
+        <!-- Android 11+ menyembunyikan SpeechRecognizer dari aplikasi
+             kecuali dideklarasikan di queries; tanpa ini speech_to_text
+             tidak bisa menemukan Google RecognitionService dan gagal
+             menginisialisasi dikte. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
     </queries>
 </manifest>

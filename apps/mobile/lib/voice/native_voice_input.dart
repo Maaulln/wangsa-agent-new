@@ -196,6 +196,7 @@ class NativeVoiceInput implements VoiceInput {
   Future<void> startListening() async {
     if (_disposed) return;
 
+    debugPrint('[NativeVoiceInput] startListening() dipanggil.');
     // Mengetuk mikrofon saat Agent sedang bicara memotong suaranya.
     _speakToken++;
     await _tts.stop();
@@ -212,8 +213,12 @@ class NativeVoiceInput implements VoiceInput {
 
     _status = VoiceStatus.listening;
     await _speechEngine.listen(
-      onPartial: (text) => _controller.add(PartialTranscript(text)),
+      onPartial: (text) {
+        debugPrint('[NativeVoiceInput] onPartial: "$text"');
+        _controller.add(PartialTranscript(text));
+      },
       onFinal: (text) {
+        debugPrint('[NativeVoiceInput] onFinal: "$text"');
         _status = VoiceStatus.processing;
         _controller.add(FinalTranscript(text));
         if (text.trim().isEmpty) {
@@ -225,6 +230,7 @@ class NativeVoiceInput implements VoiceInput {
         }
       },
       onError: (message) {
+        debugPrint('[NativeVoiceInput] speechEngine onError: $message');
         // Diam bukan kegagalan: pengguna memanggil lalu tidak bicara, atau
         // tidak menjawab setelah Agent bicara. Layar cukup menutup lapisan
         // suara, lewat FinalTranscript kosong yang memang sudah ia tangani,

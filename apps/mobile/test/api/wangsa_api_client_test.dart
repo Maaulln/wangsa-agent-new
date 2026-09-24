@@ -328,6 +328,42 @@ void main() {
       );
     });
 
+    test('menyertakan userName dan userBio bila diberikan, tanpanya tidak ada kolom itu sama sekali', () async {
+      late http.Request terkirim;
+      final client = WangsaApiClient(
+        baseUrl: 'https://api.wangsa.test',
+        httpClient: MockClient((request) async {
+          terkirim = request;
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'response': 'ok'},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      await client.sendMessage(
+        'agent-1',
+        'Halo',
+        userName: 'Doni',
+        userBio: 'santai, bahasa Indonesia',
+      );
+
+      expect(jsonDecode(terkirim.body), {
+        'message': 'Halo',
+        'userName': 'Doni',
+        'userBio': 'santai, bahasa Indonesia',
+      });
+
+      await client.sendMessage('agent-1', 'Halo lagi');
+      final body = jsonDecode(terkirim.body) as Map<String, dynamic>;
+      expect(body.containsKey('userName'), isFalse);
+      expect(body.containsKey('userBio'), isFalse);
+    });
+
     test('pesan kosong dengan gambar tetap terkirim', () async {
       late http.Request terkirim;
       final client = WangsaApiClient(

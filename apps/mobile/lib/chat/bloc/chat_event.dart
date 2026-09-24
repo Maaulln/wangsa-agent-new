@@ -32,11 +32,12 @@ final class MessageSubmitted extends ChatEvent {
 /// bawaan (model aktif server).
 final class ModelSelected extends ChatEvent {
   final String? model;
+  final String? provider;
 
-  const ModelSelected(this.model);
+  const ModelSelected(this.model, {this.provider});
 
   @override
-  List<Object?> get props => [model];
+  List<Object?> get props => [model, provider];
 }
 
 /// Pengguna menekan "Percakapan baru".
@@ -58,7 +59,7 @@ final class SessionsRequested extends ChatEvent {
   const SessionsRequested();
 }
 
-/// Memilih/berpindah ke sesi lain dari drawer.
+/// Memilih sesi percakapan dari drawer.
 final class SessionSelected extends ChatEvent {
   final String sessionId;
 
@@ -68,7 +69,7 @@ final class SessionSelected extends ChatEvent {
   List<Object?> get props => [sessionId];
 }
 
-/// Menghapus sesi tertentu dari drawer.
+/// Menghapus sesi percakapan dari drawer.
 final class SessionDeleted extends ChatEvent {
   final String sessionId;
 
@@ -78,7 +79,7 @@ final class SessionDeleted extends ChatEvent {
   List<Object?> get props => [sessionId];
 }
 
-/// Alamat API backend diubah dari Pengaturan.
+/// Alamat host server diubah lewat pengaturan.
 final class ApiBaseUrlChanged extends ChatEvent {
   final String newUrl;
 
@@ -86,4 +87,9 @@ final class ApiBaseUrlChanged extends ChatEvent {
 
   @override
   List<Object?> get props => [newUrl];
+}
+
+/// Memuat ulang daftar model dan provider dari server.
+final class ModelsRequested extends ChatEvent {
+  const ModelsRequested();
 }

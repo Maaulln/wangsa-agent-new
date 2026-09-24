@@ -2,8 +2,8 @@
 
 Klien Android untuk Agent Wangsa yang sudah dipublikasikan.
 
-> **Dipindahkan ke wangsaxhermes (v1, Hermes `wangsa_mobile` plugin):** aplikasi
-> ini sekarang bicara langsung ke gateway Hermes lewat plugin platform
+> **Dipindahkan ke wangsaxhermes (v1, Wangsa `wangsa_mobile` plugin):** aplikasi
+> ini sekarang bicara langsung ke gateway Wangsa lewat plugin platform
 > `plugins/platforms/wangsa_mobile/` (dua route REST: `GET
 > /api/v1/agents/{agentId}` dan `POST /api/v1/agents/{agentId}/messages`),
 > bukan lagi ke API/config-server lama di `wangsa/apps/api` +
@@ -14,7 +14,7 @@ Klien Android untuk Agent Wangsa yang sudah dipublikasikan.
 > dokumentasi versi lama, dipertahankan untuk konteks sejarah.
 >
 > Untuk menjalankan versi ini:
-> 1. Jalankan Hermes gateway dengan plugin `wangsa_mobile` aktif di port 9901
+> 1. Jalankan Wangsa gateway dengan plugin `wangsa_mobile` aktif di port 9901
 >    (`hermes gateway setup` lalu aktifkan platform "Wangsa Mobile", atau set
 >    `WANGSA_MOBILE_PORT=9901`).
 > 2. Untuk perangkat Android fisik, jalankan

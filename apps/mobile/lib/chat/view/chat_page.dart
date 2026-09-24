@@ -1,3 +1,5 @@
+import "../../api/wangsa_api_client.dart";
+import "../../settings/view/provider_setup_page.dart";
 import 'dart:async';
 import 'dart:ui';
 
@@ -9,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../api/models.dart';
 import '../../config/app_config.dart';
 import '../../llm/llm_settings_controller.dart';
+import '../../profile/user_profile_controller.dart';
 import '../../profile/view/profile_page.dart';
 import '../../settings/view/settings_page.dart';
 import '../../theme/theme_controller.dart';
@@ -57,6 +60,7 @@ class ChatPage extends StatefulWidget {
   final String? configProblem;
   final ThemeController themeController;
   final LlmSettingsController llmSettings;
+  final UserProfileController userProfile;
 
   /// Hook pengujian: menggantikan `ImagePicker().pickImage()` bawaan
   /// supaya tes widget bisa menyuntikkan gambar tanpa menyentuh kamera/
@@ -70,6 +74,7 @@ class ChatPage extends StatefulWidget {
     this.configProblem,
     required this.themeController,
     required this.llmSettings,
+    required this.userProfile,
     this.pickImage,
   });
 
@@ -345,7 +350,7 @@ class _ChatPageState extends State<ChatPage>
   /// Pil model diketuk: lembar pilihan berisi model aktif server dan
   /// daftar dari `GET .../models`.
   void _showModelPicker(BuildContext context, ChatState state) {
-    if (state.models.isEmpty) {
+    if (state.models.isEmpty && state.providers.isEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -353,46 +358,21 @@ class _ChatPageState extends State<ChatPage>
         );
       return;
     }
-    final effective = state.effectiveModel;
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              title: Text(
-                state.currentModel == null
-                    ? 'Bawaan deployment'
-                    : 'Bawaan (${state.currentModel})',
-              ),
-              trailing: effective == state.currentModel || state.selectedModel == null
-                  ? const Icon(Icons.check_rounded)
-                  : null,
-              onTap: () {
-                context.read<ChatBloc>().add(const ModelSelected(null));
-                Navigator.of(sheetContext).pop();
-              },
-            ),
-            const Divider(height: 1),
-            for (final model in state.models)
-              ListTile(
-                title: Text(
-                  model,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: model == effective
-                    ? const Icon(Icons.check_rounded)
-                    : null,
-                onTap: () {
-                  context.read<ChatBloc>().add(ModelSelected(model));
-                  Navigator.of(sheetContext).pop();
-                },
-              ),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => _ModelPickerSheet(
+        state: state,
+        apiClient: context.read<ChatBloc>().apiClient,
+        onRefreshModels: () => context.read<ChatBloc>().add(const ModelsRequested()),
+        onSelected: (model, provider) {
+          context.read<ChatBloc>().add(ModelSelected(model, provider: provider));
+          Navigator.of(sheetContext).pop();
+        },
       ),
     );
   }
@@ -619,7 +599,10 @@ class _ChatPageState extends State<ChatPage>
                             Navigator.of(context).pop();
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
-                                builder: (_) => ProfilePage(agent: state.agent),
+                                builder: (_) => ProfilePage(
+                                  agent: state.agent,
+                                  userProfile: widget.userProfile,
+                                ),
                               ),
                             );
                           },
@@ -795,7 +778,9 @@ class _ChatPageState extends State<ChatPage>
       children: [
         Positioned.fill(
           child: state.turns.isEmpty
-              ? ChatNotice.empty()
+              ? (state.isLoadingHistory
+                  ? const Center(child: CircularProgressIndicator())
+                  : ChatNotice.empty())
               : ShaderMask(
                   shaderCallback: (Rect bounds) {
                     return const LinearGradient(
@@ -1270,7 +1255,7 @@ class _ModelPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 130),
+      constraints: const BoxConstraints(maxWidth: 170),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -1301,6 +1286,305 @@ class _ModelPill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ModelPickerCandidate {
+  final String model;
+  final String providerId;
+  final String providerName;
+
+  const _ModelPickerCandidate({
+    required this.model,
+    required this.providerId,
+    required this.providerName,
+  });
+}
+
+class _ModelPickerSheet extends StatefulWidget {
+  final ChatState state;
+  final WangsaApiClient apiClient;
+  final VoidCallback? onRefreshModels;
+  final void Function(String? model, String? provider) onSelected;
+
+  const _ModelPickerSheet({
+    required this.state,
+    required this.apiClient,
+    this.onRefreshModels,
+    required this.onSelected,
+  });
+
+  @override
+  State<_ModelPickerSheet> createState() => _ModelPickerSheetState();
+}
+
+class _ModelPickerSheetState extends State<_ModelPickerSheet> {
+  String? _selectedProviderId;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedProviderId = widget.state.effectiveProvider;
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim().toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<_ModelPickerCandidate> _getCandidates() {
+    final List<_ModelPickerCandidate> candidates = [];
+    final providers = widget.state.providers;
+
+    if (providers.isNotEmpty) {
+      for (final p in providers) {
+        if (_selectedProviderId != null && p.id != _selectedProviderId) {
+          continue;
+        }
+        for (final m in p.models) {
+          if (_searchQuery.isEmpty || m.toLowerCase().contains(_searchQuery)) {
+            candidates.add(_ModelPickerCandidate(
+              model: m,
+              providerId: p.id,
+              providerName: p.name,
+            ));
+          }
+        }
+      }
+    } else {
+      for (final m in widget.state.models) {
+        if (_searchQuery.isEmpty || m.toLowerCase().contains(_searchQuery)) {
+          candidates.add(_ModelPickerCandidate(
+            model: m,
+            providerId: widget.state.currentProvider ?? "",
+            providerName: widget.state.currentProvider ?? "Default",
+          ));
+        }
+      }
+    }
+    return candidates;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final state = widget.state;
+    final candidates = _getCandidates();
+    final providers = state.providers;
+
+    final isDefaultSelected = state.selectedModel == null;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Pilih Provider & Model",
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.settings_suggest_rounded, size: 18),
+                    label: const Text("Setup Provider", style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ProviderSetupPage(
+                            apiClient: widget.apiClient,
+                            onCredentialsChanged: () {
+                              widget.onRefreshModels?.call();
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: "Cari nama model...",
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () => _searchController.clear(),
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            if (providers.isNotEmpty)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      label: const Text("Semua"),
+                      selected: _selectedProviderId == null,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedProviderId = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    for (final p in providers) ...[
+                      FilterChip(
+                        label: Text("${p.name} (${p.models.length})"),
+                        selected: _selectedProviderId == p.id,
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedProviderId = selected ? p.id : null;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: (candidates.isEmpty && _selectedProviderId != null) ? 2 : candidates.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == 1 && candidates.isEmpty && _selectedProviderId != null) {
+                    return Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.vpn_key_outlined, size: 40, color: scheme.primary),
+                          const SizedBox(height: 12),
+                          Text(
+                            "Provider \"$_selectedProviderId\" belum terkonfigurasi atau belum memiliki model aktif.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.login_rounded, size: 16),
+                            label: Text("Hubungkan $_selectedProviderId"),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ProviderSetupPage(
+                                    apiClient: widget.apiClient,
+                                    onCredentialsChanged: () {
+                                      widget.onRefreshModels?.call();
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  if (index == 0) {
+                    final defaultSubtitle = [
+                      if (state.currentProvider != null && state.currentProvider!.isNotEmpty)
+                        "Provider: ${state.currentProvider}",
+                      if (state.currentModel != null && state.currentModel!.isNotEmpty)
+                        "Model: ${state.currentModel}",
+                    ].join(" • ");
+
+                    return ListTile(
+                      leading: const Icon(Icons.auto_awesome_rounded),
+                      title: const Text(
+                        "Bawaan deployment",
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: defaultSubtitle.isNotEmpty
+                          ? Text(
+                              defaultSubtitle,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            )
+                          : null,
+                      trailing: isDefaultSelected
+                          ? Icon(Icons.check_rounded, color: scheme.primary)
+                          : null,
+                      onTap: () => widget.onSelected(null, null),
+                    );
+                  }
+
+                  final item = candidates[index - 1];
+                  final isSelected = !isDefaultSelected &&
+                      item.model == state.effectiveModel &&
+                      (item.providerId == state.effectiveProvider || state.effectiveProvider == null);
+
+                  return ListTile(
+                    title: Text(
+                      item.model,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    subtitle: Text(
+                      item.providerName,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? Icon(Icons.check_rounded, color: scheme.primary)
+                        : null,
+                    onTap: () => widget.onSelected(item.model, item.providerId),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

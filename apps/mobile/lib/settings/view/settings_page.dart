@@ -1,3 +1,5 @@
+import "../../api/wangsa_api_client.dart";
+import "provider_setup_page.dart";
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
@@ -211,17 +213,36 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           const Divider(height: 32),
-          Text('Model AI', style: Theme.of(context).textTheme.labelMedium),
+          Text('Provider & Model AI', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 4),
           const Text(
-            'Model dipilih lewat pil model di layar chat — daftarnya '
-            'berasal dari provider yang dikonfigurasi di server. Kolom '
-            'kunci API (BYOK) di bawah ini peninggalan backend lama dan '
-            'sudah tidak dipakai backend saat ini.',
+            'Koneksikan provider AI Anda (GitHub Copilot, Anthropic, OpenAI, Gemini, dll.) '
+            'seperti alur hermes setup agar Agent bisa terhubung.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 8),
-          _LlmSection(controller: widget.llmSettings),
+          Card(
+            elevation: 0,
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: ListTile(
+              leading: Icon(Icons.hub_rounded, color: scheme.primary),
+              title: const Text('Setup Provider & Login AI', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Konfigurasi API Key & autentikasi provider', style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                final client = WangsaApiClient(baseUrl: _currentApiUrl);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ProviderSetupPage(apiClient: client),
+                  ),
+                );
+              },
+            ),
+          ),
           const Divider(height: 32),
           Text('Tampilan', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 8),
