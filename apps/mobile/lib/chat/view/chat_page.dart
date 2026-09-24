@@ -1470,7 +1470,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                       },
                     ),
                     const SizedBox(width: 8),
-                    for (final p in providers) ...[
+                    for (final p in providers.where((p) => p.models.isNotEmpty)) ...[
                       FilterChip(
                         label: Text("${p.name} (${p.models.length})"),
                         selected: _selectedProviderId == p.id,

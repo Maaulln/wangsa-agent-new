@@ -345,6 +345,37 @@ class TestWangsaMobileRoutes:
 
         asyncio.run(run())
 
+    def test_get_models_lists_only_user_configured_providers(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        import wangsa_cli.inventory as inventory
+
+        configured = {"slug": "mine", "models": ["model-a"]}
+        unconfigured = {"slug": "never-set-up", "models": []}
+
+        def fake_payload(ctx, *, explicit_only=False, include_unconfigured=False, **_):
+            # Mirrors the real contract: the full provider universe only appears
+            # when explicitly requested; explicit_only keeps user-configured rows.
+            rows = [configured]
+            if include_unconfigured:
+                rows = rows + [unconfigured]
+            return {"providers": rows, "provider": "mine", "model": "model-a"}
+
+        monkeypatch.setattr(inventory, "load_picker_context", lambda: object())
+        monkeypatch.setattr(inventory, "build_model_options_payload", fake_payload)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _get_json, base + "/api/v1/agents/agent1/models",
+            )
+            assert status == 200
+            slugs = [p["slug"] for p in data["data"]["providers"]]
+            assert slugs == ["mine"]
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
     def test_models_rejects_post_and_messages_rejects_get(self, monkeypatch):
         monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
         adapter, base = _make_live_adapter(monkeypatch)

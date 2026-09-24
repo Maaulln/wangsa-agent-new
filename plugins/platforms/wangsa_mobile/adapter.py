@@ -292,9 +292,90 @@ def _bearer_token() -> str:
     return os.getenv("WANGSA_MOBILE_BEARER_TOKEN", "").strip()
 
 
+_PROFILE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_MIN_USER_TOKEN_LEN = 16
+
+
+def _user_token_map() -> Dict[str, str]:
+    """Parse ``WANGSA_MOBILE_USER_TOKENS`` into ``{token: profile}``.
+
+    Format: ``profile=token`` pairs separated by commas or newlines, e.g.
+    ``alice=<secret>,bob=<secret>``. Each token identifies exactly one
+    profile, so a token that is too short, malformed, or already assigned to
+    another profile is dropped (with a warning) rather than guessed at.
+    ``default`` maps a token to the gateway's default profile.
+    """
+    raw = os.getenv("WANGSA_MOBILE_USER_TOKENS", "")
+    tokens: Dict[str, str] = {}
+    for entry in re.split(r"[,\n]", raw):
+        entry = entry.strip()
+        if not entry:
+            continue
+        profile, sep, token = entry.partition("=")
+        profile, token = profile.strip().lower(), token.strip()
+        if not sep or not _PROFILE_NAME_RE.match(profile):
+            logger.warning("wangsa_mobile: ignoring malformed WANGSA_MOBILE_USER_TOKENS entry")
+            continue
+        if len(token) < _MIN_USER_TOKEN_LEN:
+            logger.warning(
+                "wangsa_mobile: token for profile %r is shorter than %d characters; ignored",
+                profile,
+                _MIN_USER_TOKEN_LEN,
+            )
+            continue
+        if token in tokens:
+            logger.warning(
+                "wangsa_mobile: token for profile %r duplicates another profile's token; ignored",
+                profile,
+            )
+            continue
+        tokens[token] = profile
+    return tokens
+
+
+def multi_user_enabled() -> bool:
+    """True when per-user tokens are configured (one token per profile)."""
+    return bool(_user_token_map())
+
+
+def _identify_bearer(presented: str) -> tuple[bool, Optional[str]]:
+    """Map a presented bearer token to ``(matched, profile)``.
+
+    ``profile`` is ``None`` for the gateway's default profile (the legacy
+    ``WANGSA_MOBILE_BEARER_TOKEN`` and any token mapped to ``default``).
+    Every configured token is compared, without early exit, so timing does
+    not reveal which entry matched.
+    """
+    import hmac
+
+    candidate = presented.encode("utf-8")
+    matched = False
+    profile: Optional[str] = None
+    for token, name in _user_token_map().items():
+        if hmac.compare_digest(candidate, token.encode("utf-8")) and not matched:
+            matched = True
+            profile = None if name == "default" else name
+    legacy = _bearer_token()
+    if legacy and hmac.compare_digest(candidate, legacy.encode("utf-8")) and not matched:
+        matched = True
+    return matched, profile
+
+
 def localhost_only() -> bool:
     """True when no bearer token is configured — mirrors a2a.security."""
-    return not _bearer_token()
+    return not _bearer_token() and not _user_token_map()
+
+
+def _chat_id(agent_id: str, session_id: str, profile: Optional[str] = None) -> str:
+    """Per-session thread id. Non-default profiles get their own namespace so two
+    users can never share a pending-reply queue even if they pick the same
+    session id; the default profile keeps the historical ``mobile:`` form."""
+    prefix = f"mobile.{profile}" if profile else "mobile"
+    return f"{prefix}:{agent_id}:{session_id}"
+
+
+class _ProfileUnavailable(RuntimeError):
+    """The caller's profile cannot be served (multiplexing off, not served)."""
 
 
 def resolve_bind_host() -> str:
@@ -529,6 +610,24 @@ class _WangsaMobileServer(ThreadingHTTPServer):
         self.adapter = adapter
 
 
+def _route_requires_auth(method: str, path: str) -> bool:
+    """Whether a recognised route must carry a valid bearer token.
+
+    With per-user tokens every profile-bound route needs one (the token IS the
+    identity); only the static agent-identity GET stays open. With just the
+    legacy shared token, POST /messages and the provider-credential routes
+    are gated. Unknown paths return False so they fall through to a 404.
+    """
+    if path.startswith("/api/v1/auth/"):
+        return True
+    m = _AGENT_ID_RE.match(path)
+    if not m or not (m.group(2) or ""):
+        return False
+    if multi_user_enabled():
+        return True
+    return method == "POST" and (m.group(2) or "") in ("/messages", "/messages/stream")
+
+
 class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
     """HTTP handler for the Wangsa mobile REST routes."""
 
@@ -552,7 +651,57 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             code, {"success": False, "error": {"code": error_code, "message": message}}
         )
 
+    def _presented_token(self) -> str:
+        parts = self.headers.get("Authorization", "").split(None, 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return parts[1].strip()
+        return ""
+
+    def _authenticate(self, required: bool) -> tuple[bool, Optional[str]]:
+        """Resolve the caller's profile from the bearer token.
+
+        Returns ``(ok, profile)``; ``profile`` is ``None`` for the default
+        profile. On a required-but-bad token the 401 is sent here and
+        ``ok`` is False. With no token configured at all the server is
+        open (localhost-only or explicitly insecure) and every caller is
+        the default profile.
+        """
+        if not (_bearer_token() or _user_token_map()):
+            return True, None
+        presented = self._presented_token()
+        matched, profile = _identify_bearer(presented) if presented else (False, None)
+        if matched:
+            return True, profile
+        if required:
+            self._error(401, "UNAUTHORIZED", "missing or invalid bearer token")
+            return False, None
+        return True, None
+
+    def _guarded(self, method: str, impl) -> None:
+        """Authenticate, then run *impl* inside the caller's profile scope."""
+        path = self.path.split("?", 1)[0]
+        ok, profile = self._authenticate(_route_requires_auth(method, path))
+        if not ok:
+            return
+        try:
+            scope = self.adapter._profile_context(profile)
+        except _ProfileUnavailable as e:
+            self._error(503, "PROFILE_UNAVAILABLE", str(e))
+            return
+        self._profile = profile
+        with scope:
+            impl()
+
     def do_GET(self):  # noqa: N802
+        self._guarded("GET", self._do_get)
+
+    def do_POST(self):  # noqa: N802
+        self._guarded("POST", self._do_post)
+
+    def do_DELETE(self):  # noqa: N802
+        self._guarded("DELETE", self._do_delete)
+
+    def _do_get(self):
         path = self.path.split("?", 1)[0]
         if path == "/api/v1/auth/providers":
             self._handle_auth_providers_get()
@@ -573,12 +722,12 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             self._handle_models(agent_id)
             return
         if suffix == "/sessions":
-            sessions = self.adapter._list_sessions(agent_id)
+            sessions = self.adapter._list_sessions(agent_id, self._profile)
             self._json(200, {"success": True, "data": {"sessions": sessions}})
             return
         if suffix.startswith("/sessions/") and suffix.endswith("/messages"):
             session_id = suffix[len("/sessions/"):-len("/messages")]
-            turns = self.adapter._get_session_messages(agent_id, session_id)
+            turns = self.adapter._get_session_messages(agent_id, session_id, self._profile)
             self._json(200, {"success": True, "data": {"turns": turns}})
             return
         if suffix:
@@ -602,7 +751,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def do_DELETE(self):  # noqa: N802
+    def _do_delete(self):
         path = self.path.split("?", 1)[0]
         if path.startswith("/api/v1/auth/providers/"):
             provider_id = path[len("/api/v1/auth/providers/") :].strip("/")
@@ -622,7 +771,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         suffix = m.group(2) or ""
         if suffix.startswith("/sessions/"):
             session_id = suffix[len("/sessions/") :]
-            deleted = self.adapter._delete_session(agent_id, session_id)
+            deleted = self.adapter._delete_session(agent_id, session_id, self._profile)
             self._json(200, {"success": True, "data": {"deleted": deleted}})
             return
         self._json(
@@ -650,8 +799,11 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                     load_picker_context,
                 )
 
+            # Only providers the user actually configured (current provider,
+            # config.yaml, or provider-specific env keys) belong in the chat
+            # picker; the full provider universe is for the setup screen.
             try:
-                payload = build_model_options_payload(load_picker_context(), include_unconfigured=True)
+                payload = build_model_options_payload(load_picker_context(), explicit_only=True)
             except TypeError:
                 payload = build_model_options_payload(load_picker_context())
         except Exception:
@@ -982,8 +1134,9 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             logger.exception("wangsa_mobile: copilot poll failed")
             self._error(502, "UPSTREAM_ERROR", f"Poll request failed: {e}")
 
-    def do_POST(self):  # noqa: N802
+    def _do_post(self):
         adapter = self.adapter
+        profile = getattr(self, "_profile", None)
         path = self.path.split("?", 1)[0]
         if path.startswith("/api/v1/auth/providers/"):
             provider_id = path[len("/api/v1/auth/providers/") :].strip("/")
@@ -1008,20 +1161,8 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         is_stream = (m.group(2) or "") == "/messages/stream"
         agent_id = m.group(1)
 
-        # Bearer auth only on POST /messages; GET /agents/:id stays open.
-        token = _bearer_token()
-        if token:
-            auth = self.headers.get("Authorization", "")
-            presented = ""
-            parts = auth.split(None, 1)
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                presented = parts[1].strip()
-            import hmac as _hmac
-
-            if not presented or not _hmac.compare_digest(presented, token):
-                self._error(401, "UNAUTHORIZED", "missing or invalid bearer token")
-                return
-
+        # Bearer auth (and the caller's profile) was already resolved by
+        # _guarded(); GET /agents/:id stays open.
         client_ip = self.client_address[0] if self.client_address else ""
         if not adapter._rate_limiter.allow(client_ip):
             self._error(429, "RATE_LIMITED", "rate limit exceeded")
@@ -1122,16 +1263,16 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             return
 
         effective_session_id = session_id or uuid.uuid4().hex
-        thread_id = f"mobile:{agent_id}:{effective_session_id or 'anon'}"
+        thread_id = _chat_id(agent_id, effective_session_id or "anon", profile)
 
         if model is not None and str(model).strip():
-            err = adapter._apply_model_override(thread_id, str(model).strip(), provider)
+            err = adapter._apply_model_override(thread_id, str(model).strip(), provider, profile=profile)
             if err:
                 self._error(400, "VALIDATION_ERROR", err)
                 return
         else:
             try:
-                adapter._clear_model_override(thread_id)
+                adapter._clear_model_override(thread_id, profile)
             except Exception:
                 logger.debug("wangsa_mobile: failed to clear model override", exc_info=True)
 
@@ -1143,6 +1284,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             media_types=media_types,
             user_name=user_name,
             user_bio=user_bio,
+            profile=profile,
         )
         reply_text = reply.get("text", "") if isinstance(reply, dict) else (reply or "")
         reply_images = reply.get("images") if isinstance(reply, dict) else None
@@ -1176,7 +1318,11 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             else "Pesan Media"
         )
         adapter._update_session(
-            agent_id, effective_session_id, title=title, last_message=reply_text[:60]
+            agent_id,
+            effective_session_id,
+            title=title,
+            last_message=reply_text[:60],
+            profile=profile,
         )
 
         if is_stream:
@@ -1242,7 +1388,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         self._pending_reply_files: Dict[str, list] = {}
         self._pending_reply_thoughts: Dict[str, list] = {}
         self._pending_reply_tools: Dict[str, list] = {}
-        self._mobile_sessions: Dict[str, dict] = {}
+        self._mobile_sessions: Dict[tuple, dict] = {}
+        self._profile_lock = threading.Lock()
         self._reply_timers: Dict[str, threading.Timer] = {}
 
     @property
@@ -1256,6 +1403,105 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         rationale as A2AAdapter.authorization_is_upstream."""
         return True
 
+    # ── Profiles (one gateway, one profile per user token) ─────────────────
+
+    def _source_for(
+        self,
+        chat_id: str,
+        chat_name: str,
+        profile: Optional[str],
+        **kwargs: Any,
+    ):
+        """Build the SessionSource for a mobile chat, pinned to *profile*.
+
+        ``build_source`` only resolves a profile from ``profile_routes``, which
+        can never match a per-session ``chat_id``; the bearer token is the
+        identity here, so stamp it explicitly. The gateway then namespaces the
+        session key and runs the turn in that profile's home.
+        """
+        source = self.build_source(
+            chat_id=chat_id,
+            chat_name=chat_name,
+            chat_type="dm",
+            user_id=chat_id,
+            **kwargs,
+        )
+        if profile:
+            source.profile = profile
+        return source
+
+    def _profile_context(self, profile: Optional[str]):
+        """Return a context manager that scopes a request to *profile*.
+
+        Raises :class:`_ProfileUnavailable` (fail closed) when a named profile
+        is requested but the gateway is not multiplexing or does not serve it:
+        running the request in the default profile instead would silently mix
+        one user's data and credentials into another's.
+        """
+        from contextlib import nullcontext
+
+        from agent.secret_scope import is_multiplex_active
+
+        multiplex = is_multiplex_active()
+        if profile is None:
+            if not multiplex:
+                return nullcontext()
+            # Multiplexing makes unscoped credential reads fail closed, so the
+            # default profile needs its own scope too.
+            from gateway.run import _profile_runtime_scope
+            from wangsa_constants import get_hermes_home
+
+            return _profile_runtime_scope(get_hermes_home())
+        if not multiplex:
+            raise _ProfileUnavailable(
+                "per-user tokens require gateway.multiplex_profiles: true "
+                "(set GATEWAY_MULTIPLEX_PROFILES=1)"
+            )
+        from gateway.run import _profile_runtime_scope
+
+        return _profile_runtime_scope(self._ensure_profile(profile))
+
+    def _ensure_profile(self, profile: str) -> Path:
+        """Return the profile's home, creating an empty profile on first use.
+
+        A new user therefore starts from a blank profile (no keys, no memory)
+        and is guided through setup, instead of inheriting anyone's config.
+        """
+        from wangsa_cli.profiles import (
+            create_profile,
+            get_profile_dir,
+            profile_exists,
+            profiles_to_serve,
+        )
+
+        with self._profile_lock:
+            if not profile_exists(profile):
+                try:
+                    create_profile(profile, no_alias=True)
+                except FileExistsError:
+                    pass
+                except Exception as e:
+                    logger.warning(
+                        "wangsa_mobile: could not create profile %r", profile, exc_info=True
+                    )
+                    raise _ProfileUnavailable(f"could not create profile {profile!r}") from e
+            try:
+                from gateway.run import _gateway_runner_ref
+
+                cfg = getattr(_gateway_runner_ref(), "config", None)
+                served = {
+                    name
+                    for name, _home in profiles_to_serve(
+                        multiplex=True,
+                        profile_allowlist=getattr(cfg, "multiplex_profile_allowlist", None),
+                    )
+                }
+            except Exception as e:
+                raise _ProfileUnavailable("could not determine served profiles") from e
+            if profile not in served:
+                raise _ProfileUnavailable(f"profile {profile!r} is not served by this gateway")
+            return get_profile_dir(profile)
+
     # ── Sessions ───────────────────────────────────────────────────────────
 
     def _update_session(
@@ -1264,14 +1510,16 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         session_id: str,
         title: str = "",
         last_message: str = "",
+        profile: Optional[str] = None,
     ) -> None:
         if not session_id:
             return
+        key = (profile or "", session_id)
         with self._pending_lock:
-            existing = self._mobile_sessions.get(session_id)
+            existing = self._mobile_sessions.get(key)
             now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             if existing is None:
-                self._mobile_sessions[session_id] = {
+                self._mobile_sessions[key] = {
                     "sessionId": session_id,
                     "agentId": agent_id,
                     "title": title or "Percakapan baru",
@@ -1285,22 +1533,28 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                 existing["updatedAt"] = now_iso
                 existing["turnCount"] = existing.get("turnCount", 1) + 1
 
-    def _list_sessions(self, agent_id: str) -> list[dict]:
+    def _list_sessions(self, agent_id: str, profile: Optional[str] = None) -> list[dict]:
+        owner = profile or ""
         with self._pending_lock:
             sessions = [
                 dict(s)
-                for s in self._mobile_sessions.values()
-                if s.get("agentId") == agent_id or not s.get("agentId")
+                for (session_owner, _sid), s in self._mobile_sessions.items()
+                if session_owner == owner
+                and (s.get("agentId") == agent_id or not s.get("agentId"))
             ]
         sessions.sort(key=lambda s: s.get("updatedAt", ""), reverse=True)
         return sessions
 
-    def _delete_session(self, agent_id: str, session_id: str) -> bool:
+    def _delete_session(
+        self, agent_id: str, session_id: str, profile: Optional[str] = None
+    ) -> bool:
         with self._pending_lock:
-            removed = self._mobile_sessions.pop(session_id, None)
+            removed = self._mobile_sessions.pop((profile or "", session_id), None)
             return removed is not None
 
-    def _get_session_messages(self, agent_id: str, session_id: str) -> list:
+    def _get_session_messages(
+        self, agent_id: str, session_id: str, profile: Optional[str] = None
+    ) -> list:
         """Load the persisted transcript for a mobile session as
         ``[{"role": "user"|"agent", "content": "..."}, ...]``.
 
@@ -1326,14 +1580,10 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         if runner is None:
             return []
 
-        chat_id = f"mobile:{agent_id}:{session_id}"
+        chat_id = _chat_id(agent_id, session_id, profile)
         try:
-            source = self.build_source(
-                chat_id=chat_id,
-                chat_name=f"wangsa-mobile:{agent_id}",
-                chat_type="dm",
-                user_id=chat_id,
-                user_name="mobile",
+            source = self._source_for(
+                chat_id, f"wangsa-mobile:{agent_id}", profile, user_name="mobile"
             )
             try:
                 session_key = runner._session_key_for_source(source)
@@ -1582,7 +1832,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
 
     # ── Dispatch ──────────────────────────────────────────────────────────
 
-    def _clear_model_override(self, chat_id: str) -> None:
+    def _clear_model_override(self, chat_id: str, profile: Optional[str] = None) -> None:
         """Clear per-session model override and evict cached agent."""
         try:
             from gateway.run import _gateway_runner_ref
@@ -1593,12 +1843,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         if runner is None:
             return
         try:
-            source = self.build_source(
-                chat_id=chat_id,
-                chat_name="wangsa-mobile:model-override",
-                chat_type="dm",
-                user_id=chat_id,
-                user_name="mobile",
+            source = self._source_for(
+                chat_id, "wangsa-mobile:model-override", profile, user_name="mobile"
             )
             try:
                 session_key = runner._session_key_for_source(source)
@@ -1631,6 +1877,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         chat_id: str,
         model: str,
         provider: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> Optional[str]:
         """Validate *model* against the catalog and persist a per-session
         override (same mechanism as the ``/model`` slash command).
@@ -1731,12 +1978,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         if runner is None:
             return None
         try:
-            source = self.build_source(
-                chat_id=chat_id,
-                chat_name="wangsa-mobile:model-override",
-                chat_type="dm",
-                user_id=chat_id,
-                user_name="mobile",
+            source = self._source_for(
+                chat_id, "wangsa-mobile:model-override", profile, user_name="mobile"
             )
             try:
                 session_key = runner._session_key_for_source(source)
@@ -1783,6 +2026,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         media_types: Optional[list] = None,
         user_name: Optional[str] = None,
         user_bio: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> tuple:
         """Runs on an HTTP worker thread. Returns (state, payload_dict)."""
         if self._loop is None or self._message_handler is None:
@@ -1800,11 +2044,10 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         event = MessageEvent(
             text=message,
             message_type=MessageType.TEXT,
-            source=self.build_source(
-                chat_id=chat_id,
-                chat_name=f"wangsa-mobile:{agent_id}",
-                chat_type="dm",
-                user_id=chat_id,
+            source=self._source_for(
+                chat_id,
+                f"wangsa-mobile:{agent_id}",
+                profile,
                 user_name=user_name or "mobile",
                 user_bio=user_bio,
             ),
