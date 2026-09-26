@@ -12,7 +12,6 @@ import '../../config/app_config.dart';
 import '../../llm/llm_settings_controller.dart';
 import '../../theme/theme_controller.dart';
 import '../../voice/voice_input.dart';
-import '../../voice/wake_word_lab_page.dart';
 
 /// Layar pengaturan sengaja kecil.
 ///
@@ -73,6 +72,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late final bool _ownsClient;
   BudgetInfo? _budget;
   bool _loadingBudget = false;
+  bool _wakeWordBusy = false;
+  String? _wakeWordError;
 
   @override
   void didChangeDependencies() {
@@ -90,7 +91,13 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  bool get _wakeWordConfigured => widget.config.wakeWordAccessKey != null;
+  bool get _wakeWordAvailable => widget.voiceInput.wakeWordAvailable;
+
+  bool _isWakeWordFailure(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('wake word') ||
+        normalized.contains('kata pemicu');
+  }
 
   @override
   void initState() {
@@ -99,16 +106,20 @@ class _SettingsPageState extends State<SettingsPage> {
     _client =
         widget.apiClient ?? WangsaApiClient(baseUrl: widget.config.apiBaseUrl);
     _currentApiUrl = widget.config.apiBaseUrl;
-    _backgroundListening = widget.voiceInput.status != VoiceStatus.off;
-    // Bukan untuk bereaksi terhadap kejadian per kejadian seperti layar
-    // chat — hanya supaya sakelar ini ikut berubah kalau wake word
-    // dimatikan dari luar (misalnya galat inisialisasi Porcupine).
+    _backgroundListening = widget.voiceInput.wakeWordEnabled;
+    // Sinkronkan sakelar dengan listener yang mulai otomatis saat bootstrap.
     _voiceSubscription = widget.voiceInput.events.listen((event) {
-      if (event is VoiceFailure) {
-        setState(
-          () => _backgroundListening =
-              widget.voiceInput.status != VoiceStatus.off,
-        );
+      if (!mounted) return;
+      if (event is WakeWordStatusChanged) {
+        setState(() {
+          _backgroundListening = event.enabled;
+          _wakeWordError = null;
+        });
+      } else if (event is VoiceFailure && _isWakeWordFailure(event.message)) {
+        setState(() {
+          _backgroundListening = false;
+          _wakeWordError = event.message;
+        });
       }
     });
   }
@@ -121,15 +132,33 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _toggleBackgroundListening(bool value) async {
-    if (value) {
-      await widget.voiceInput.startWakeWordWatch();
-    } else {
-      await widget.voiceInput.stopWakeWordWatch();
+    if (_wakeWordBusy || !_wakeWordAvailable) return;
+    setState(() {
+      _wakeWordBusy = true;
+      _wakeWordError = null;
+    });
+    try {
+      if (value) {
+        await widget.voiceInput.startWakeWordWatch();
+      } else {
+        await widget.voiceInput.stopWakeWordWatch();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _backgroundListening = false;
+          _wakeWordError =
+              'Wangsa tidak bisa mulai mendengarkan. Periksa izin mikrofon, lalu coba lagi.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _wakeWordBusy = false;
+          _backgroundListening = widget.voiceInput.wakeWordEnabled;
+        });
+      }
     }
-    if (!mounted) return;
-    setState(
-      () => _backgroundListening = widget.voiceInput.status != VoiceStatus.off,
-    );
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -542,53 +571,88 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const Divider(height: 32),
-          ListTile(
+          Text(
+            'Panggilan suara',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Dengar di latar belakang'),
+            secondary: Icon(
+              _backgroundListening
+                  ? Icons.hearing_rounded
+                  : Icons.hearing_disabled_rounded,
+              color: _backgroundListening
+                  ? scheme.primary
+                  : scheme.onSurfaceVariant,
+            ),
+            title: Text(
+              _backgroundListening
+                  ? 'Kata pemicu aktif'
+                  : 'Panggil dengan “${widget.config.wakeWord}”',
+            ),
             subtitle: Text(
-              _wakeWordConfigured
-                  ? 'Android saja'
-                  : 'Belum dikonfigurasi untuk pemasangan ini',
+              !_wakeWordAvailable
+                  ? 'Wakeword tidak tersedia pada pemasangan ini.'
+                  : _backgroundListening
+                  ? 'Wangsa mendengarkan di latar belakang, lalu jeda saat mikrofon dipakai untuk dikte.'
+                  : 'Aktifkan untuk memanggil Wangsa tanpa membuka aplikasi.',
             ),
-            trailing: Switch(
-              value: _wakeWordConfigured && _backgroundListening,
-              onChanged: _wakeWordConfigured
-                  ? _toggleBackgroundListening
-                  : null,
-            ),
+            value: _wakeWordAvailable && _backgroundListening,
+            onChanged: _wakeWordAvailable && !_wakeWordBusy
+                ? _toggleBackgroundListening
+                : null,
           ),
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
+          if (_wakeWordBusy)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: LinearProgressIndicator(),
             ),
-            child: const Text(
-              'Matikan optimasi baterai untuk aplikasi ini agar layanan '
-              'mendengar tidak dihentikan sistem. Setelah ponsel dinyalakan '
-              'ulang, buka aplikasi sekali agar layanan aktif kembali.',
-            ),
-          ),
-          // TODO(DEMO-20SEP): HAPUS tile debug di bawah ini + file
-          // lib/voice/wake_word_lab_page.dart sebelum membangun APK demo
-          // 20 September 2026. Alat uji sementara open wake word
-          // (sherpa-onnx) di perangkat fisik — bukan bagian produk.
-          const Divider(height: 32),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Lab Uji Wake Word (debug)'),
-            subtitle: const Text('Uji terisolasi open wake word di HP ini'),
-            trailing: const Icon(Icons.bug_report_outlined),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      WakeWordLabPage(voiceInput: widget.voiceInput),
+          if (_wakeWordError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                color: scheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.mic_off_outlined,
+                        color: scheme.onErrorContainer,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _wakeWordError!,
+                          style: TextStyle(color: scheme.onErrorContainer),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _wakeWordBusy || !_wakeWordAvailable
+                            ? null
+                            : () => _toggleBackgroundListening(true),
+                        child: const Text('Coba lagi'),
+                      ),
+                    ],
+                  ),
                 ),
-              );
-            },
-          ),
+              ),
+            ),
+          if (_wakeWordAvailable)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+              child: Text(
+                'Wangsa mendengarkan lewat mikrofon saat notifikasi layanan aktif. '
+                'Jika Android menghentikannya, izinkan aktivitas latar belakang '
+                'untuk Wangsa di pengaturan baterai.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
         ],
       ),
     );

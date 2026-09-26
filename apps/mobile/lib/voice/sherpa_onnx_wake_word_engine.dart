@@ -44,11 +44,11 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
     required void Function() onDetected,
     void Function(String message)? onError,
     void Function(double level)? onAudioLevel,
-  })  : _spotter = spotter,
-        _recorder = recorder,
-        _onDetected = onDetected,
-        _onError = onError,
-        _onAudioLevel = onAudioLevel;
+  }) : _spotter = spotter,
+       _recorder = recorder,
+       _onDetected = onDetected,
+       _onError = onError,
+       _onAudioLevel = onAudioLevel;
 
   static bool _bindingsInitialized = false;
 
@@ -70,7 +70,10 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
     }
     final targetFile = File(p.join(targetDir.path, fileName));
     final data = await rootBundle.load(assetPath);
-    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final bytes = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
 
     // Berkas teks (seperti keywords.txt) selalu diperbarui agar perubahan konfigurasi langsung berlaku.
     if (!await targetFile.exists() ||
@@ -83,9 +86,12 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
 
   /// Membuat dan menginisialisasi mesin pengenal kata pemicu Sherpa-ONNX.
   static Future<WakeWordEngine> create({
-    String encoderAssetPath = 'assets/voice/encoder-epoch-12-avg-2-chunk-16-left-64.onnx',
-    String decoderAssetPath = 'assets/voice/decoder-epoch-12-avg-2-chunk-16-left-64.onnx',
-    String joinerAssetPath = 'assets/voice/joiner-epoch-12-avg-2-chunk-16-left-64.onnx',
+    String encoderAssetPath =
+        'assets/voice/encoder-epoch-12-avg-2-chunk-16-left-64.onnx',
+    String decoderAssetPath =
+        'assets/voice/decoder-epoch-12-avg-2-chunk-16-left-64.onnx',
+    String joinerAssetPath =
+        'assets/voice/joiner-epoch-12-avg-2-chunk-16-left-64.onnx',
     String tokensAssetPath = 'assets/voice/tokens.txt',
     String keywordsAssetPath = 'assets/voice/keywords.txt',
     double threshold = 0.06,
@@ -124,7 +130,9 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
 
       final spotter = sherpa.KeywordSpotter(config);
       final recorder = AudioRecorder();
-      debugPrint('[SherpaOnnx] KeywordSpotter berhasil dibuat (threshold=$threshold, score=$score).');
+      debugPrint(
+        '[SherpaOnnx] KeywordSpotter berhasil dibuat (threshold=$threshold, score=$score).',
+      );
 
       return SherpaOnnxWakeWordEngine._(
         spotter: spotter,
@@ -148,8 +156,7 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
       debugPrint('[SherpaOnnx] Izin mikrofon BELUM diberikan!');
-      _onError?.call('Izin mikrofon belum diberikan');
-      return;
+      throw StateError('Izin mikrofon belum diberikan');
     }
 
     debugPrint('[SherpaOnnx] Membuka audio stream PCM16 16kHz mono...');
@@ -163,7 +170,9 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
     );
 
     _isListening = true;
-    debugPrint('[SherpaOnnx] Audio stream aktif. Siaga mendengarkan "Hallo Wangsa"...');
+    debugPrint(
+      '[SherpaOnnx] Audio stream aktif. Siaga mendengarkan "Hallo Wangsa"...',
+    );
     _recordSubscription = audioStream.listen(
       _handleAudioChunk,
       onError: (err) {
@@ -186,7 +195,9 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
         _spotter.decode(stream);
         final result = _spotter.getResult(stream);
         if (result.keyword.isNotEmpty) {
-          debugPrint('[SherpaOnnx] >>> KATA PEMICU TERDETEKSI: "${result.keyword}" <<<');
+          debugPrint(
+            '[SherpaOnnx] >>> KATA PEMICU TERDETEKSI: "${result.keyword}" <<<',
+          );
           _spotter.reset(stream);
           _onDetected();
           break;
@@ -263,7 +274,8 @@ class SherpaOnnxWakeWordEngine implements WakeWordEngine {
 Future<WakeWordEngine> createSherpaOnnxEngine({
   String accessKey = '',
   String keywordAssetPath = 'assets/voice/keywords.txt',
-  String modelAssetPath = 'assets/voice/encoder-epoch-12-avg-2-chunk-16-left-64.onnx',
+  String modelAssetPath =
+      'assets/voice/encoder-epoch-12-avg-2-chunk-16-left-64.onnx',
   required void Function() onDetected,
   required void Function(String message) onError,
 }) async {

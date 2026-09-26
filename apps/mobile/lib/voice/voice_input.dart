@@ -38,6 +38,14 @@ final class WakeWordDetected extends VoiceEvent {
   const WakeWordDetected();
 }
 
+/// Status pengawasan kata pemicu berubah. Berbeda dari [VoiceStatus], event
+/// ini hanya membahas listener wakeword, bukan sesi dikte yang sementara
+/// memakai mikrofon.
+final class WakeWordStatusChanged extends VoiceEvent {
+  final bool enabled;
+  const WakeWordStatusChanged(this.enabled);
+}
+
 /// Hasil sementara, masih bisa berubah. Berguna untuk memperlihatkan
 /// bahwa aplikasi benar-benar mendengar.
 final class PartialTranscript extends VoiceEvent {
@@ -70,6 +78,14 @@ final class SoundLevelChanged extends VoiceEvent {
 abstract interface class VoiceInput {
   Stream<VoiceEvent> get events;
   VoiceStatus get status;
+
+  /// Apakah engine yang dipasang saat ini bisa mendengarkan wakeword tanpa
+  /// bergantung pada AccessKey milik engine lain.
+  bool get wakeWordAvailable;
+
+  /// Apakah pengguna mengaktifkan wakeword. Tetap true saat engine jeda
+  /// sementara untuk memakai mikrofon bagi dikte.
+  bool get wakeWordEnabled;
 
   /// Mulai mengawasi kata pemicu. Tidak merekam ucapan.
   Future<void> startWakeWordWatch();

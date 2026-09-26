@@ -31,24 +31,41 @@ class ToolCallInfo {
   final String tool;
   final String preview;
   final String status;
+  final int? index;
 
   const ToolCallInfo({
     required this.tool,
     this.preview = '',
     this.status = 'completed',
+    this.index,
   });
 
   factory ToolCallInfo.fromJson(Map<String, dynamic> json) => ToolCallInfo(
     tool: json['tool'] as String? ?? 'tool',
     preview: json['preview'] as String? ?? '',
     status: json['status'] as String? ?? 'completed',
+    index: (json['index'] as num?)?.toInt(),
   );
 
   Map<String, dynamic> toJson() => {
     'tool': tool,
     'preview': preview,
     'status': status,
+    if (index != null) 'index': index,
   };
+}
+
+/// Tautan sumber yang dicantumkan Agent pada jawabannya.
+class ReplySource {
+  final String title;
+  final String url;
+
+  const ReplySource({required this.title, required this.url});
+
+  factory ReplySource.fromJson(Map<String, dynamic> json) => ReplySource(
+    title: json['title'] as String? ?? '',
+    url: json['url'] as String? ?? '',
+  );
 }
 
 /// Ringkasan sesi percakapan untuk drawer multi-session.
@@ -116,6 +133,7 @@ class AgentReply {
   final String sessionId;
   final String thought;
   final List<ToolCallInfo> toolCalls;
+  final List<ReplySource> sources;
 
   /// Gambar yang dikirim Agent bersama balasan ini (mis. screenshot,
   /// hasil image_gen). Kosong pada sebagian besar balasan — hanya terisi
@@ -132,6 +150,7 @@ class AgentReply {
     required this.sessionId,
     this.thought = '',
     this.toolCalls = const [],
+    this.sources = const [],
     this.images = const [],
     this.files = const [],
   });
@@ -140,6 +159,7 @@ class AgentReply {
     final rawImages = json['images'];
     final rawFiles = json['files'];
     final rawTools = json['toolCalls'];
+    final rawSources = json['sources'];
     return AgentReply(
       response: json['response'] as String? ?? '',
       sessionId: json['sessionId'] as String? ?? '',
@@ -148,6 +168,12 @@ class AgentReply {
           ? [
               for (final item in rawTools)
                 if (item is Map<String, dynamic>) ToolCallInfo.fromJson(item),
+            ]
+          : const [],
+      sources: rawSources is List
+          ? [
+              for (final item in rawSources)
+                if (item is Map<String, dynamic>) ReplySource.fromJson(item),
             ]
           : const [],
       images: rawImages is List
@@ -164,6 +190,14 @@ class AgentReply {
           : const [],
     );
   }
+}
+
+/// Audio hasil TTS dari backend, siap diputar oleh klien.
+class SpokenAudio {
+  final Uint8List bytes;
+  final String mimeType;
+
+  const SpokenAudio({required this.bytes, required this.mimeType});
 }
 
 /// Satu gambar yang dikirim Agent lewat balasan.

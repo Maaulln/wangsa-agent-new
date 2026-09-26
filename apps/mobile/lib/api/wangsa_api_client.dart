@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -326,6 +328,8 @@ class WangsaApiClient {
     String? userName,
     String? userBio,
     List<String> toolsets = const [],
+    void Function(ToolCallInfo activity)? onActivity,
+    void Function(String delta)? onDelta,
   }) {
     final lampiran = images ?? const <ChatImage>[];
     if (message.trim().isEmpty && lampiran.isEmpty) {
@@ -345,7 +349,7 @@ class WangsaApiClient {
     }
 
     final uri = Uri.parse(
-      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/messages',
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/messages/stream',
     );
     final body = <String, Object?>{
       'message': message,
@@ -369,17 +373,154 @@ class WangsaApiClient {
       if (userBio != null && userBio.trim().isNotEmpty)
         'userBio': userBio.trim(),
     };
-    return _send(
-      () => _httpClient.post(
-        uri,
-        headers: _authHeaders(const {
-          'content-type': 'application/json; charset=utf-8',
-        }),
-        body: jsonEncode(body),
-      ),
-      AgentReply.fromJson,
-      replyTimeout,
-    );
+    return _sendStreamingMessage(uri, body, onActivity, onDelta);
+  }
+
+  /// Kirim rekaman ponsel ke STT provider yang dikonfigurasi di backend.
+  Future<ApiResult<String>> transcribeAudio(
+    Uint8List bytes, {
+    String mimeType = 'audio/mp4',
+  }) async {
+    try {
+      final request =
+          http.Request('POST', Uri.parse('$baseUrl/api/v1/audio/transcribe'))
+            ..headers.addAll(_authHeaders({'content-type': mimeType}))
+            ..bodyBytes = bytes;
+      final response = await _httpClient.send(request).timeout(replyTimeout);
+      final body = await response.stream.bytesToString();
+      final decoded = jsonDecode(body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fromEnvelope<String>(decoded, (_) => '');
+      }
+      return ApiResult.fromEnvelope<String>(
+        decoded,
+        (data) => data['transcript'] as String? ?? '',
+      );
+    } catch (_) {
+      return ApiResult.runtimeError('Tidak bisa mengirim audio ke STT Wangsa.');
+    }
+  }
+
+  /// Minta backend membuat audio balasan melalui provider TTS terpilih.
+  Future<ApiResult<SpokenAudio>> speakText(String text) async {
+    try {
+      final request =
+          http.Request('POST', Uri.parse('$baseUrl/api/v1/audio/speak'))
+            ..headers.addAll(_authHeaders({'content-type': 'application/json'}))
+            ..body = jsonEncode({'text': text});
+      final response = await _httpClient.send(request).timeout(replyTimeout);
+      final mimeType = response.headers['content-type'] ?? 'audio/mpeg';
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await response.stream.bytesToString();
+        try {
+          return ApiResult.fromEnvelope<SpokenAudio>(
+            jsonDecode(body),
+            (_) => throw const FormatException(),
+          );
+        } catch (_) {
+          return ApiResult.runtimeError('TTS Wangsa gagal membuat audio.');
+        }
+      }
+      return ApiResult.success(
+        SpokenAudio(bytes: await response.stream.toBytes(), mimeType: mimeType),
+      );
+    } catch (_) {
+      return ApiResult.runtimeError(
+        'Tidak bisa meminta audio dari TTS Wangsa.',
+      );
+    }
+  }
+
+  Future<ApiResult<AgentReply>> _sendStreamingMessage(
+    Uri uri,
+    Map<String, Object?> body,
+    void Function(ToolCallInfo activity)? onActivity,
+    void Function(String delta)? onDelta,
+  ) async {
+    try {
+      final request = http.Request('POST', uri)
+        ..headers.addAll(
+          _authHeaders(const {
+            'content-type': 'application/json; charset=utf-8',
+            'accept': 'text/event-stream, application/json',
+          }),
+        )
+        ..body = jsonEncode(body);
+      final response = await _httpClient.send(request).timeout(replyTimeout);
+      final contentType = response.headers['content-type'] ?? '';
+      if (!contentType.contains('text/event-stream')) {
+        final text = await response.stream.bytesToString();
+        try {
+          return ApiResult.fromEnvelope<AgentReply>(
+            jsonDecode(text),
+            AgentReply.fromJson,
+          );
+        } catch (_) {
+          return ApiResult.runtimeError('Balasan API tidak bisa dibaca.');
+        }
+      }
+
+      String eventName = '';
+      final eventData = StringBuffer();
+      ApiResult<AgentReply>? result;
+
+      void dispatchEvent() {
+        final raw = eventData.toString().trim();
+        if (raw.isEmpty) return;
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is! Map<String, dynamic>) return;
+          switch (eventName) {
+            case 'tool':
+              onActivity?.call(ToolCallInfo.fromJson(decoded));
+              break;
+            case 'delta':
+              final delta = decoded['text'];
+              if (delta is String && delta.isNotEmpty) onDelta?.call(delta);
+              break;
+            case 'done':
+              result = ApiResult<AgentReply>.success(
+                AgentReply.fromJson(decoded),
+              );
+              break;
+            case 'error':
+              result = ApiResult<AgentReply>.failure(
+                ApiError(
+                  decoded['code'] as String? ?? 'RUNTIME_ERROR',
+                  decoded['message'] as String? ??
+                      'Agent gagal memproses pesan.',
+                ),
+              );
+              break;
+          }
+        } catch (_) {
+          result = ApiResult.runtimeError('Event aktivitas tidak bisa dibaca.');
+        }
+        eventName = '';
+        eventData.clear();
+      }
+
+      await response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .forEach((line) {
+            if (line.isEmpty) {
+              dispatchEvent();
+            } else if (line.startsWith('event:')) {
+              eventName = line.substring(6).trim();
+            } else if (line.startsWith('data:')) {
+              if (eventData.isNotEmpty) eventData.write('\n');
+              eventData.write(line.substring(5).trimLeft());
+            }
+          })
+          .timeout(replyTimeout);
+      dispatchEvent();
+      return result ?? ApiResult.runtimeError('Aliran balasan terputus.');
+    } on TimeoutException {
+      return ApiResult.runtimeError('Wangsa belum membalas. Coba lagi.');
+    } catch (_) {
+      return ApiResult.runtimeError('Tidak bisa menghubungi API Wangsa.');
+    }
   }
 
   /// Satu-satunya tempat lemparan menjadi [ApiResult].

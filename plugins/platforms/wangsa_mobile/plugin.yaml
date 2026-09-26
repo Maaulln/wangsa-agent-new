@@ -4,15 +4,16 @@ kind: platform
 version: 1.0.0
 description: >
   Exposes Wangsa to the Wangsa Flutter mobile app over a small REST API
-  (2 routes, not JSON-RPC/SSE): GET /api/v1/agents/{agentId} returns a static
+  (not JSON-RPC/SSE): GET /api/v1/agents/{agentId} returns a static
   identity envelope, POST /api/v1/agents/{agentId}/messages routes a message
   into the agent's live gateway session (same MessageEvent path as every
-  other inbound platform) and returns the reply synchronously.
+  other inbound platform) and returns the reply synchronously. Audio routes
+  provide profile-scoped STT transcription and TTS synthesis for mobile voice.
 
   Security is on by default: no bearer token configured => localhost-only
-  bind. When a token is configured, it is required on the POST /messages
-  route (the GET identity route stays open — no sensitive data). A small
-  fixed-window rate limiter protects the POST route per caller IP.
+  bind. When a token is configured, it is required on message and audio POST
+  routes (the GET identity route stays open — no sensitive data). A small
+  fixed-window rate limiter protects these routes per caller IP.
 
   Pure stdlib transport (http.server) — no extra dependencies required.
 author: Nous Research

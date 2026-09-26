@@ -53,20 +53,22 @@ class NativeVoiceInput implements VoiceInput {
   NativeVoiceInput({
     String? accessKey,
     String keywordAssetPath = 'assets/voice/keywords.txt',
-    String modelAssetPath = 'assets/voice/encoder-epoch-12-avg-2-chunk-16-left-64.onnx',
+    String modelAssetPath =
+        'assets/voice/encoder-epoch-12-avg-2-chunk-16-left-64.onnx',
     WakeWordEngineFactory createWakeWordEngine = createSherpaOnnxEngine,
     SpeechEngine? speechEngine,
     TtsEngine? ttsEngine,
-    ForegroundServiceController foregroundService = const FlutterForegroundServiceController(),
+    ForegroundServiceController foregroundService =
+        const FlutterForegroundServiceController(),
     bool enabled = true,
-  })  : _accessKey = accessKey,
-        _keywordAssetPath = keywordAssetPath,
-        _modelAssetPath = modelAssetPath,
-        _createWakeWordEngine = createWakeWordEngine,
-        _speechEngine = speechEngine ?? DeviceSpeechEngine(),
-        _tts = ttsEngine ?? DeviceTtsEngine(),
-        _foregroundService = foregroundService,
-        _enabled = enabled;
+  }) : _accessKey = accessKey,
+       _keywordAssetPath = keywordAssetPath,
+       _modelAssetPath = modelAssetPath,
+       _createWakeWordEngine = createWakeWordEngine,
+       _speechEngine = speechEngine ?? DeviceSpeechEngine(),
+       _tts = ttsEngine ?? DeviceTtsEngine(),
+       _foregroundService = foregroundService,
+       _enabled = enabled;
 
   bool get _wakeWordConfigured {
     // Mesin on-device (zipformer, openWakeWord) tidak memakai AccessKey;
@@ -85,6 +87,12 @@ class NativeVoiceInput implements VoiceInput {
   VoiceStatus get status => _status;
 
   @override
+  bool get wakeWordAvailable => _wakeWordConfigured;
+
+  @override
+  bool get wakeWordEnabled => _wakeWordEnabled;
+
+  @override
   bool get isSpeaking => _isSpeakingManual;
 
   /// Pembuatan mesin kata pemicu yang sedang berjalan, atau null. Membuat
@@ -95,6 +103,7 @@ class NativeVoiceInput implements VoiceInput {
   /// pertama kehilangan referensinya tanpa pernah dihentikan — terus
   /// memegang mikrofon.
   Future<void>? _startingWakeWord;
+  bool _wakeWordEnabled = false;
 
   @override
   Future<void> startWakeWordWatch() async {
@@ -107,15 +116,21 @@ class NativeVoiceInput implements VoiceInput {
     }
     // Sudah menyala: tidak ada yang perlu dilakukan.
     if (_wakeEngine != null) {
-      debugPrint('[NativeVoiceInput] startWakeWordWatch(): engine sudah aktif.');
+      debugPrint(
+        '[NativeVoiceInput] startWakeWordWatch(): engine sudah aktif.',
+      );
       return;
     }
     if (!_wakeWordConfigured) {
-      debugPrint('[NativeVoiceInput] startWakeWordWatch(): wake word TIDAK terkonfigurasi untuk instance ini.');
+      debugPrint(
+        '[NativeVoiceInput] startWakeWordWatch(): wake word TIDAK terkonfigurasi untuk instance ini.',
+      );
+      _wakeWordEnabled = false;
       _status = VoiceStatus.off;
       return;
     }
 
+    _wakeWordEnabled = true;
     final starting = _buildAndStartWakeWordEngine();
     _startingWakeWord = starting;
     try {
@@ -128,7 +143,9 @@ class NativeVoiceInput implements VoiceInput {
   /// Tidak pernah melempar: kegagalan dilaporkan sebagai [VoiceFailure].
   Future<void> _buildAndStartWakeWordEngine() async {
     try {
-      debugPrint('[NativeVoiceInput] Memulai layanan latar depan dan membuat engine...');
+      debugPrint(
+        '[NativeVoiceInput] Memulai layanan latar depan dan membuat engine...',
+      );
       await _foregroundService.start();
 
       _wakeEngine = await _createWakeWordEngine(
@@ -136,7 +153,9 @@ class NativeVoiceInput implements VoiceInput {
         keywordAssetPath: _keywordAssetPath,
         modelAssetPath: _modelAssetPath,
         onDetected: () {
-          debugPrint('[NativeVoiceInput] WakeWordDetected dipicu! Memulai startListening()...');
+          debugPrint(
+            '[NativeVoiceInput] WakeWordDetected dipicu! Memulai startListening()...',
+          );
           _controller.add(const WakeWordDetected());
           // Background (deferAutoListen): panggilan ala Siri yang tampil,
           // dikte menyusul saat pengguna mengetuknya (lihat VoiceSummoner).
@@ -147,20 +166,45 @@ class NativeVoiceInput implements VoiceInput {
           _controller.add(VoiceFailure('Wake word gagal: $message'));
         },
       );
-      debugPrint('[NativeVoiceInput] Engine berhasil dibuat, memulai watch (start)...');
+      debugPrint(
+        '[NativeVoiceInput] Engine berhasil dibuat, memulai watch (start)...',
+      );
       await _wakeEngine!.start();
       _status = VoiceStatus.idle;
-      debugPrint('[NativeVoiceInput] Status kini VoiceStatus.idle. Siaga mendengarkan.');
+      _controller.add(const WakeWordStatusChanged(true));
+      debugPrint(
+        '[NativeVoiceInput] Status kini VoiceStatus.idle. Siaga mendengarkan.',
+      );
     } catch (e, stack) {
       debugPrint('[NativeVoiceInput] Gagal menyalakan kata pemicu: $e\n$stack');
       _wakeEngine = null;
+      _wakeWordEnabled = false;
       _status = VoiceStatus.off;
-      _controller.add(VoiceFailure('Kata pemicu tidak bisa diaktifkan di perangkat ini: $e'));
+      try {
+        await _foregroundService.stop();
+      } catch (stopError) {
+        debugPrint(
+          '[NativeVoiceInput] Gagal menghentikan layanan setelah start gagal: $stopError',
+        );
+      }
+      _controller.add(const WakeWordStatusChanged(false));
+      final message = e.toString().toLowerCase().contains('izin mikrofon')
+          ? 'Wangsa perlu izin mikrofon untuk mendengarkan kata pemicu. Aktifkan izin itu, lalu coba lagi.'
+          : 'Wangsa belum bisa mengaktifkan kata pemicu. Coba lagi; jika masih gagal, periksa izin mikrofon.';
+      _controller.add(VoiceFailure(message));
     }
   }
 
   @override
   Future<void> stopWakeWordWatch() async {
+    _wakeWordEnabled = false;
+    await _stopWakeWordEngine();
+    _controller.add(const WakeWordStatusChanged(false));
+  }
+
+  /// Melepas engine/mikrofon tanpa mengubah preferensi pengguna. Dipakai
+  /// ketika dictation mengambil mikrofon; wakeword akan dilanjutkan sesudahnya.
+  Future<void> _stopWakeWordEngine() async {
     // Mesin yang masih dibuat harus ditunggu dulu; kalau tidak `_wakeEngine`
     // masih null, tidak ada yang dihentikan, lalu mesinnya lolos dan terus
     // menyala.
@@ -176,8 +220,6 @@ class NativeVoiceInput implements VoiceInput {
     }
     if (_status == VoiceStatus.idle) _status = VoiceStatus.off;
   }
-
-  bool _wasWatchingWakeWord = false;
 
   /// True sejak ucapan akhir yang berisi (pengguna sudah bicara dan
   /// balasan Agent ditunggu) sampai percakapan suara berakhir. Selama itu
@@ -201,14 +243,11 @@ class NativeVoiceInput implements VoiceInput {
     _speakToken++;
     await _tts.stop();
 
-    // Aturan mikrofon eksklusif (lihat voice_input.dart): pengawasan
-    // kata pemicu wajib berhenti dulu bila sedang menyala sebelum mesin dikte boleh menyala.
-    // Di tengah percakapan "apakah tadinya mengawasi" sudah dicatat sejak
-    // awal, dan mesinnya memang sedang mati — jangan dihitung ulang dari
-    // `_wakeEngine`, atau kata pemicu tidak akan pernah dinyalakan kembali.
-    if (!_conversationActive) _wasWatchingWakeWord = _wakeEngine != null;
-    if (_wakeEngine != null) {
-      await stopWakeWordWatch();
+    // Aturan mikrofon eksklusif (lihat voice_input.dart): lepaskan engine
+    // sebelum dikte mengambil mikrofon. Preferensi tetap aktif agar listener
+    // kembali otomatis begitu giliran suara selesai.
+    if (_wakeEngine != null || _startingWakeWord != null) {
+      await _stopWakeWordEngine();
     }
 
     _status = VoiceStatus.listening;
@@ -260,7 +299,9 @@ class NativeVoiceInput implements VoiceInput {
     final token = ++_speakToken;
     final spoken = speechText(text);
     if (spoken.isNotEmpty) {
-      debugPrint('[NativeVoiceInput] Membacakan balasan (${spoken.length} karakter)...');
+      debugPrint(
+        '[NativeVoiceInput] Membacakan balasan (${spoken.length} karakter)...',
+      );
       // Mikrofon dibuka SESUDAH suaranya habis, bukan bersamaan.
       await _tts.speak(spoken);
     }
@@ -268,7 +309,9 @@ class NativeVoiceInput implements VoiceInput {
     // Percakapan bisa dihentikan (stop) atau diambil alih ketukan mikrofon
     // selagi Agent bicara.
     if (_disposed || !_conversationActive || token != _speakToken) return;
-    debugPrint('[NativeVoiceInput] Selesai membacakan, membuka mikrofon untuk lanjutan.');
+    debugPrint(
+      '[NativeVoiceInput] Selesai membacakan, membuka mikrofon untuk lanjutan.',
+    );
     await startListening();
   }
 
@@ -315,7 +358,9 @@ class NativeVoiceInput implements VoiceInput {
     // Tidak ada yang menyala kembali (pengawasan memang mati sebelum dikte,
     // atau gagal dibuat): jangan biarkan status tersangkut di
     // listening/processing.
-    if (_wakeEngine == null && _status != VoiceStatus.off) _status = VoiceStatus.off;
+    if (_wakeEngine == null && _status != VoiceStatus.off) {
+      _status = VoiceStatus.off;
+    }
   }
 
   /// Tidak melakukan apa pun bila pengawasan memang mati sebelum dikte
@@ -323,7 +368,12 @@ class NativeVoiceInput implements VoiceInput {
   /// dipanggil berulang: galat dan ucapan akhir bisa datang berurutan
   /// dalam satu sesi, dan hanya satu mesin baru yang boleh dibuat.
   Future<void> _resumeWakeWordWatch() async {
-    if (_disposed || !_wasWatchingWakeWord || _resumingWakeWord || _wakeEngine != null) return;
+    if (_disposed ||
+        !_wakeWordEnabled ||
+        _resumingWakeWord ||
+        _wakeEngine != null) {
+      return;
+    }
     _resumingWakeWord = true;
     try {
       // Mikrofon harus benar-benar lepas dari mesin dikte sebelum
@@ -346,7 +396,7 @@ class NativeVoiceInput implements VoiceInput {
     _speakToken++;
     await _tts.stop();
     await _speechEngine.cancel();
-    if (_wasWatchingWakeWord) {
+    if (_wakeWordEnabled) {
       _status = VoiceStatus.idle;
       await startWakeWordWatch();
     } else {

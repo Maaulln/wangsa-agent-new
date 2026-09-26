@@ -36,6 +36,7 @@ class AuthGate extends StatefulWidget {
   final LlmSettingsController llmSettings;
   final UserProfileController userProfile;
   final MobileAuthController auth;
+  final WangsaApiClient? voiceApiClient;
 
   /// Hook pengujian: klien HTTP bersama untuk semua WangsaApiClient yang
   /// dibuat gate ini, supaya test widget bisa memakai MockClient.
@@ -51,6 +52,7 @@ class AuthGate extends StatefulWidget {
     required this.llmSettings,
     required this.userProfile,
     required this.auth,
+    this.voiceApiClient,
     this.httpClient,
   });
 
@@ -106,6 +108,7 @@ class _AuthGateState extends State<AuthGate> {
     if (!mounted) return;
     setState(() {
       _apiUrl = clean;
+      widget.voiceApiClient?.updateBaseUrl(clean);
       if (_sessionKey != null) {
         final token = _sessionKey!.split('|').sublist(1).join('|');
         _sessionKey = '$clean|$token';
@@ -114,6 +117,9 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   void _ensureSession(String key) {
+    widget.voiceApiClient
+      ?..updateBaseUrl(_apiUrl)
+      ..updateToken(widget.auth.token);
     if (_sessionKey == key && _client != null && _bloc != null) return;
     // Sesi berubah (login/logout/ganti server): buang yang lama.
     _bloc?.close();
@@ -192,6 +198,9 @@ class _AuthGateState extends State<AuthGate> {
                 },
           );
         }
+        widget.voiceApiClient
+          ?..updateBaseUrl(_apiUrl)
+          ..updateToken(null);
         // Sesi chat aktif: klien signup sudah tidak dipakai.
         if (_ownsClients) _signupClient?.close();
         _signupClient = null;

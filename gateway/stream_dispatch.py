@@ -116,6 +116,9 @@ class GatewayEventDispatcher:
         if isinstance(event, ToolCallFinished):
             # Default: no chrome on completion (matches today — the gateway only
             # rendered "started" events).  Completion drives onboarding hints.
+            on_tool_finished = getattr(self.adapter, "on_tool_finished", None)
+            if callable(on_tool_finished):
+                on_tool_finished(event, self.sink)
             return
 
         if isinstance(event, LongToolHint):

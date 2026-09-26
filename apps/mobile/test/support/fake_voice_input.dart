@@ -20,6 +20,8 @@ class FakeVoiceInput implements VoiceInput {
   bool _isSpeaking = false;
   int endConversationCalls = 0;
   bool _conversationActive = false;
+  bool canListenForWakeWord = true;
+  bool _wakeWordEnabled = false;
 
   /// Bila false, [speakReply] tidak membuka mikrofon lanjutan. Untuk test
   /// yang hanya ingin memeriksa keadaan layar tepat setelah ucapan akhir,
@@ -34,6 +36,12 @@ class FakeVoiceInput implements VoiceInput {
   VoiceStatus get status => _status;
 
   @override
+  bool get wakeWordAvailable => canListenForWakeWord;
+
+  @override
+  bool get wakeWordEnabled => _wakeWordEnabled;
+
+  @override
   bool get isSpeaking => _isSpeaking;
 
   /// Test memakai ini untuk memicu kejadian seolah-olah datang dari mesin
@@ -43,19 +51,23 @@ class FakeVoiceInput implements VoiceInput {
   void emit(VoiceEvent event, {VoiceStatus? status}) {
     if (status != null) _status = status;
     // Ucapan akhir yang berisi memulai percakapan suara, seperti di mesin nyata.
-    if (event is FinalTranscript && event.text.trim().isNotEmpty) _conversationActive = true;
+    if (event is FinalTranscript && event.text.trim().isNotEmpty) {
+      _conversationActive = true;
+    }
     _controller.add(event);
   }
 
   @override
   Future<void> startWakeWordWatch() async {
     startWakeWordWatchCalls++;
+    _wakeWordEnabled = true;
     _status = VoiceStatus.idle;
   }
 
   @override
   Future<void> stopWakeWordWatch() async {
     stopWakeWordWatchCalls++;
+    _wakeWordEnabled = false;
     if (_status == VoiceStatus.idle) _status = VoiceStatus.off;
   }
 
@@ -71,7 +83,9 @@ class FakeVoiceInput implements VoiceInput {
   Future<void> speakReply(String text) async {
     spokenReplies.add(text);
     // Balasan untuk pesan yang diketik tidak dibacakan dan tidak membuka mikrofon.
-    if (_conversationActive && followUpListening) _status = VoiceStatus.listening;
+    if (_conversationActive && followUpListening) {
+      _status = VoiceStatus.listening;
+    }
   }
 
   @override

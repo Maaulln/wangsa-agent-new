@@ -36,6 +36,12 @@ class _FakeVoiceInput implements VoiceInput {
   VoiceStatus get status => VoiceStatus.idle;
 
   @override
+  bool get wakeWordAvailable => true;
+
+  @override
+  bool get wakeWordEnabled => true;
+
+  @override
   Future<void> startWakeWordWatch() async {}
 
   @override

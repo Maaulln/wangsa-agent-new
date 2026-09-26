@@ -24,8 +24,11 @@ Future<Widget> _buildApp(AppConfig config, FakeVoiceInput voiceInput) async {
 
 void main() {
   group('SettingsPage dan sakelar dengar di latar belakang', () {
-    testWidgets('sakelar nonaktif ketika AccessKey wake word kosong', (tester) async {
-      const config = AppConfig(apiBaseUrl: 'https://api.wangsa.test', defaultAgentId: 'agent-1');
+    testWidgets('engine lokal tetap tersedia tanpa AccessKey', (tester) async {
+      const config = AppConfig(
+        apiBaseUrl: 'https://api.wangsa.test',
+        defaultAgentId: 'agent-1',
+      );
       final voiceInput = FakeVoiceInput();
 
       await tester.pumpWidget(await _buildApp(config, voiceInput));
@@ -33,7 +36,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final switchWidget = tester.widget<Switch>(find.byType(Switch));
-      expect(switchWidget.onChanged, isNull);
+      expect(switchWidget.onChanged, isNotNull);
       expect(switchWidget.value, isFalse);
     });
 
@@ -41,7 +44,9 @@ void main() {
     // fake_voice_input.dart) — ini menguji SettingsPage terisolasi dari
     // bootstrap main.dart, jadi TIDAK perlu diubah untuk "meniru" auto-start
     // default baru di main.dart.
-    testWidgets('menyalakan sakelar memanggil startWakeWordWatch', (tester) async {
+    testWidgets('menyalakan sakelar memanggil startWakeWordWatch', (
+      tester,
+    ) async {
       const config = AppConfig(
         apiBaseUrl: 'https://api.wangsa.test',
         defaultAgentId: 'agent-1',
@@ -58,7 +63,9 @@ void main() {
       expect(voiceInput.startWakeWordWatchCalls, 1);
     });
 
-    testWidgets('mematikan sakelar memanggil stopWakeWordWatch', (tester) async {
+    testWidgets('mematikan sakelar memanggil stopWakeWordWatch', (
+      tester,
+    ) async {
       const config = AppConfig(
         apiBaseUrl: 'https://api.wangsa.test',
         defaultAgentId: 'agent-1',

@@ -59,8 +59,8 @@ class VoiceSummoner with WidgetsBindingObserver {
     required String wakeWord,
     this.onVisibilityChanged,
     this.onSummonAccepted,
-  })  : _display = display,
-        _wakeWord = wakeWord;
+  }) : _display = display,
+       _wakeWord = wakeWord;
 
   /// Mulai mendengarkan event suara dan perubahan lifecycle. Aman
   /// dipanggil sekali; panggilan berikutnya diabaikan.
@@ -97,6 +97,8 @@ class VoiceSummoner with WidgetsBindingObserver {
           _summonShown = true;
           await _display.showSummon(_wakeWord);
         }
+      case WakeWordStatusChanged():
+        break;
       case FinalTranscript():
       case VoiceFailure():
         _summonShown = false;

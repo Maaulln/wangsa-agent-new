@@ -6,6 +6,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/api_endpoints.dart';
+import 'api/wangsa_api_client.dart';
 import 'auth/mobile_auth_controller.dart';
 import 'auth/view/auth_gate.dart';
 import 'config/app_config.dart';
@@ -16,7 +17,9 @@ import 'product/product_app.dart';
 import 'theme/theme_controller.dart';
 import 'theme/wangsa_theme.dart';
 import 'voice/native_voice_input.dart';
+import 'voice/speech_engine.dart';
 import 'voice/summon_notifications.dart';
+import 'voice/tts_engine.dart';
 import 'voice/voice_input.dart';
 import 'voice/voice_summoner.dart';
 import 'voice/wake_word_engine.dart';
@@ -61,7 +64,7 @@ AppConfig get fallbackConfig {
   return AppConfig(
     apiBaseUrl: envApiUrl.isNotEmpty ? envApiUrl : 'http://$_defaultHost:9901',
     defaultAgentId: envAgentId.isNotEmpty ? envAgentId : 'wangsa',
-    wakeWord: 'Halo Wangsa',
+    wakeWord: 'Hallo Wangsa',
     wakeWordAccessKey: 'sherpa-onnx-offline',
   );
 }
@@ -117,7 +120,7 @@ Future<void> main() async {
         channelId: 'wangsa_wake_word',
         channelName: 'Wangsa mendengarkan kata pemicu',
         channelDescription:
-            'Tampil selama aplikasi mengawasi "Halo Wangsa" di latar belakang.',
+            'Tampil selama aplikasi mengawasi "Hallo Wangsa" di latar belakang.',
         onlyAlertOnce: true,
       ),
       // Wajib diisi oleh flutter_foreground_task 11, walaupun aplikasi ini
@@ -163,6 +166,10 @@ Future<void> main() async {
   final activeConfig = fallbackConfig.copyWith(apiBaseUrl: selectedApiUrl);
   final result = ConfigLoadResult(config: activeConfig);
 
+  final mobileAuth = await MobileAuthController.load();
+  final voiceApiClient = WangsaApiClient(baseUrl: selectedApiUrl)
+    ..updateToken(mobileAuth.token);
+
   // Dibuat sekali di sini, bukan di dalam WangsaApp.build() — build() bisa
   // dipanggil ulang (mis. saat hot reload), dan ChatPage hanya
   // berlangganan events sekali lewat initState(), jadi instance baru
@@ -176,6 +183,8 @@ Future<void> main() async {
   final voiceInput = NativeVoiceInput(
     accessKey: result.config.wakeWordAccessKey,
     createWakeWordEngine: createOpenWakeWordEngine,
+    speechEngine: BackendSpeechEngine(voiceApiClient),
+    ttsEngine: BackendTtsEngine(voiceApiClient),
   );
   // Bel ala Siri: saat kata pemicu terdeteksi ketika aplikasi di
   // background, tampilkan notifikasi full-screen (lihat voice_summoner.dart).
@@ -199,8 +208,6 @@ Future<void> main() async {
   final themeController = await ThemeController.load();
   final llmSettings = await LlmSettingsController.load();
   final userProfile = await UserProfileController.load();
-  final mobileAuth = await MobileAuthController.load();
-
   runApp(
     WangsaApp(
       configResult: result,
@@ -209,6 +216,7 @@ Future<void> main() async {
       llmSettings: llmSettings,
       userProfile: userProfile,
       mobileAuth: mobileAuth,
+      voiceApiClient: voiceApiClient,
     ),
   );
 }
@@ -220,6 +228,7 @@ class WangsaApp extends StatelessWidget {
   final LlmSettingsController llmSettings;
   final UserProfileController userProfile;
   final MobileAuthController mobileAuth;
+  final WangsaApiClient voiceApiClient;
 
   const WangsaApp({
     super.key,
@@ -229,6 +238,7 @@ class WangsaApp extends StatelessWidget {
     required this.llmSettings,
     required this.userProfile,
     required this.mobileAuth,
+    required this.voiceApiClient,
   });
 
   @override
@@ -254,6 +264,7 @@ class WangsaApp extends StatelessWidget {
       llmSettings: llmSettings,
       userProfile: userProfile,
       auth: mobileAuth,
+      voiceApiClient: voiceApiClient,
     );
 
     return ValueListenableBuilder<ThemeMode>(

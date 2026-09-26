@@ -117,14 +117,14 @@ class OpenWakeWordEngine implements WakeWordEngine {
     required void Function() onDetected,
     void Function(String message)? onError,
     void Function(double level)? onAudioLevel,
-  })  : _melSession = melSession,
-        _embeddingSession = embeddingSession,
-        _classifierSession = classifierSession,
-        _recorder = recorder,
-        _threshold = threshold,
-        _onDetected = onDetected,
-        _onError = onError,
-        _onAudioLevel = onAudioLevel;
+  }) : _melSession = melSession,
+       _embeddingSession = embeddingSession,
+       _classifierSession = classifierSession,
+       _recorder = recorder,
+       _threshold = threshold,
+       _onDetected = onDetected,
+       _onError = onError,
+       _onAudioLevel = onAudioLevel;
 
   /// Ambang 0.5 dipakai openWakeWord sebagai referensi umum di dokumentasi
   /// mereka, TAPI belum diverifikasi empiris untuk pipeline ini di repo ini
@@ -146,9 +146,12 @@ class OpenWakeWordEngine implements WakeWordEngine {
   /// lebih lanjut lewat "Lab Uji Wake Word" (settings_page.dart) dengan
   /// beberapa percobaan natural + logat sebelum menganggap ini selesai.
   static Future<WakeWordEngine> create({
-    String melspectrogramAssetPath = 'assets/voice/openwakeword/melspectrogram.onnx',
-    String embeddingAssetPath = 'assets/voice/openwakeword/embedding_model.onnx',
-    String classifierAssetPath = 'assets/voice/openwakeword/hallo_wangsa_v1.onnx',
+    String melspectrogramAssetPath =
+        'assets/voice/openwakeword/melspectrogram.onnx',
+    String embeddingAssetPath =
+        'assets/voice/openwakeword/embedding_model.onnx',
+    String classifierAssetPath =
+        'assets/voice/openwakeword/hallo_wangsa_v1.onnx',
     double threshold = 0.9,
     required void Function() onDetected,
     required void Function(String message) onError,
@@ -157,9 +160,15 @@ class OpenWakeWordEngine implements WakeWordEngine {
     try {
       debugPrint('[OpenWakeWord] Memuat 3 sesi ONNX dari aset Flutter...');
       final ort = OnnxRuntime();
-      final melSession = await ort.createSessionFromAsset(melspectrogramAssetPath);
-      final embeddingSession = await ort.createSessionFromAsset(embeddingAssetPath);
-      final classifierSession = await ort.createSessionFromAsset(classifierAssetPath);
+      final melSession = await ort.createSessionFromAsset(
+        melspectrogramAssetPath,
+      );
+      final embeddingSession = await ort.createSessionFromAsset(
+        embeddingAssetPath,
+      );
+      final classifierSession = await ort.createSessionFromAsset(
+        classifierAssetPath,
+      );
       final recorder = AudioRecorder();
       debugPrint('[OpenWakeWord] Sesi ONNX siap (threshold=$threshold).');
 
@@ -186,8 +195,7 @@ class OpenWakeWordEngine implements WakeWordEngine {
 
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
-      _onError?.call('Izin mikrofon belum diberikan');
-      return;
+      throw StateError('Izin mikrofon belum diberikan');
     }
 
     final audioStream = await _recorder.startStream(
@@ -206,7 +214,9 @@ class OpenWakeWordEngine implements WakeWordEngine {
     _melBuffer.clear();
     _embeddingBuffer.clear();
     _newMelFramesSinceWindow = 0;
-    debugPrint('[OpenWakeWord] Audio stream aktif. Siaga mendengarkan "Hallo Wangsa"...');
+    debugPrint(
+      '[OpenWakeWord] Audio stream aktif. Siaga mendengarkan "Hallo Wangsa"...',
+    );
     _recordSubscription = audioStream.listen(
       _handleAudioChunk,
       onError: (err) {
@@ -256,7 +266,9 @@ class OpenWakeWordEngine implements WakeWordEngine {
     while (_melBuffer.length >= _embeddingWindowFrames &&
         _newMelFramesSinceWindow >= _embeddingWindowStep &&
         !_fired) {
-      final window = _melBuffer.sublist(_melBuffer.length - _embeddingWindowFrames);
+      final window = _melBuffer.sublist(
+        _melBuffer.length - _embeddingWindowFrames,
+      );
       _embeddingBuffer.add(await _runEmbedding(window));
       _newMelFramesSinceWindow -= _embeddingWindowStep;
 
@@ -279,7 +291,9 @@ class OpenWakeWordEngine implements WakeWordEngine {
         }
         if (_aboveThresholdStreak >= _requiredStreak) {
           _fired = true;
-          debugPrint('[OpenWakeWord] >>> KATA PEMICU TERDETEKSI (skor=$score) <<<');
+          debugPrint(
+            '[OpenWakeWord] >>> KATA PEMICU TERDETEKSI (skor=$score) <<<',
+          );
           _onDetected();
         }
       }
@@ -307,7 +321,9 @@ class OpenWakeWordEngine implements WakeWordEngine {
         for (var f = 0; f < frameCount; f++) {
           final row = Float32List(binCount);
           for (var b = 0; b < binCount; b++) {
-            row[b] = flat[f * binCount + b] / _melCalibrationDivisor + _melCalibrationOffset;
+            row[b] =
+                flat[f * binCount + b] / _melCalibrationDivisor +
+                _melCalibrationOffset;
           }
           rows.add(row);
         }
@@ -328,7 +344,12 @@ class OpenWakeWordEngine implements WakeWordEngine {
     }
 
     final inputName = _embeddingSession.inputNames.first;
-    final input = await OrtValue.fromList(flatIn, [1, _embeddingWindowFrames, bins, 1]);
+    final input = await OrtValue.fromList(flatIn, [
+      1,
+      _embeddingWindowFrames,
+      bins,
+      1,
+    ]);
     try {
       final outputs = await _embeddingSession.run({inputName: input});
       final outTensor = outputs[_embeddingSession.outputNames.first]!;
@@ -347,14 +368,19 @@ class OpenWakeWordEngine implements WakeWordEngine {
     const embeddingDim = 96;
     final flatIn = Float32List(_classifierEmbeddingCount * embeddingDim);
     for (var e = 0; e < _classifierEmbeddingCount; e++) {
-      flatIn.setRange(e * embeddingDim, e * embeddingDim + embeddingDim, embeddings[e]);
+      flatIn.setRange(
+        e * embeddingDim,
+        e * embeddingDim + embeddingDim,
+        embeddings[e],
+      );
     }
 
     final inputName = _classifierSession.inputNames.first;
-    final input = await OrtValue.fromList(
-      flatIn,
-      [1, _classifierEmbeddingCount, embeddingDim],
-    );
+    final input = await OrtValue.fromList(flatIn, [
+      1,
+      _classifierEmbeddingCount,
+      embeddingDim,
+    ]);
     try {
       final outputs = await _classifierSession.run({inputName: input});
       final outTensor = outputs[_classifierSession.outputNames.first]!;

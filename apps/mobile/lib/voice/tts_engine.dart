@@ -2,8 +2,13 @@
 /// mengimpor paket itu, alasan yang sama seperti `speech_engine.dart`.
 library;
 
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_tts/flutter_tts.dart';
+
+import '../api/wangsa_api_client.dart';
 
 /// Kontrak minimal yang dibutuhkan `NativeVoiceInput` dari sebuah mesin
 /// pembaca suara. Dideklarasikan eksplisit supaya lawan palsu di test
@@ -66,6 +71,64 @@ class DeviceTtsEngine implements TtsEngine {
   }
 }
 
+/// Meminta backend membuat audio balasan, lalu memutarnya di HP. Bila provider
+/// TTS server belum tersedia, tetap membacakan balasan dengan suara perangkat.
+class BackendTtsEngine implements TtsEngine {
+  final WangsaApiClient _api;
+  final DeviceTtsEngine _fallback = DeviceTtsEngine();
+  final AudioPlayer _player = AudioPlayer();
+  StreamSubscription<void>? _completeSubscription;
+  Completer<void>? _playbackDone;
+  int _requestToken = 0;
+
+  BackendTtsEngine(this._api);
+
+  @override
+  Future<void> speak(String text) async {
+    if (text.trim().isEmpty) return;
+    await stop();
+    final requestToken = ++_requestToken;
+    final result = await _api.speakText(speechText(text));
+    if (requestToken != _requestToken) return;
+    final audio = result.dataOrNull;
+    if (!result.isSuccess || audio == null || audio.bytes.isEmpty) {
+      debugPrint(
+        '[BackendTtsEngine] Server TTS gagal; memakai suara perangkat.',
+      );
+      await _fallback.speak(text);
+      return;
+    }
+
+    final done = Completer<void>();
+    _playbackDone = done;
+    _completeSubscription ??= _player.onPlayerComplete.listen((_) {
+      final current = _playbackDone;
+      if (current != null && !current.isCompleted) current.complete();
+    });
+    try {
+      await _player.play(BytesSource(audio.bytes, mimeType: audio.mimeType));
+      await done.future;
+    } catch (error) {
+      debugPrint('[BackendTtsEngine] Pemutaran audio server gagal: $error');
+      await _fallback.speak(text);
+    } finally {
+      if (identical(_playbackDone, done)) _playbackDone = null;
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    _requestToken++;
+    final done = _playbackDone;
+    if (done != null && !done.isCompleted) done.complete();
+    _playbackDone = null;
+    try {
+      await _player.stop();
+    } catch (_) {}
+    await _fallback.stop();
+  }
+}
+
 /// Mengubah balasan Agent (Markdown) menjadi teks yang enak didengar:
 /// tanda `**`, `#`, backtick, dan URL mentah tidak dibacakan huruf per
 /// huruf oleh mesin TTS.
@@ -79,7 +142,10 @@ String speechText(String markdown) {
   text = text.replaceAll(RegExp(r'https?://\S+'), 'tautan');
   text = text.replaceAll('`', '');
   // Penanda judul, kutipan, dan butir daftar di awal baris.
-  text = text.replaceAll(RegExp(r'^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+', multiLine: true), '');
+  text = text.replaceAll(
+    RegExp(r'^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+', multiLine: true),
+    '',
+  );
   // Penebal/miring. Garis bawah hanya dihapus di tepi kata supaya
   // `hallo_wangsa` tidak menjadi `hallowangsa`.
   text = text.replaceAll(RegExp(r'\*+'), '');

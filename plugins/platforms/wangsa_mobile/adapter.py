@@ -1,6 +1,6 @@
 """
 Wangsa Mobile inbound platform adapter — exposes Wangsa to the Wangsa Flutter
-mobile app over two simple REST routes (not JSON-RPC/SSE like a2a).
+mobile app over a small REST API (not JSON-RPC/SSE like a2a).
 
 Design (mirrors plugins/platforms/a2a/adapter.py's simpler cousin):
   - Runs a stdlib http.server (ThreadingHTTPServer) in a daemon thread from
@@ -11,6 +11,8 @@ Design (mirrors plugins/platforms/a2a/adapter.py's simpler cousin):
     live gateway session via the normal MessageEvent path (same as every
     other inbound platform), blocks on a Future for the reply, and returns
     it synchronously to the mobile app.
+  - POST /api/v1/audio/transcribe and /api/v1/audio/speak -> use the active
+    profile's configured STT/TTS providers for mobile voice conversations.
 
   Correlation choice (see ``send()`` below): grepped gateway/platforms/base.py
   for every call site that invokes ``adapter.send(...)`` on a platform
@@ -59,10 +61,12 @@ import json
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
 import urllib.request
 import uuid
+from urllib.parse import urlsplit
 from collections import deque
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeout
@@ -84,6 +88,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PORT = 9901
 _MAX_MESSAGE_LEN = 4000
 _MAX_BODY = 1_048_576  # 1MB
+_MAX_AUDIO_BODY = 12 * 1024 * 1024
 _MOBILE_TOOLSETS = frozenset({"web", "vision"})
 _OPENCODE_MODELS_URL = "https://opencode.ai/zen/v1/models"
 _OPENCODE_FREE_MODELS_CACHE: tuple[str, ...] = ()
@@ -108,6 +113,7 @@ _THINK_RE = re.compile(
     r"<(?:think|thinking|thought|reasoning|REASONING_SCRATCHPAD)>(.*?)</(?:think|thinking|thought|reasoning|REASONING_SCRATCHPAD)>",
     re.DOTALL | re.IGNORECASE,
 )
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 
 
 def _extract_think_blocks(text: str) -> tuple[str, str]:
@@ -121,6 +127,25 @@ def _extract_think_blocks(text: str) -> tuple[str, str]:
             thoughts.append(content)
     clean = _THINK_RE.sub("", text).strip()
     return "\n\n".join(thoughts).strip(), clean
+
+
+def _extract_reply_sources(text: str) -> list[dict[str, str]]:
+    """Return explicit HTTP(S) Markdown links as structured source metadata."""
+    sources = []
+    seen = set()
+    for title, raw_url in _MARKDOWN_LINK_RE.findall(text or ""):
+        url = raw_url.rstrip(".,;:!?")
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            continue
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or url in seen:
+            continue
+        seen.add(url)
+        sources.append({"title": title.strip() or parsed.netloc, "url": url})
+        if len(sources) == 5:
+            break
+    return sources
 
 
 def _opencode_free_model_ids() -> list[str]:
@@ -927,6 +952,11 @@ def _route_requires_auth(method: str, path: str) -> bool:
     """
     if path == "/api/v1/auth/signup":
         return False
+    if method == "POST" and path in {
+        "/api/v1/audio/transcribe",
+        "/api/v1/audio/speak",
+    }:
+        return True
     if path.startswith("/api/v1/auth/"):
         return True
     m = _AGENT_ID_RE.match(path)
@@ -1096,6 +1126,124 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             404,
             {"success": False, "error": {"code": "NOT_FOUND", "message": "not found"}},
         )
+
+    def _allow_audio_request(self) -> bool:
+        client_ip = self.client_address[0] if self.client_address else ""
+        if self.adapter._rate_limiter.allow(client_ip):
+            return True
+        self._error(429, "RATE_LIMITED", "rate limit exceeded")
+        return False
+
+    def _handle_audio_transcribe(self) -> None:
+        if not self._allow_audio_request():
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self._error(400, "VALIDATION_ERROR", "audio recording is empty")
+            return
+        if length > _MAX_AUDIO_BODY:
+            self._error(413, "VALIDATION_ERROR", "audio recording is too large")
+            return
+        mime = self.headers.get("Content-Type", "audio/mp4").split(";", 1)[0].lower()
+        if not mime.startswith("audio/"):
+            self._error(400, "VALIDATION_ERROR", "payload must be an audio recording")
+            return
+
+        suffix = {
+            "audio/mp4": ".m4a",
+            "audio/aac": ".aac",
+            "audio/wav": ".wav",
+            "audio/x-wav": ".wav",
+            "audio/webm": ".webm",
+            "audio/mpeg": ".mp3",
+            "audio/ogg": ".ogg",
+        }.get(mime, ".audio")
+        path = ""
+        try:
+            audio = self.rfile.read(length)
+            if not audio:
+                self._error(400, "VALIDATION_ERROR", "audio recording is empty")
+                return
+            with tempfile.NamedTemporaryFile(prefix="wangsa-mobile-", suffix=suffix, delete=False) as f:
+                f.write(audio)
+                path = f.name
+            from tools.voice_mode import transcribe_recording
+
+            result = transcribe_recording(path)
+            if not result.get("success"):
+                error = str(result.get("error") or "Transcription failed")
+                if "empty transcript" in error.lower():
+                    self._json(200, {"success": True, "data": {"transcript": ""}})
+                    return
+                self._error(400, "VOICE_ERROR", error)
+                return
+            self._json(200, {"success": True, "data": {
+                "transcript": str(result.get("transcript") or "").strip(),
+                "provider": result.get("provider"),
+            }})
+        except Exception:
+            logger.exception("wangsa_mobile: audio transcription failed")
+            self._error(502, "VOICE_ERROR", "audio transcription failed")
+        finally:
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    def _handle_audio_speak(self) -> None:
+        if not self._allow_audio_request():
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0 or length > _MAX_BODY:
+                self._error(400 if length <= 0 else 413, "VALIDATION_ERROR", "invalid text payload")
+                return
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            text = str(body.get("text") or "").strip() if isinstance(body, dict) else ""
+        except Exception:
+            self._error(400, "VALIDATION_ERROR", "invalid JSON body")
+            return
+        if not text:
+            self._error(400, "VALIDATION_ERROR", "text is required")
+            return
+
+        file_path = ""
+        try:
+            from tools.tts_tool import text_to_speech_tool
+
+            raw = text_to_speech_tool(text)
+            result = json.loads(raw) if isinstance(raw, str) else raw
+            if not result.get("success"):
+                self._error(400, "VOICE_ERROR", str(result.get("error") or "Speech synthesis failed"))
+                return
+            file_path = str(result.get("file_path") or "")
+            if not file_path or not os.path.isfile(file_path):
+                self._error(502, "VOICE_ERROR", "generated audio is missing")
+                return
+            with open(file_path, "rb") as f:
+                audio = f.read()
+            mime = {
+                ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".opus": "audio/ogg",
+                ".wav": "audio/wav", ".flac": "audio/flac",
+            }.get(Path(file_path).suffix.lower(), "audio/mpeg")
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(audio)))
+            self.end_headers()
+            self.wfile.write(audio)
+        except Exception:
+            logger.exception("wangsa_mobile: audio synthesis failed")
+            self._error(502, "VOICE_ERROR", "speech synthesis failed")
+        finally:
+            if file_path:
+                try:
+                    os.unlink(file_path)
+                except OSError:
+                    pass
 
     def _handle_models(self, agent_id: str) -> None:  # noqa: ARG002
         """Serve the model picker payload for available providers and models.
@@ -1603,6 +1751,12 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/auth/copilot/poll":
             self._handle_copilot_poll()
             return
+        if path == "/api/v1/audio/transcribe":
+            self._handle_audio_transcribe()
+            return
+        if path == "/api/v1/audio/speak":
+            self._handle_audio_speak()
+            return
         m = _AGENT_ID_RE.match(path)
         if not m or (m.group(2) or "") not in ("/messages", "/messages/stream"):
             self._json(
@@ -1787,6 +1941,28 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             except Exception:
                 logger.debug("wangsa_mobile: failed to clear model override", exc_info=True)
 
+        stream_lock = threading.Lock()
+
+        def emit_stream_event(name: str, payload: dict) -> None:
+            if not is_stream:
+                return
+            try:
+                encoded = json.dumps(payload, ensure_ascii=False)
+                with stream_lock:
+                    self.wfile.write(f"event: {name}\ndata: {encoded}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                # A disconnected mobile client must not interrupt the agent turn.
+                return
+
+        if is_stream:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+
         state, reply = adapter._dispatch_and_wait(
             agent_id,
             thread_id,
@@ -1797,6 +1973,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             user_bio=user_bio,
             profile=profile,
             toolsets=active_toolsets,
+            on_progress=emit_stream_event if is_stream else None,
         )
         reply_text = reply.get("text", "") if isinstance(reply, dict) else (reply or "")
         reply_images = reply.get("images") if isinstance(reply, dict) else None
@@ -1805,9 +1982,24 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         reply_tools = reply.get("tool_calls") if isinstance(reply, dict) else None
 
         if state == "timeout":
+            if is_stream:
+                emit_stream_event(
+                    "error",
+                    {"code": "RUNTIME_ERROR", "message": "agent did not reply in time"},
+                )
+                return
             self._error(504, "RUNTIME_ERROR", "agent did not reply in time")
             return
         if state == "failed":
+            if is_stream:
+                emit_stream_event(
+                    "error",
+                    {
+                        "code": "RUNTIME_ERROR",
+                        "message": reply_text or "agent processing failed",
+                    },
+                )
+                return
             self._error(502, "RUNTIME_ERROR", reply_text or "agent processing failed")
             return
 
@@ -1815,6 +2007,9 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             "response": reply_text,
             "sessionId": effective_session_id,
         }
+        sources = _extract_reply_sources(reply_text)
+        if sources:
+            response_data["sources"] = sources
         if reply_images:
             response_data["images"] = reply_images
         if reply_files:
@@ -1839,25 +2034,9 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         )
 
         if is_stream:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
             if reply_thought:
-                self.wfile.write(
-                    f"event: thought\ndata: {json.dumps({'text': reply_thought})}\n\n".encode(
-                        "utf-8"
-                    )
-                )
-            for t in reply_tools or []:
-                self.wfile.write(
-                    f"event: tool\ndata: {json.dumps(t)}\n\n".encode("utf-8")
-                )
-            self.wfile.write(
-                f"event: done\ndata: {json.dumps(response_data)}\n\n".encode("utf-8")
-            )
-            self.wfile.flush()
+                emit_stream_event("thought", {"text": reply_thought})
+            emit_stream_event("done", response_data)
             return
 
         self._json(200, {"success": True, "data": response_data})
@@ -1888,6 +2067,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         self._pending: Dict[str, Future] = {}
         self._pending_order: Dict[str, deque] = {}
         self._pending_lock = threading.Lock()
+        self._mobile_progress_callbacks: Dict[str, Any] = {}
         # message_id -> chat_id, so on_processing_complete (which only knows
         # the event, i.e. message_id) can resolve the right chat_id's queue.
         self._message_chat: Dict[str, str] = {}
@@ -2259,6 +2439,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                         },
                     ))
             self._pending.clear()
+            self._mobile_progress_callbacks.clear()
             self._pending_order.clear()
             self._message_chat.clear()
             timers = list(self._reply_timers.values())
@@ -2285,6 +2466,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         with self._pending_lock:
             chat_id = self._message_chat.pop(message_id, None)
             self._pending.pop(message_id, None)
+            self._mobile_progress_callbacks.pop(message_id, None)
             if chat_id is not None:
                 order = self._pending_order.get(chat_id)
                 if order:
@@ -2345,6 +2527,31 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         with self._pending_lock:
             self._pending_reply_tools.setdefault(chat_id, []).append(tool_info)
         self._arm_fallback_resolve(chat_id)
+
+    def _emit_mobile_progress(self, tool_info: dict) -> None:
+        """Forward a presentation-only tool event to the active mobile request."""
+        callbacks = []
+        with self._pending_lock:
+            for message_id, callback in self._mobile_progress_callbacks.items():
+                fut = self._pending.get(message_id)
+                if fut is not None and not fut.done():
+                    callbacks.append(callback)
+        # ToolCallChunk currently has no chat id. Never guess which mobile
+        # client owns it when multiple mobile turns are active at once.
+        if len(callbacks) == 1:
+            callbacks[0]("tool", {**tool_info, "status": "running"})
+
+    def _emit_mobile_event_for_chat(self, chat_id: str, name: str, payload: dict) -> None:
+        callback = None
+        with self._pending_lock:
+            for message_id in self._pending_order.get(chat_id, ()):
+                fut = self._pending.get(message_id)
+                if fut is not None and not fut.done():
+                    callback = self._mobile_progress_callbacks.get(message_id)
+                    if callback is not None:
+                        break
+        if callback is not None:
+            callback(name, payload)
 
     def _pop_reply_buffer(self, chat_id: str) -> tuple:
         with self._pending_lock:
@@ -2600,6 +2807,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         user_bio: Optional[str] = None,
         profile: Optional[str] = None,
         toolsets: Optional[list[str]] = None,
+        on_progress: Optional[Any] = None,
     ) -> tuple:
         """Runs on an HTTP worker thread. Returns (state, payload_dict)."""
         if self._loop is None or self._message_handler is None:
@@ -2613,6 +2821,9 @@ class WangsaMobileAdapter(BasePlatformAdapter):
 
         message_id = uuid.uuid4().hex
         fut = self._add_pending(message_id, chat_id)
+        if on_progress is not None:
+            with self._pending_lock:
+                self._mobile_progress_callbacks[message_id] = on_progress
 
         source = self._source_for(
             chat_id,
@@ -2659,7 +2870,8 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                 "tool_calls": [],
             }
         finally:
-            pass
+            with self._pending_lock:
+                self._mobile_progress_callbacks.pop(message_id, None)
         self._pop_pending(message_id)
         if not isinstance(payload, dict):
             payload = {
@@ -2823,18 +3035,23 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             tool_entry = {
                 "tool": tool_name,
                 "preview": preview,
-                "status": "completed",
+                "status": "running",
+                "index": getattr(event, "index", 0),
             }
             with self._pending_lock:
-                for c_id in list(self._pending_order.keys()):
-                    self._buffer_tool(c_id, tool_entry)
-                    break
+                c_id = next(iter(self._pending_order), None)
+            if c_id is not None:
+                self._buffer_tool(c_id, tool_entry)
+                try:
+                    self._emit_mobile_progress(tool_entry)
+                except Exception:
+                    logger.debug("wangsa_mobile: progress stream disconnected", exc_info=True)
         return super().format_tool_event(
             event, mode=mode, preview_max_len=preview_max_len
         )
 
     def render_message_event(self, event: Any, sink: Any) -> None:
-        from gateway.stream_events import Commentary
+        from gateway.stream_events import Commentary, MessageChunk
 
         chat_id = getattr(sink, "chat_id", None)
         if chat_id is None:
@@ -2844,7 +3061,40 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                     break
         if isinstance(event, Commentary) and getattr(event, "text", "") and chat_id:
             self._buffer_thought(chat_id, event.text)
+        elif isinstance(event, MessageChunk) and getattr(event, "text", "") and chat_id:
+            try:
+                self._emit_mobile_event_for_chat(
+                    chat_id, "delta", {"text": event.text}
+                )
+            except Exception:
+                logger.debug("wangsa_mobile: response stream disconnected", exc_info=True)
         super().render_message_event(event, sink)
+
+    def on_tool_finished(self, event: Any, sink: Any) -> None:
+        """Expose tool completion as transport progress to the mobile client."""
+        chat_id = getattr(sink, "chat_id", None)
+        if not chat_id:
+            return
+        status = "completed" if getattr(event, "ok", True) else "failed"
+        tool_index = getattr(event, "index", 0)
+        with self._pending_lock:
+            for tool in reversed(self._pending_reply_tools.get(chat_id, [])):
+                if tool.get("index") == tool_index:
+                    tool["status"] = status
+                    break
+        try:
+            self._emit_mobile_event_for_chat(
+                chat_id,
+                "tool",
+                {
+                    "tool": getattr(event, "tool_name", "tool") or "tool",
+                    "status": status,
+                    "preview": "",
+                    "index": tool_index,
+                },
+            )
+        except Exception:
+            logger.debug("wangsa_mobile: tool completion stream disconnected", exc_info=True)
 
     async def on_processing_complete(
         self, event: MessageEvent, outcome: ProcessingOutcome

@@ -64,16 +64,17 @@ class _NoopTaskHandler extends TaskHandler {
   void onNotificationDismissed() {}
 }
 
-class FlutterForegroundServiceController implements ForegroundServiceController {
+class FlutterForegroundServiceController
+    implements ForegroundServiceController {
   const FlutterForegroundServiceController();
 
   @override
   Future<void> start() => FlutterForegroundTask.startService(
-        serviceId: _foregroundServiceId,
-        notificationTitle: 'Wangsa mendengarkan',
-        notificationText: 'Ucapkan "Halo Wangsa" untuk memanggil asisten.',
-        callback: wangsaForegroundTaskCallback,
-      );
+    serviceId: _foregroundServiceId,
+    notificationTitle: 'Wangsa mendengarkan',
+    notificationText: 'Ucapkan "Hallo Wangsa" untuk memanggil asisten.',
+    callback: wangsaForegroundTaskCallback,
+  );
 
   @override
   Future<void> stop() => FlutterForegroundTask.stopService();
