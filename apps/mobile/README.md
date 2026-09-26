@@ -1,5 +1,27 @@
 # Wangsa Mobile
 
+## Pengalaman utama: chat
+
+Aplikasi dibuka langsung ke chat Wangsa. Sidebar memuat percakapan baru,
+riwayat, dan ruang kerja **Bangun Agent**. Ruang kerja ini mengirim brief ke
+percakapan baru untuk menyusun rancangan; pembuatan Blueprint dan publikasi
+agent belum tersedia lewat API mobile.
+
+Mode pekerjaan akun + BYOK tetap bisa dijalankan secara eksplisit melalui API
+produk di port **9902**. Mode itu menyediakan pekerjaan persisten, klarifikasi,
+laporan, dan prosedur privat. Petunjuk backend serta kontrak API ada di
+[mobile_backend/README.md](../mobile_backend/README.md).
+
+```sh
+adb reverse tcp:9901 tcp:9901
+flutter run
+```
+
+Untuk memilih mode pekerjaan produk, teruskan
+`--dart-define=WANGSA_LEGACY_GATEWAY=false` dan alamat API port 9902. Mode
+gateway/chat memakai port 9901.
+
+
 Klien Android untuk Agent Wangsa yang sudah dipublikasikan.
 
 > **Dipindahkan ke wangsaxhermes (v1, Wangsa `wangsa_mobile` plugin):** aplikasi
@@ -43,23 +65,45 @@ satu baris pun di layar.
 
 ## Menjalankan
 
-Pastikan API dan web config berjalan lebih dulu:
+1. Jalankan backend (gateway + plugin `wangsa_mobile`, port 9901):
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-```
+   ```bash
+   python scripts/run_mobile_backend.py
+   ```
 
-Cek device atau emulator yang terdeteksi:
+   Cek dari laptop: `curl http://127.0.0.1:9901/api/v1/auth/providers`
+   (atau `GET /api/v1/agents/wangsa` — publik, tanpa token).
 
-```bash
-flutter devices
-```
+2. Untuk HP fisik via kabel USB, pasang `adb reverse` (hilang tiap kabel
+   dicabut — pasang ulang tiap sesi, lalu hot-restart dengan `R`):
 
-Untuk Android Emulator, gunakan `10.0.2.2` agar emulator menjangkau API di komputer host:
+   ```bash
+   node apps/mobile/scripts/setup-adb.js
+   adb reverse --list   # verifikasi: harus ada tcp:9901
+   ```
 
-```bash
-flutter run --dart-define=WANGSA_CONFIG_URL=http://10.0.2.2:5173/config.json
-```
+   Di Windows, `apps/mobile/run.ps1` menjalankan dua langkah ini sekaligus.
+
+3. Cek device lalu jalankan:
+
+   ```bash
+   flutter devices
+   flutter run
+   ```
+
+   dari folder `apps/mobile`.
+
+### Kalau gagal terhubung, aplikasi berusaha sendiri dulu
+
+URL simpanan bisa basi (IP Wi-Fi laptop berubah tiap konek ulang, `adb
+reverse` hilang, backend belum jalan). Saat URL utama gagal total,
+aplikasi otomatis mencoba kandidat lain berurutan — URL simpanan →
+`--dart-define=WANGSA_API_BASE_URL` → `http://localhost:9901` (USB) →
+`http://10.0.2.2:9901` (khusus emulator) — memakai yang pertama menjawab,
+lalu menyimpannya (lihat `lib/api/api_endpoints.dart`). Kalau semua gagal,
+layar "Gagal terhubung" menampilkan petunjuk spesifik (backend/adb/IP),
+bukan sekadar "tidak bisa". Tombol "Tes koneksi" di dialog Pengaturan
+memeriksa URL sebelum disimpan.
 
 Aplikasi ini hanya menargetkan Android. Folder `web/` dan `windows/` di
 proyek ini ada dari eksperimen platform lain, tapi lapisan suara

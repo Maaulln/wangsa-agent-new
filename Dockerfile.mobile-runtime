@@ -1,0 +1,37 @@
+# Frozen dependencies share the project's existing lockfile and Python version.
+FROM ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie-slim@sha256:022ceea69be44c2699f5e63ebd64f5831ce72e44928b292242ed68832cef0e4a
+
+WORKDIR /opt/wangsa
+ENV UV_LINK_MODE=copy \
+    UV_PYTHON=3.13 \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/wangsa/.venv/bin:$PATH" \
+    HOME=/data \
+    HERMES_HOME=/data/home \
+    PYTHONPATH=/opt/wangsa
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git ripgrep nodejs npm chromium && rm -rf /var/lib/apt/lists/*
+
+# Browser control is pre-installed in the immutable worker image. Browser jobs
+# never download executable dependencies while processing a user's request.
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+RUN npm install --global agent-browser@0.26.0
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --extra anthropic --no-install-project
+
+COPY . .
+RUN uv sync --frozen --no-dev --extra anthropic && \
+    useradd --uid 10001 --no-create-home --home-dir /data wangsa-mobile && \
+    mkdir -p /data/home/skills /data/workspace && \
+    chown -R 10001:10001 /data && chmod 0700 /data/home /data/workspace && \
+    touch /run/wangsa-mobile-runtime
+
+# Docker initializes a fresh tenant volume from these non-root-owned paths.
+# The worker mounts only that tenant's named volume; never the host workspace.
+USER 10001:10001
+WORKDIR /data/workspace
+ENTRYPOINT ["/opt/wangsa/.venv/bin/python", "/opt/wangsa/apps/mobile_backend/runtime_entry.py"]

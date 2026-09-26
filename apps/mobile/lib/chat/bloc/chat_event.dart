@@ -40,9 +40,31 @@ final class ModelSelected extends ChatEvent {
   List<Object?> get props => [model, provider];
 }
 
+/// Kapabilitas chat untuk percakapan baru. Pilihan dikunci setelah pesan
+/// pertama supaya tool schema stabil sepanjang sesi.
+final class ToolsetsSelected extends ChatEvent {
+  final List<String> toolsets;
+
+  const ToolsetsSelected(this.toolsets);
+
+  @override
+  List<Object?> get props => [toolsets];
+}
+
 /// Pengguna menekan "Percakapan baru".
 final class ConversationCleared extends ChatEvent {
   const ConversationCleared();
+}
+
+/// Starts an agent-design conversation from the dedicated mobile workspace.
+/// This asks the configured assistant to draft a plan; it does not publish an
+/// agent because the mobile gateway API has no blueprint/publish endpoint.
+final class AgentBuildRequested extends ChatEvent {
+  final String brief;
+  const AgentBuildRequested(this.brief);
+
+  @override
+  List<Object?> get props => [brief];
 }
 
 /// Pengguna menekan tombol stop selagi Agent sedang membalas. Event
@@ -92,4 +114,10 @@ final class ApiBaseUrlChanged extends ChatEvent {
 /// Memuat ulang daftar model dan provider dari server.
 final class ModelsRequested extends ChatEvent {
   const ModelsRequested();
+}
+
+/// Memuat ulang status Connect LLM (profile + configured) dari server.
+/// Dipanggil setelah ChatOpened dan setiap kembali dari layar Setup Provider.
+final class SetupStatusRequested extends ChatEvent {
+  const SetupStatusRequested();
 }

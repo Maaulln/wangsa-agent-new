@@ -1,4 +1,5 @@
 import "../../api/wangsa_api_client.dart";
+import "../../auth/mobile_auth_controller.dart";
 import "../../settings/view/provider_setup_page.dart";
 import 'dart:async';
 import 'dart:ui';
@@ -17,6 +18,7 @@ import '../../settings/view/settings_page.dart';
 import '../../theme/theme_controller.dart';
 import '../../voice/voice_input.dart';
 import '../bloc/chat_bloc.dart';
+import 'agent_builder_page.dart';
 import 'message_bubble.dart';
 import 'widgets/chat_notice.dart';
 import 'widgets/thinking_indicator.dart';
@@ -62,6 +64,17 @@ class ChatPage extends StatefulWidget {
   final LlmSettingsController llmSettings;
   final UserProfileController userProfile;
 
+  /// Sesi auth (token + profile). Opsional agar test widget lama yang
+  /// membangun ChatPage langsung tetap kompilasi — produksi selalu isi
+  /// dari AuthGate. Dipakai untuk logout + budget di SettingsPage.
+  final MobileAuthController? auth;
+
+  /// Diteruskan ke AuthGate setiap URL berubah dari Pengaturan, supaya
+  /// kunci sesi + SharedPreferences selaras dengan klien ChatBloc.
+  /// Tanpa ini, perbaikan URL dari Pengaturan hilang saat sesi dibangun
+  /// ulang (dan AuthGate kembali memakai URL basi).
+  final ValueChanged<String>? onApiBaseUrlChanged;
+
   /// Hook pengujian: menggantikan `ImagePicker().pickImage()` bawaan
   /// supaya tes widget bisa menyuntikkan gambar tanpa menyentuh kamera/
   /// galeri sungguhan perangkat.
@@ -75,7 +88,9 @@ class ChatPage extends StatefulWidget {
     required this.themeController,
     required this.llmSettings,
     required this.userProfile,
+    this.auth,
     this.pickImage,
+    this.onApiBaseUrlChanged,
   });
 
   @override
@@ -236,35 +251,95 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
     unawaited(HapticFeedback.lightImpact());
+    final bloc = context.read<ChatBloc>();
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt_outlined),
-                title: const Text('Ambil Foto Kamera'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  unawaited(_pickImage(source: ImageSource.camera));
-                },
+      builder: (sheetContext) => BlocProvider.value(
+        value: bloc,
+        child: BlocBuilder<ChatBloc, ChatState>(
+          builder: (context, state) {
+            final locked = state.turns.isNotEmpty || state.sessionId != null;
+            final selected = state.selectedToolsets.toSet();
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: Text(
+                        'Kapabilitas chat',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.travel_explore_rounded),
+                      title: const Text('Pencarian web'),
+                      subtitle: const Text(
+                        'Izinkan Wangsa mencari informasi terbaru',
+                      ),
+                      value: selected.contains('web'),
+                      onChanged: locked || state.isSending
+                          ? null
+                          : (enabled) {
+                              final next = {...selected};
+                              enabled ? next.add('web') : next.remove('web');
+                              bloc.add(ToolsetsSelected(next.toList()));
+                            },
+                    ),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.image_search_rounded),
+                      title: const Text('Analisis gambar'),
+                      subtitle: const Text(
+                        'Izinkan Wangsa memahami gambar yang dikirim',
+                      ),
+                      value: selected.contains('vision'),
+                      onChanged: locked || state.isSending
+                          ? null
+                          : (enabled) {
+                              final next = {...selected};
+                              enabled
+                                  ? next.add('vision')
+                                  : next.remove('vision');
+                              bloc.add(ToolsetsSelected(next.toList()));
+                            },
+                    ),
+                    if (locked)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: Text(
+                          'Kapabilitas dikunci untuk percakapan ini. Mulai chat baru untuk mengubahnya.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    const Divider(height: 8),
+                    ListTile(
+                      leading: const Icon(Icons.camera_alt_outlined),
+                      title: const Text('Ambil Foto Kamera'),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        unawaited(_pickImage(source: ImageSource.camera));
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.photo_library_outlined),
+                      title: const Text('Pilih dari Galeri Foto'),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        unawaited(_pickImage(source: ImageSource.gallery));
+                      },
+                    ),
+                  ],
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('Pilih dari Galeri Foto'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  unawaited(_pickImage(source: ImageSource.gallery));
-                },
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -302,9 +377,7 @@ class _ChatPageState extends State<ChatPage>
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Lampiran gagal dibuka.')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('Lampiran gagal dibuka.')));
       return;
     }
     if (picked == null) return;
@@ -331,33 +404,25 @@ class _ChatPageState extends State<ChatPage>
     if (draft.trim().isEmpty && !_hasPendingImages) return;
     unawaited(HapticFeedback.lightImpact());
     context.read<ChatBloc>().add(
-          MessageSubmitted(
-            draft,
-            images: [
-              for (final p in _pendingImages)
-                ChatImage(
-                  bytes: p.bytes,
-                  mimeType: p.mimeType,
-                  filename: p.filename,
-                ),
-            ],
-          ),
-        );
-    _draftController.clear();
-    setState(() => _pendingImages.clear());
+      MessageSubmitted(
+        draft,
+        images: [
+          for (final p in _pendingImages)
+            ChatImage(
+              bytes: p.bytes,
+              mimeType: p.mimeType,
+              filename: p.filename,
+            ),
+        ],
+      ),
+    );
   }
 
   /// Pil model diketuk: lembar pilihan berisi model aktif server dan
   /// daftar dari `GET .../models`.
   void _showModelPicker(BuildContext context, ChatState state) {
-    if (state.models.isEmpty && state.providers.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Daftar model belum tersedia.')),
-        );
-      return;
-    }
+    final bloc = context.read<ChatBloc>();
+    bloc.add(const ModelsRequested());
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -365,14 +430,22 @@ class _ChatPageState extends State<ChatPage>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => _ModelPickerSheet(
-        state: state,
-        apiClient: context.read<ChatBloc>().apiClient,
-        onRefreshModels: () => context.read<ChatBloc>().add(const ModelsRequested()),
-        onSelected: (model, provider) {
-          context.read<ChatBloc>().add(ModelSelected(model, provider: provider));
-          Navigator.of(sheetContext).pop();
-        },
+      builder: (sheetContext) => BlocProvider.value(
+        value: bloc,
+        child: BlocBuilder<ChatBloc, ChatState>(
+          builder: (context, currentState) => _ModelPickerSheet(
+            state: currentState,
+            apiClient: bloc.apiClient,
+            onRefreshModels: () {
+              bloc.add(const ModelsRequested());
+              bloc.add(const SetupStatusRequested());
+            },
+            onSelected: (model, provider) {
+              bloc.add(ModelSelected(model, provider: provider));
+              Navigator.of(sheetContext).pop();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -395,6 +468,10 @@ class _ChatPageState extends State<ChatPage>
       listener: (_, state) {
         final last = state.turns.isEmpty ? null : state.turns.last;
         if (last != null && last.role == TurnRole.agent) {
+          _draftController.clear();
+          if (_pendingImages.isNotEmpty) {
+            setState(() => _pendingImages.clear());
+          }
           unawaited(_speakReply(last.content));
         } else {
           unawaited(widget.voiceInput.endConversation());
@@ -481,7 +558,9 @@ class _ChatPageState extends State<ChatPage>
     context.read<ChatBloc>().add(const ConversationCleared());
   }
 
-  Map<String, List<SessionSummary>> _groupSessions(List<SessionSummary> sessions) {
+  Map<String, List<SessionSummary>> _groupSessions(
+    List<SessionSummary> sessions,
+  ) {
     final Map<String, List<SessionSummary>> groups = {
       'Hari ini': [],
       'Kemarin': [],
@@ -526,7 +605,12 @@ class _ChatPageState extends State<ChatPage>
           children: [
             Positioned.fill(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, bottomBarHeight + 12),
+                padding: const EdgeInsets.fromLTRB(
+                  8,
+                  8,
+                  8,
+                  bottomBarHeight + 12,
+                ),
                 children: [
                   _drawerRow(
                     context,
@@ -538,6 +622,20 @@ class _ChatPageState extends State<ChatPage>
                             _startNewConversation(context);
                           }
                         : null,
+                  ),
+                  const Divider(height: 16),
+                  _drawerRow(
+                    context,
+                    Icons.smart_toy_outlined,
+                    'Bangun Agent',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AgentBuilderPage(),
+                        ),
+                      );
+                    },
                   ),
                   const Divider(height: 16),
                   if (state.isLoadingSessions) ...[
@@ -636,24 +734,7 @@ class _ChatPageState extends State<ChatPage>
                         color: scheme.onSurfaceVariant,
                         onPressed: () {
                           Navigator.of(context).pop();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => SettingsPage(
-                                config: _activeConfig,
-                                configProblem: widget.configProblem,
-                                agentId: context.read<ChatBloc>().agentId,
-                                voiceInput: widget.voiceInput,
-                                themeController: widget.themeController,
-                                llmSettings: widget.llmSettings,
-                                onApiBaseUrlChanged: (newUrl) {
-                                  setState(() {
-                                    _activeConfig = _activeConfig.copyWith(apiBaseUrl: newUrl);
-                                  });
-                                  context.read<ChatBloc>().add(ApiBaseUrlChanged(newUrl));
-                                },
-                              ),
-                            ),
-                          );
+                          _openSettings(context);
                         },
                       ),
                     ],
@@ -684,7 +765,9 @@ class _ChatPageState extends State<ChatPage>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         margin: const EdgeInsets.symmetric(vertical: 2),
         decoration: BoxDecoration(
-          color: isSelected ? scheme.primaryContainer.withValues(alpha: 0.5) : Colors.transparent,
+          color: isSelected
+              ? scheme.primaryContainer.withValues(alpha: 0.5)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -706,8 +789,12 @@ class _ChatPageState extends State<ChatPage>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: isSelected ? scheme.onPrimaryContainer : scheme.onSurface,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                      color: isSelected
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurface,
                     ),
                   ),
                   if (session.lastMessage.isNotEmpty)
@@ -770,6 +857,61 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsPage(
+          config: _activeConfig,
+          configProblem: widget.configProblem,
+          agentId: context.read<ChatBloc>().agentId,
+          voiceInput: widget.voiceInput,
+          themeController: widget.themeController,
+          llmSettings: widget.llmSettings,
+          apiClient: context.read<ChatBloc>().apiClient,
+          auth: widget.auth,
+          onApiBaseUrlChanged: (newUrl) {
+            setState(() {
+              _activeConfig = _activeConfig.copyWith(apiBaseUrl: newUrl);
+            });
+            context.read<ChatBloc>().add(ApiBaseUrlChanged(newUrl));
+            widget.onApiBaseUrlChanged?.call(newUrl);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Keluar dari banner sesi-berakhir: cabut token (best-effort) lalu hapus
+  /// sesi lokal — AuthGate rebuild ke layar daftar/masuk.
+  Future<void> _signOut(BuildContext context) async {
+    final bloc = context.read<ChatBloc>();
+    try {
+      await bloc.apiClient.revokeToken();
+    } catch (_) {
+      // Abaikan — sesi lokal tetap dibersihkan.
+    }
+    bloc.apiClient.updateToken(null);
+    await widget.auth?.clear();
+  }
+
+  String _budgetLine(ChatState state) {
+    final b = state.budget;
+    if (b == null) return '';
+    final parts = <String>[];
+    if (b.dailyUsd != null) {
+      parts.add(
+        'harian \$${b.spentDay.toStringAsFixed(2)} / \$${b.dailyUsd!.toStringAsFixed(2)}',
+      );
+    }
+    if (b.monthlyUsd != null) {
+      parts.add(
+        'bulanan \$${b.spentMonth.toStringAsFixed(2)} / \$${b.monthlyUsd!.toStringAsFixed(2)}',
+      );
+    }
+    if (parts.isEmpty) return '';
+    return parts.join(' • ');
+  }
+
   static const _composerReserve = 160.0;
 
   Widget _chatConversation(BuildContext context, ChatState state) {
@@ -779,8 +921,8 @@ class _ChatPageState extends State<ChatPage>
         Positioned.fill(
           child: state.turns.isEmpty
               ? (state.isLoadingHistory
-                  ? const Center(child: CircularProgressIndicator())
-                  : ChatNotice.empty())
+                    ? const Center(child: CircularProgressIndicator())
+                    : ChatNotice.empty())
               : ShaderMask(
                   shaderCallback: (Rect bounds) {
                     return const LinearGradient(
@@ -829,6 +971,152 @@ class _ChatPageState extends State<ChatPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (state.authInvalid)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Sesi berakhir.',
+                        style: TextStyle(
+                          color: scheme.onErrorContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Token tidak dikenali server (mungkin dicabut). Keluar lalu daftar/masuk lagi.',
+                        style: TextStyle(color: scheme.onErrorContainer),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.logout_rounded, size: 18),
+                        label: const Text('Keluar'),
+                        onPressed: () => _signOut(context),
+                      ),
+                    ],
+                  ),
+                ),
+              if (state.budget?.isBreached == true)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Budget tercapai — chat dijeda.',
+                        style: TextStyle(
+                          color: scheme.onErrorContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _budgetLine(state),
+                        style: TextStyle(color: scheme.onErrorContainer),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.data_usage_outlined, size: 18),
+                        label: const Text('Lihat pemakaian'),
+                        onPressed: () => _openSettings(context),
+                      ),
+                    ],
+                  ),
+                )
+              else if ((state.budget?.alert == true) &&
+                  state.budget?.hasCap == true)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.tertiaryContainer.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Pemakaian mendekati batas: ${_budgetLine(state)}',
+                    style: TextStyle(color: scheme.onTertiaryContainer),
+                  ),
+                ),
+              if (state.needsSetup)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        state.profileName != null &&
+                                state.profileName!.isNotEmpty
+                            ? 'Halo ${state.profileName}! Hubungkan LLM milikmu dulu.'
+                            : 'Hubungkan LLM milikmu dulu.',
+                        style: TextStyle(
+                          color: scheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Satu akun = satu profile terisolasi. Pilih provider yang kamu punya, simpan kuncinya, lalu mulai chat.',
+                        style: TextStyle(color: scheme.onPrimaryContainer),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.key_rounded, size: 18),
+                        label: state.isCheckingSetup
+                            ? const Text('Memeriksa…')
+                            : const Text('Setup Provider'),
+                        onPressed: state.isCheckingSetup
+                            ? null
+                            : () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ProviderSetupPage(
+                                      apiClient: context
+                                          .read<ChatBloc>()
+                                          .apiClient,
+                                      onCredentialsChanged: () {
+                                        context.read<ChatBloc>().add(
+                                          const ModelsRequested(),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                );
+                                if (!context.mounted) return;
+                                context.read<ChatBloc>().add(
+                                  const SetupStatusRequested(),
+                                );
+                              },
+                      ),
+                    ],
+                  ),
+                ),
               if (state.errorMessage != null)
                 Container(
                   width: double.infinity,
@@ -873,7 +1161,9 @@ class _ChatPageState extends State<ChatPage>
           decoration: BoxDecoration(
             color: scheme.surfaceContainerHighest.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.5),
+            ),
             boxShadow: [
               BoxShadow(
                 color: scheme.shadow.withValues(alpha: 0.12),
@@ -897,7 +1187,11 @@ class _ChatPageState extends State<ChatPage>
                 return ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
-                  leading: Icon(Icons.bolt_rounded, size: 18, color: scheme.primary),
+                  leading: Icon(
+                    Icons.bolt_rounded,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
                   title: Text(
                     item['command']!,
                     style: TextStyle(
@@ -909,7 +1203,10 @@ class _ChatPageState extends State<ChatPage>
                   ),
                   subtitle: Text(
                     item['desc']!,
-                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                   onTap: () {
                     unawaited(HapticFeedback.lightImpact());
@@ -954,6 +1251,28 @@ class _ChatPageState extends State<ChatPage>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (_hasPendingImages) _pendingStrip(scheme),
+                if (state.selectedToolsets.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final toolset in state.selectedToolsets)
+                          Chip(
+                            visualDensity: VisualDensity.compact,
+                            label: Text(
+                              toolset == 'web' ? 'Web' : 'Analisis gambar',
+                            ),
+                            avatar: Icon(
+                              toolset == 'web'
+                                  ? Icons.travel_explore_rounded
+                                  : Icons.image_search_rounded,
+                              size: 16,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 TextField(
                   controller: _draftController,
                   enabled: !state.isSending,
@@ -979,13 +1298,16 @@ class _ChatPageState extends State<ChatPage>
                 Row(
                   children: [
                     IconButton(
-                      onPressed: state.isSending ? null : () => unawaited(_showAttachmentPicker()),
+                      onPressed: state.isSending
+                          ? null
+                          : () => unawaited(_showAttachmentPicker()),
                       tooltip: 'Lampiran',
                       icon: const Icon(Icons.add_circle_outline_rounded),
                       color: scheme.onSurfaceVariant,
                     ),
                     _ModelPill(
-                      label: state.effectiveModel ?? state.agent?.name ?? 'Wangsa',
+                      label:
+                          state.effectiveModel ?? state.agent?.name ?? 'Wangsa',
                       onTap: () => _showModelPicker(context, state),
                     ),
                     const Spacer(),
@@ -1006,7 +1328,9 @@ class _ChatPageState extends State<ChatPage>
                       builder: (context, value, _) {
                         if (state.isSending) {
                           return IconButton.filled(
-                            onPressed: () => context.read<ChatBloc>().add(const MessageCancelled()),
+                            onPressed: () => context.read<ChatBloc>().add(
+                              const MessageCancelled(),
+                            ),
                             icon: const Icon(Icons.stop_rounded),
                             tooltip: 'Berhenti',
                           );
@@ -1019,10 +1343,13 @@ class _ChatPageState extends State<ChatPage>
                           tooltip: 'Kirim',
                           style: !canSend
                               ? IconButton.styleFrom(
-                                  backgroundColor: scheme.surfaceContainerHighest,
-                                  disabledBackgroundColor: scheme.surfaceContainerHighest,
+                                  backgroundColor:
+                                      scheme.surfaceContainerHighest,
+                                  disabledBackgroundColor:
+                                      scheme.surfaceContainerHighest,
                                   foregroundColor: scheme.onSurfaceVariant,
-                                  disabledForegroundColor: scheme.onSurfaceVariant,
+                                  disabledForegroundColor:
+                                      scheme.onSurfaceVariant,
                                 )
                               : null,
                         );
@@ -1107,14 +1434,18 @@ class _ChatPageState extends State<ChatPage>
   }) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onTap != null;
-    final color = enabled ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.38);
+    final color = enabled
+        ? scheme.onSurface
+        : scheme.onSurface.withValues(alpha: 0.38);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: SizedBox(
         height: _drawerRowHeight,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: _drawerHorizontalPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: _drawerHorizontalPadding,
+          ),
           child: Row(
             children: [
               Icon(icon, size: 22, color: color),
@@ -1122,7 +1453,11 @@ class _ChatPageState extends State<ChatPage>
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -1134,7 +1469,12 @@ class _ChatPageState extends State<ChatPage>
 
   Widget _drawerSectionHeader(BuildContext context, String label) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(_drawerHorizontalPadding, 20, _drawerHorizontalPadding, 6),
+      padding: const EdgeInsets.fromLTRB(
+        _drawerHorizontalPadding,
+        20,
+        _drawerHorizontalPadding,
+        6,
+      ),
       child: Text(
         label,
         style: TextStyle(
@@ -1148,11 +1488,16 @@ class _ChatPageState extends State<ChatPage>
 
   Widget _drawerEmptyNote(BuildContext context, String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: _drawerHorizontalPadding, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: _drawerHorizontalPadding,
+        vertical: 4,
+      ),
       child: Text(
         text,
         style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
           fontSize: 13,
         ),
       ),
@@ -1327,7 +1672,10 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
   @override
   void initState() {
     super.initState();
-    _selectedProviderId = widget.state.effectiveProvider;
+    final provider = widget.state.effectiveProvider;
+    _selectedProviderId = provider == null || provider.isEmpty
+        ? null
+        : provider;
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
@@ -1352,22 +1700,26 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
         }
         for (final m in p.models) {
           if (_searchQuery.isEmpty || m.toLowerCase().contains(_searchQuery)) {
-            candidates.add(_ModelPickerCandidate(
-              model: m,
-              providerId: p.id,
-              providerName: p.name,
-            ));
+            candidates.add(
+              _ModelPickerCandidate(
+                model: m,
+                providerId: p.id,
+                providerName: p.name,
+              ),
+            );
           }
         }
       }
     } else {
       for (final m in widget.state.models) {
         if (_searchQuery.isEmpty || m.toLowerCase().contains(_searchQuery)) {
-          candidates.add(_ModelPickerCandidate(
-            model: m,
-            providerId: widget.state.currentProvider ?? "",
-            providerName: widget.state.currentProvider ?? "Default",
-          ));
+          candidates.add(
+            _ModelPickerCandidate(
+              model: m,
+              providerId: widget.state.currentProvider ?? "",
+              providerName: widget.state.currentProvider ?? "Default",
+            ),
+          );
         }
       }
     }
@@ -1410,7 +1762,10 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                     icon: const Icon(Icons.settings_suggest_rounded, size: 18),
-                    label: const Text("Setup Provider", style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      "Setup Provider",
+                      style: TextStyle(fontSize: 12),
+                    ),
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -1445,8 +1800,13 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                         )
                       : null,
                   filled: true,
-                  fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  fillColor: scheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -1457,7 +1817,10 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
             if (providers.isNotEmpty)
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     FilterChip(
@@ -1470,7 +1833,9 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                       },
                     ),
                     const SizedBox(width: 8),
-                    for (final p in providers.where((p) => p.models.isNotEmpty)) ...[
+                    for (final p in providers.where(
+                      (p) => p.models.isNotEmpty,
+                    )) ...[
                       FilterChip(
                         label: Text("${p.name} (${p.models.length})"),
                         selected: _selectedProviderId == p.id,
@@ -1487,100 +1852,178 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
               ),
             const Divider(height: 1),
             Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: (candidates.isEmpty && _selectedProviderId != null) ? 2 : candidates.length + 1,
-                itemBuilder: (context, index) {
-                  if (index == 1 && candidates.isEmpty && _selectedProviderId != null) {
-                    return Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.vpn_key_outlined, size: 40, color: scheme.primary),
-                          const SizedBox(height: 12),
-                          Text(
-                            "Provider \"$_selectedProviderId\" belum terkonfigurasi atau belum memiliki model aktif.",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-                          ),
-                          const SizedBox(height: 16),
-                          FilledButton.icon(
-                            icon: const Icon(Icons.login_rounded, size: 16),
-                            label: Text("Hubungkan $_selectedProviderId"),
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ProviderSetupPage(
-                                    apiClient: widget.apiClient,
-                                    onCredentialsChanged: () {
-                                      widget.onRefreshModels?.call();
-                                    },
+              child: state.isLoadingModels
+                  ? const Center(child: CircularProgressIndicator())
+                  : state.modelsError != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.cloud_off_outlined, size: 36),
+                            const SizedBox(height: 12),
+                            Text(
+                              state.modelsError!,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed: widget.onRefreshModels,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Coba lagi'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: candidates.isEmpty ? 2 : candidates.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 1 &&
+                            candidates.isEmpty &&
+                            _selectedProviderId == null) {
+                          return Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.tune_rounded,
+                                  size: 32,
+                                  color: scheme.primary,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Belum ada model yang bisa dipilih. Chat tetap memakai bawaan deployment.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
                                   ),
                                 ),
-                              );
-                            },
+                                const SizedBox(height: 8),
+                                TextButton.icon(
+                                  onPressed: widget.onRefreshModels,
+                                  icon: const Icon(Icons.refresh_rounded),
+                                  label: const Text('Coba lagi'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        if (index == 1 &&
+                            candidates.isEmpty &&
+                            _selectedProviderId != null) {
+                          return Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.vpn_key_outlined,
+                                  size: 40,
+                                  color: scheme.primary,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  "Provider \"$_selectedProviderId\" belum terkonfigurasi atau belum memiliki model aktif.",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  icon: const Icon(
+                                    Icons.login_rounded,
+                                    size: 16,
+                                  ),
+                                  label: Text("Hubungkan $_selectedProviderId"),
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => ProviderSetupPage(
+                                          apiClient: widget.apiClient,
+                                          onCredentialsChanged: () {
+                                            widget.onRefreshModels?.call();
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        if (index == 0) {
+                          final defaultSubtitle = [
+                            if (state.currentProvider != null &&
+                                state.currentProvider!.isNotEmpty)
+                              "Provider: ${state.currentProvider}",
+                            if (state.currentModel != null &&
+                                state.currentModel!.isNotEmpty)
+                              "Model: ${state.currentModel}",
+                          ].join(" • ");
+
+                          return ListTile(
+                            leading: const Icon(Icons.auto_awesome_rounded),
+                            title: const Text(
+                              "Bawaan deployment",
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: defaultSubtitle.isNotEmpty
+                                ? Text(
+                                    defaultSubtitle,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  )
+                                : null,
+                            trailing: isDefaultSelected
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    color: scheme.primary,
+                                  )
+                                : null,
+                            onTap: () => widget.onSelected(null, null),
+                          );
+                        }
+
+                        final item = candidates[index - 1];
+                        final isSelected =
+                            !isDefaultSelected &&
+                            item.model == state.effectiveModel &&
+                            (item.providerId == state.effectiveProvider ||
+                                state.effectiveProvider == null);
+
+                        return ListTile(
+                          title: Text(
+                            item.model,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
                           ),
-                        ],
-                      ),
-                    );
-                  }
-                  if (index == 0) {
-                    final defaultSubtitle = [
-                      if (state.currentProvider != null && state.currentProvider!.isNotEmpty)
-                        "Provider: ${state.currentProvider}",
-                      if (state.currentModel != null && state.currentModel!.isNotEmpty)
-                        "Model: ${state.currentModel}",
-                    ].join(" • ");
-
-                    return ListTile(
-                      leading: const Icon(Icons.auto_awesome_rounded),
-                      title: const Text(
-                        "Bawaan deployment",
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: defaultSubtitle.isNotEmpty
-                          ? Text(
-                              defaultSubtitle,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            )
-                          : null,
-                      trailing: isDefaultSelected
-                          ? Icon(Icons.check_rounded, color: scheme.primary)
-                          : null,
-                      onTap: () => widget.onSelected(null, null),
-                    );
-                  }
-
-                  final item = candidates[index - 1];
-                  final isSelected = !isDefaultSelected &&
-                      item.model == state.effectiveModel &&
-                      (item.providerId == state.effectiveProvider || state.effectiveProvider == null);
-
-                  return ListTile(
-                    title: Text(
-                      item.model,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
+                          subtitle: Text(
+                            item.providerName,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          trailing: isSelected
+                              ? Icon(Icons.check_rounded, color: scheme.primary)
+                              : null,
+                          onTap: () =>
+                              widget.onSelected(item.model, item.providerId),
+                        );
+                      },
                     ),
-                    subtitle: Text(
-                      item.providerName,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    trailing: isSelected
-                        ? Icon(Icons.check_rounded, color: scheme.primary)
-                        : null,
-                    onTap: () => widget.onSelected(item.model, item.providerId),
-                  );
-                },
-              ),
             ),
           ],
         );
@@ -1588,4 +2031,3 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
     );
   }
 }
-

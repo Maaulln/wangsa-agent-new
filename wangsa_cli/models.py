@@ -562,20 +562,14 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "nemotron-3.5-lightning-free",
         "muse-spark-1.2-contributor-free",
     ],
-    # OpenCode free tier — keyless (no OpenCode account needed). Synced
-    # against live GET /zen/v1/models + anonymous probes (2026-08-21);
-    # deepseek-v4-flash-free delisted (promo ended, now 401s).
-    # big-pickle + mimo-v2.5-free delisted (UA-gated: the relay 429s
-    # FreeUsageLimitError for every client except User-Agent
-    # "opencode/latest"; we send honest Wangsa attribution and don't
-    # impersonate other clients — verified 2026-08-21).
+    # OpenCode free tier — keyless (no OpenCode account needed). Keep this
+    # fallback conservative; live IDs come from opencode_free_catalog.py.
     "opencode-free": [
-        "x-preview-f-free",  # "Ox Alpha" stealth model — free, 1M ctx, ZDR
-        "hy3-free",
-        "laguna-s-2.1-free",
+        "mimo-v2.6-flash-free",
+        "space-bunny-free",
+        "ling-3.0-flash-fin-free",
         "nemotron-3-ultra-free",
         "nemotron-3.5-lightning-free",
-        "muse-spark-1.2-contributor-free",
     ],
     # Synced against https://opencode.ai/docs/go/ + live GET /zen/go/v1/models
     # (2026-08-20).
@@ -4071,11 +4065,18 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
         except Exception:
             pass
 
-    # OpenCode Free: curated keyless list only. models.dev's cost.input==0
-    # filter lags reality (deepseek-v4-flash-free stayed "free" there after
-    # its promo ended and the relay began 401ing keyless requests), so the
-    # curated list — synced against anonymous live probes — is authoritative.
+    # OpenCode Free is a public, keyless catalog that changes independently
+    # of Wangsa releases. Fetch the relay's current IDs and filter models that
+    # require a different API or reject Wangsa's client identity.
     if normalized == "opencode-free":
+        try:
+            from wangsa_cli.opencode_free_catalog import opencode_free_model_ids
+
+            live = opencode_free_model_ids(refresh=force_refresh)
+            if live:
+                return live
+        except Exception:
+            pass
         return list(_PROVIDER_MODELS.get(normalized, []))
 
     # ── Profile-based generic live fetch (all simple api-key providers) ──
@@ -4425,6 +4426,11 @@ def cached_provider_model_ids(
 
     cache = _load_provider_models_cache()
     fp = _credential_fingerprint(normalized)
+    if normalized == "opencode-free":
+        # The provider is keyless, so its credential fingerprint never
+        # changes. Bump the catalog identity to invalidate pre-live caches
+        # that may still contain retired IDs such as hy3-free.
+        fp = f"{fp}:live-catalog-v1"
     entry = cache.get(normalized)
     now = time.time()
 

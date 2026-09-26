@@ -1,18 +1,18 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show InternetAddressType, NetworkInterface, Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api/wangsa_api_client.dart';
-import 'chat/bloc/chat_bloc.dart';
-import 'chat/view/chat_page.dart';
+import 'api/api_endpoints.dart';
+import 'auth/mobile_auth_controller.dart';
+import 'auth/view/auth_gate.dart';
 import 'config/app_config.dart';
 import 'config/config_loader.dart';
 import 'llm/llm_settings_controller.dart';
 import 'profile/user_profile_controller.dart';
+import 'product/product_app.dart';
 import 'theme/theme_controller.dart';
 import 'theme/wangsa_theme.dart';
 import 'voice/native_voice_input.dart';
@@ -21,15 +21,24 @@ import 'voice/voice_input.dart';
 import 'voice/voice_summoner.dart';
 import 'voice/wake_word_engine.dart';
 
-/// Alamat host default. Selalu `localhost` — baik di Windows Desktop
-/// maupun Android (emulator atau HP fisik lewat USB) — karena
-/// `scripts/setup-adb.js` (`bun run dev:mobile`/`dev:api`/`dev:web`,
-/// atau `adb:reverse` manual) sudah memasang `adb reverse tcp:3001` dan
-/// `tcp:5173` ke tiap perangkat Android yang tersambung, jadi
-/// `localhost` di perangkat itu ikut diteruskan ke host. Dulu dikhususkan
-/// ke 10.0.2.2 untuk emulator, tapi itu bukan alamat yang valid di HP
-/// fisik (bukan NAT alias seperti di emulator) — dengan adb reverse,
-/// satu alamat ini sudah cukup untuk emulator maupun HP asli.
+Future<bool> _isAndroidEmulator() async {
+  try {
+    if (!Platform.isAndroid) return false;
+    final interfaces = await NetworkInterface.list(
+      type: InternetAddressType.IPv4,
+      includeLoopback: false,
+    );
+    return interfaces
+        .expand((interface) => interface.addresses)
+        .any((address) => address.address.startsWith('10.0.2.'));
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Alamat host default untuk desktop dan ponsel fisik yang memakai ADB
+/// reverse. Main menerjemahkan loopback ke 10.0.2.2 pada emulator Android,
+/// karena skrip setup ADB memang melewati emulator.
 String get _defaultHost => 'localhost';
 
 /// Alamat berkas konfigurasi. Jika dioper via --dart-define maka dipakai,
@@ -60,6 +69,35 @@ AppConfig get fallbackConfig {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Chat + voice is the default mobile surface. The authenticated product-job
+  // workspace remains available as an explicit mode on port 9902.
+  const legacyGateway = bool.fromEnvironment(
+    'WANGSA_LEGACY_GATEWAY',
+    defaultValue: true,
+  );
+  if (!legacyGateway) {
+    const productApiUrl = String.fromEnvironment(
+      'WANGSA_API_BASE_URL',
+      defaultValue: 'http://localhost:9902',
+    );
+    final theme = await ThemeController.load();
+    runApp(
+      ValueListenableBuilder<ThemeMode>(
+        valueListenable: theme,
+        builder: (context, mode, child) => MaterialApp(
+          title: 'Wangsa',
+          debugShowCheckedModeBanner: false,
+          theme: WangsaTheme.forBrightness(Brightness.light),
+          darkTheme: WangsaTheme.forBrightness(Brightness.dark),
+          themeMode: mode,
+          home: child,
+        ),
+        child: const ProductApp(apiBaseUrl: productApiUrl),
+      ),
+    );
+    return;
+  }
+
   // Layanan latar depan hanya diinisialisasi pada platform Android
   // (Windows desktop tidak mendukung flutter_foreground_task).
   bool isAndroid = false;
@@ -78,7 +116,8 @@ Future<void> main() async {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'wangsa_wake_word',
         channelName: 'Wangsa mendengarkan kata pemicu',
-        channelDescription: 'Tampil selama aplikasi mengawasi "Halo Wangsa" di latar belakang.',
+        channelDescription:
+            'Tampil selama aplikasi mengawasi "Halo Wangsa" di latar belakang.',
         onlyAlertOnce: true,
       ),
       // Wajib diisi oleh flutter_foreground_task 11, walaupun aplikasi ini
@@ -91,7 +130,8 @@ Future<void> main() async {
         // isolate utama. Interval sepanjang ini praktis sama dengan tidak
         // ada, tapi API paket ini mewajibkan sebuah interval.
         eventAction: ForegroundTaskEventAction.repeat(60000),
-        autoRunOnBoot: false, // Android 15 melarang ini untuk layanan mikrofon — lihat docs/mobile-client-decision.md.
+        autoRunOnBoot:
+            false, // Android 15 melarang ini untuk layanan mikrofon — lihat docs/mobile-client-decision.md.
         allowWakeLock: true,
       ),
     );
@@ -102,10 +142,25 @@ Future<void> main() async {
   // ada untuk kompatibilitas siapa pun yang masih memanggilnya langsung,
   // tapi startup tidak lagi menunggu jaringan untuk konfigurasi dasar.
   final prefs = await SharedPreferences.getInstance();
-  final savedApiUrl = prefs.getString('wangsa_custom_api_url');
-  final activeConfig = savedApiUrl != null && savedApiUrl.trim().isNotEmpty
-      ? fallbackConfig.copyWith(apiBaseUrl: savedApiUrl.trim())
-      : fallbackConfig;
+  final androidEmulator = await _isAndroidEmulator();
+  final chatSavedUrl = prefs.getString('wangsa_chat_api_url')?.trim();
+  final legacySavedUrl = usableLegacyGatewaySavedUrl(
+    prefs.getString('wangsa_custom_api_url'),
+  );
+  final savedApiUrl = chatSavedUrl?.isNotEmpty == true
+      ? chatSavedUrl
+      : legacySavedUrl;
+  if (chatSavedUrl?.isNotEmpty != true && legacySavedUrl != null) {
+    await prefs.setString('wangsa_chat_api_url', legacySavedUrl);
+  }
+  final defaultApiUrl = adaptLoopbackApiUrl(
+    fallbackConfig.apiBaseUrl,
+    androidEmulator: androidEmulator,
+  );
+  final selectedApiUrl = savedApiUrl == null
+      ? defaultApiUrl
+      : adaptLoopbackApiUrl(savedApiUrl, androidEmulator: androidEmulator);
+  final activeConfig = fallbackConfig.copyWith(apiBaseUrl: selectedApiUrl);
   final result = ConfigLoadResult(config: activeConfig);
 
   // Dibuat sekali di sini, bukan di dalam WangsaApp.build() — build() bisa
@@ -144,6 +199,7 @@ Future<void> main() async {
   final themeController = await ThemeController.load();
   final llmSettings = await LlmSettingsController.load();
   final userProfile = await UserProfileController.load();
+  final mobileAuth = await MobileAuthController.load();
 
   runApp(
     WangsaApp(
@@ -152,6 +208,7 @@ Future<void> main() async {
       themeController: themeController,
       llmSettings: llmSettings,
       userProfile: userProfile,
+      mobileAuth: mobileAuth,
     ),
   );
 }
@@ -162,6 +219,7 @@ class WangsaApp extends StatelessWidget {
   final ThemeController themeController;
   final LlmSettingsController llmSettings;
   final UserProfileController userProfile;
+  final MobileAuthController mobileAuth;
 
   const WangsaApp({
     super.key,
@@ -170,6 +228,7 @@ class WangsaApp extends StatelessWidget {
     required this.themeController,
     required this.llmSettings,
     required this.userProfile,
+    required this.mobileAuth,
   });
 
   @override
@@ -184,20 +243,17 @@ class WangsaApp extends StatelessWidget {
     // mereset Navigator ke halaman awal walau pengguna sedang membuka Pengaturan.
     // Meneruskannya lewat parameter `child` membuat ValueListenableBuilder
     // memakai instance yang sama pada setiap rebuild.
-    final home = BlocProvider(
-      create: (_) => ChatBloc(
-        apiClient: WangsaApiClient(baseUrl: config.apiBaseUrl),
-        agentId: config.defaultAgentId,
-        userProfile: userProfile,
-      )..add(const ChatOpened()),
-      child: ChatPage(
-        config: config,
-        configProblem: configResult.problem,
-        voiceInput: voiceInput,
-        themeController: themeController,
-        llmSettings: llmSettings,
-        userProfile: userProfile,
-      ),
+    //
+    // AuthGate di dalam tetap bisa rebuild sendiri (signup → chat) karena ia
+    // mendengarkan MobileAuthController, bukan themeController.
+    final home = AuthGate(
+      config: config,
+      configProblem: configResult.problem,
+      voiceInput: voiceInput,
+      themeController: themeController,
+      llmSettings: llmSettings,
+      userProfile: userProfile,
+      auth: mobileAuth,
     );
 
     return ValueListenableBuilder<ThemeMode>(

@@ -6795,6 +6795,33 @@ def _run_one_job_body(
         _scope_token = set_secret_scope(
             build_profile_secret_scope(_get_hermes_home())
         )
+        # Spend-budget pre-flight (cron fires outside any turn scope, but the
+        # job's home IS the profile — _get_hermes_home() above resolved it).
+        # no_agent script jobs spend zero LLM and are exempt.
+        if not job.get("no_agent"):
+            try:
+                from agent.budgets import check_budget as _cron_check_budget
+
+                _cron_allowed, _cron_msg, _ = _cron_check_budget()
+            except Exception:
+                _cron_allowed, _cron_msg = True, ""
+            if not _cron_allowed:
+                reset_secret_scope(_scope_token)
+                logger.info(
+                    "Job '%s': skipped — %s",
+                    job.get("name", job["id"]),
+                    _cron_msg or "budget exceeded",
+                )
+                finish_execution(
+                    execution_id,
+                    success=False,
+                    error=_cron_msg or "Budget exceeded.",
+                )
+                try:
+                    mark_job_run(job["id"], False, _cron_msg or "Budget exceeded.")
+                except Exception:
+                    pass
+                return True
         # Defer the cron agent's async-resource teardown until AFTER delivery.
         # run_job normally closes the agent (and reaps stale async clients) in
         # its finally block; doing that before _deliver_result runs means the

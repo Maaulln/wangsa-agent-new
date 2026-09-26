@@ -61,3 +61,18 @@ class TestGatewayConnectionErrorReply:
         assert "rate-limiting" in _gateway_provider_error_reply(
             "rate limited after 3 retries"
         ).lower()
+
+    def test_unsupported_model_401_is_not_mislabeled_as_auth_failure(self):
+        text = "AuthenticationError HTTP 401: Model hy3-free is not supported"
+        reply = _gateway_provider_error_reply(text)
+        assert "model" in reply.lower()
+        assert "model chat" in reply.lower()
+        assert "authentication" not in reply.lower()
+
+    def test_opencode_free_tier_block_explains_external_app_restriction(self):
+        reply = _gateway_provider_error_reply(
+            "HTTP 403: OpenCode's free tier can only be used from within OpenCode"
+        )
+        assert "memblokir" in reply.lower()
+        assert "provider lain" in reply.lower()
+        assert "raw provider" not in reply.lower()

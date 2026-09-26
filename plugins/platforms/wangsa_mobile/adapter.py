@@ -54,12 +54,14 @@ Bind safety: with no bearer token configured, the server binds 127.0.0.1 only.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
 import re
 import threading
 import time
+import urllib.request
 import uuid
 from collections import deque
 from concurrent.futures import Future
@@ -82,6 +84,21 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PORT = 9901
 _MAX_MESSAGE_LEN = 4000
 _MAX_BODY = 1_048_576  # 1MB
+_MOBILE_TOOLSETS = frozenset({"web", "vision"})
+_OPENCODE_MODELS_URL = "https://opencode.ai/zen/v1/models"
+_OPENCODE_FREE_MODELS_CACHE: tuple[str, ...] = ()
+_OPENCODE_FREE_MODELS_CACHE_UNTIL = 0.0
+_OPENCODE_FREE_MODELS_CACHE_LOCK = threading.Lock()
+_OPENCODE_FREE_MODELS_FALLBACK = (
+    "mimo-v2.6-flash-free",
+    "space-bunny-free",
+    "ling-3.0-flash-fin-free",
+    "nemotron-3-ultra-free",
+    "nemotron-3.5-lightning-free",
+)
+_OPENCODE_FREE_MODELS_UNUSABLE = frozenset(
+    {"deepseek-v4-flash-free", "mimo-v2.5-free"}
+)
 
 _AGENT_ID_RE = re.compile(
     r"^/api/v1/agents/([^/]+)(/(messages(/stream)?|models|sessions(/[^/]+(/messages)?)?))?/?$"
@@ -104,6 +121,67 @@ def _extract_think_blocks(text: str) -> tuple[str, str]:
             thoughts.append(content)
     clean = _THINK_RE.sub("", text).strip()
     return "\n\n".join(thoughts).strip(), clean
+
+
+def _opencode_free_model_ids() -> list[str]:
+    """Return current, Wangsa-compatible OpenCode free models.
+
+    The provider retires anonymous model routes independently of Wangsa
+    releases. Query its public catalog with a short cache so the mobile picker
+    cannot keep offering retired IDs such as ``hy3-free``. A conservative
+    fallback keeps the picker usable during a temporary catalog outage.
+    """
+    global _OPENCODE_FREE_MODELS_CACHE, _OPENCODE_FREE_MODELS_CACHE_UNTIL
+
+    now = time.monotonic()
+    with _OPENCODE_FREE_MODELS_CACHE_LOCK:
+        if _OPENCODE_FREE_MODELS_CACHE and now < _OPENCODE_FREE_MODELS_CACHE_UNTIL:
+            return list(_OPENCODE_FREE_MODELS_CACHE)
+
+        try:
+            try:
+                from hermes_cli.model_data_policy_guard import data_training_warning
+            except ImportError:
+                from wangsa_cli.model_data_policy_guard import data_training_warning
+            try:
+                from hermes_cli.urllib_security import open_credentialed_url
+            except ImportError:
+                from wangsa_cli.urllib_security import open_credentialed_url
+
+            request = urllib.request.Request(
+                _OPENCODE_MODELS_URL,
+                headers={"Accept": "application/json", "User-Agent": "Wangsa/1.0"},
+            )
+            with open_credentialed_url(request, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+
+            discovered: list[str] = []
+            entries = payload.get("data", []) if isinstance(payload, dict) else []
+            for item in entries if isinstance(entries, list) else []:
+                if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                    continue
+                model_id = item["id"].strip()
+                lowered = model_id.lower()
+                if (
+                    not lowered.endswith("-free")
+                    or lowered.startswith("jev-")
+                    or lowered in _OPENCODE_FREE_MODELS_UNUSABLE
+                    or data_training_warning(model_id, provider="opencode-free") is not None
+                    or model_id in discovered
+                ):
+                    continue
+                discovered.append(model_id)
+
+            if discovered:
+                _OPENCODE_FREE_MODELS_CACHE = tuple(discovered)
+                _OPENCODE_FREE_MODELS_CACHE_UNTIL = now + 15 * 60
+                return list(_OPENCODE_FREE_MODELS_CACHE)
+        except Exception:
+            logger.debug("wangsa_mobile: OpenCode free model refresh failed", exc_info=True)
+
+        if _OPENCODE_FREE_MODELS_CACHE and now < _OPENCODE_FREE_MODELS_CACHE_UNTIL:
+            return list(_OPENCODE_FREE_MODELS_CACHE)
+        return list(_OPENCODE_FREE_MODELS_FALLBACK)
 
 
 def _hermes_cli_module(name: str):
@@ -295,18 +373,148 @@ def _bearer_token() -> str:
 _PROFILE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _MIN_USER_TOKEN_LEN = 16
 
+# Open-signup username rule: 3-32 chars, lowercase. Stricter than the
+# profile regex to avoid single-char profile spam via mobile signup.
+_SIGNUP_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
+_SIGNUP_RESERVED = frozenset({"default", "hermes", "test", "tmp", "root", "sudo"})
+_MOBILE_TOKENS_FILENAME = "wangsa_mobile_tokens.json"
+_mobile_tokens_lock = threading.Lock()
+
+
+def _mobile_tokens_path() -> Path:
+    """Process-level token store path (never per-profile).
+
+    Tokens map ``token -> profile`` globally, so the file must live under
+    the default root even while a request is scoped to another profile.
+    """
+    try:
+        from wangsa_constants import get_default_hermes_root
+    except ImportError:
+        try:
+            from hermes_constants import get_default_hermes_root
+        except ImportError:
+            get_default_hermes_root = None  # type: ignore
+    try:
+        if get_default_hermes_root is not None:
+            return get_default_hermes_root() / _MOBILE_TOKENS_FILENAME
+    except Exception:
+        pass
+    try:
+        from wangsa_constants import get_process_hermes_home
+    except ImportError:
+        try:
+            from hermes_constants import get_process_hermes_home
+        except ImportError:
+            get_process_hermes_home = None  # type: ignore
+    try:
+        if get_process_hermes_home is not None:
+            return get_process_hermes_home() / _MOBILE_TOKENS_FILENAME
+    except Exception:
+        pass
+    return Path.home() / ".hermes" / _MOBILE_TOKENS_FILENAME
+
+
+def _load_mobile_token_store() -> Dict[str, str]:
+    """Read the persisted ``{token: profile}`` map. Returns {} on any failure."""
+    try:
+        path = _mobile_tokens_path()
+        if not path.is_file():
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        node = raw.get("tokens") if isinstance(raw, dict) and isinstance(raw.get("tokens"), dict) else raw
+        if not isinstance(node, dict):
+            return {}
+        tokens: Dict[str, str] = {}
+        for token, profile in node.items():
+            if not isinstance(token, str) or not isinstance(profile, str):
+                continue
+            profile = profile.strip().lower()
+            token = token.strip()
+            if len(token) < _MIN_USER_TOKEN_LEN or not _PROFILE_NAME_RE.match(profile):
+                continue
+            if token in tokens:
+                continue
+            tokens[token] = profile
+        return tokens
+    except Exception:
+        logger.debug("wangsa_mobile: failed to load token store", exc_info=True)
+        return {}
+
+
+def _save_mobile_token_store(tokens: Dict[str, str]) -> None:
+    """Atomically persist the token map with 0600 permissions."""
+    path = _mobile_tokens_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"tokens": tokens}, indent=2), encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _revoke_mobile_token(token: str) -> bool:
+    """Remove *token* from the file store. Returns True when revoked.
+
+    Env-configured (``WANGSA_MOBILE_USER_TOKENS``) and legacy bearer tokens
+    are operator-managed and cannot be revoked at runtime — returns False.
+    """
+    token = (token or "").strip()
+    if not token:
+        return False
+    with _mobile_tokens_lock:
+        tokens = _load_mobile_token_store()
+        if token not in tokens:
+            return False
+        del tokens[token]
+        _save_mobile_token_store(tokens)
+        return True
+
+
+def _issue_mobile_token(profile: str) -> str:
+    """Mint, persist, and return a fresh bearer token for *profile*."""
+    import secrets
+
+    profile = profile.strip().lower()
+    with _mobile_tokens_lock:
+        tokens = _load_mobile_token_store()
+        # One active token per profile: reuse would leak; rotate instead.
+        for _ in range(5):
+            candidate = secrets.token_urlsafe(32)
+            if candidate not in tokens:
+                break
+        else:
+            candidate = secrets.token_urlsafe(32)
+        tokens[candidate] = profile
+        _save_mobile_token_store(tokens)
+        return candidate
+
 
 def _user_token_map() -> Dict[str, str]:
-    """Parse ``WANGSA_MOBILE_USER_TOKENS`` into ``{token: profile}``.
+    """Parse ``WANGSA_MOBILE_USER_TOKENS`` plus the signup store into ``{token: profile}``.
 
     Format: ``profile=token`` pairs separated by commas or newlines, e.g.
     ``alice=<secret>,bob=<secret>``. Each token identifies exactly one
     profile, so a token that is too short, malformed, or already assigned to
     another profile is dropped (with a warning) rather than guessed at.
     ``default`` maps a token to the gateway's default profile.
+
+    The file store (``wangsa_mobile_tokens.json`` written by open signup)
+    is merged first; env entries win on duplicate tokens so an operator can
+    always override a leaked file token without editing JSON.
     """
-    raw = os.getenv("WANGSA_MOBILE_USER_TOKENS", "")
     tokens: Dict[str, str] = {}
+    for token, profile in _load_mobile_token_store().items():
+        tokens[token] = profile
+    raw = os.getenv("WANGSA_MOBILE_USER_TOKENS", "")
     for entry in re.split(r"[,\n]", raw):
         entry = entry.strip()
         if not entry:
@@ -418,6 +626,104 @@ class _RateLimiter:
                 return False
             hits.append(now)
             return True
+
+
+# Open-signup abuse guard: 5 registrations per IP per hour. Separate from
+# the 30/min POST /messages limiter above.
+_SIGNUP_RATE_LIMIT_MAX = 5
+_SIGNUP_RATE_LIMIT_WINDOW = 3600.0
+_signup_limiter = _RateLimiter(
+    max_requests=_SIGNUP_RATE_LIMIT_MAX, window=_SIGNUP_RATE_LIMIT_WINDOW
+)
+
+
+def _reset_signup_limiter() -> None:
+    """Clear the signup rate limiter (test hook — production never calls this)."""
+    try:
+        _signup_limiter._hits.clear()
+    except Exception:
+        pass
+
+
+def _is_provider_configured() -> bool:
+    """True when the current (profile-scoped) home has any non-free LLM credential.
+
+    Must run inside the caller's ``_profile_context`` so ``get_env_value``
+    resolves the profile's own ``.env``. ``opencode-free`` is keyless and
+    always "configured" — it must NOT count, otherwise every blank profile
+    looks ready and the mobile onboarding gate never fires.
+    """
+    try:
+        config_mod = _hermes_cli_module("config")
+        auth_mod = _hermes_cli_module("auth")
+        get_env_value = config_mod.get_env_value
+        get_auth_status = getattr(auth_mod, "get_auth_status", None)
+        PROVIDER_REGISTRY = getattr(auth_mod, "PROVIDER_REGISTRY", {})
+    except Exception:
+        return False
+    try:
+        # Profile-scoped OAuth pool (auth.json in this profile's home).
+        # Counts as configured — unlike ambient machine logins (e.g. `gh
+        # auth token`) which are shared across profiles, not per-user.
+        try:
+            read_pool = getattr(auth_mod, "read_credential_pool", None)
+            pool = read_pool() if callable(read_pool) else {}
+            if isinstance(pool, dict) and any(
+                isinstance(v, list) and v for v in pool.values()
+            ):
+                return True
+        except Exception:
+            pass
+        for row in _get_all_providers_meta():
+            pid = row.get("id", "")
+            if pid in ("opencode-free", "custom"):
+                continue
+            if pid == "copilot":
+                for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+                    try:
+                        val = (get_env_value(var) or os.getenv(var) or "").strip()
+                    except Exception:
+                        val = ""
+                    if val:
+                        return True
+                continue
+            if pid == "nous":
+                try:
+                    val = (get_env_value("NOUS_API_KEY") or os.getenv("NOUS_API_KEY") or "").strip()
+                except Exception:
+                    val = ""
+                if val:
+                    return True
+                continue
+            env_var = row.get("env_var")
+            candidates: list[str] = []
+            if env_var:
+                candidates.append(env_var)
+            try:
+                pconfig = PROVIDER_REGISTRY.get(pid)
+                for alt in getattr(pconfig, "api_key_env_vars", None) or []:
+                    if alt not in candidates:
+                        candidates.append(alt)
+            except Exception:
+                pass
+            for var in candidates:
+                try:
+                    val = (get_env_value(var) or os.getenv(var) or "").strip()
+                except Exception:
+                    val = ""
+                if val:
+                    return True
+        try:
+            cfg = config_mod.load_config()
+            customs = cfg.get("custom_providers") or []
+            if isinstance(customs, list) and customs:
+                return True
+        except Exception:
+            pass
+    except Exception:
+        logger.debug("wangsa_mobile: is_configured check failed", exc_info=True)
+        return False
+    return False
 
 
 def _decode_request_images(body: dict) -> tuple:
@@ -614,10 +920,13 @@ def _route_requires_auth(method: str, path: str) -> bool:
     """Whether a recognised route must carry a valid bearer token.
 
     With per-user tokens every profile-bound route needs one (the token IS the
-    identity); only the static agent-identity GET stays open. With just the
-    legacy shared token, POST /messages and the provider-credential routes
-    are gated. Unknown paths return False so they fall through to a 404.
+    identity); only the static agent-identity GET and the open-signup POST
+    stay public. With just the legacy shared token, POST /messages and the
+    provider-credential routes are gated. Unknown paths return False so they
+    fall through to a 404.
     """
+    if path == "/api/v1/auth/signup":
+        return False
     if path.startswith("/api/v1/auth/"):
         return True
     m = _AGENT_ID_RE.match(path)
@@ -706,6 +1015,12 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/auth/providers":
             self._handle_auth_providers_get()
             return
+        if path == "/api/v1/auth/me":
+            self._handle_me()
+            return
+        if path == "/api/v1/auth/budget":
+            self._handle_budget()
+            return
         m = _AGENT_ID_RE.match(path)
         if not m:
             self._json(
@@ -753,6 +1068,9 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
 
     def _do_delete(self):
         path = self.path.split("?", 1)[0]
+        if path == "/api/v1/auth/token":
+            self._handle_token_revoke()
+            return
         if path.startswith("/api/v1/auth/providers/"):
             provider_id = path[len("/api/v1/auth/providers/") :].strip("/")
             self._handle_auth_provider_delete(provider_id)
@@ -821,6 +1139,8 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                 slug = str(row.get("slug") or "")
                 name = str(row.get("name") or slug)
                 row_models = [str(m) for m in (row.get("models") or [])]
+                if slug == "opencode-free":
+                    row_models = _opencode_free_model_ids()
                 providers_out.append({
                     "id": slug,
                     "slug": slug,
@@ -843,6 +1163,138 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                     "providers": providers_out,
                 },
             },
+        )
+
+    def _handle_budget(self) -> None:
+        """Return the caller's spend vs caps.
+
+        Requires a valid bearer token; runs inside the profile scope so the
+        ledger (``state.db``) and ``budgets:`` config are the caller's own.
+        Shape: ``{enabled, daily_usd, monthly_usd, spent_day, spent_month,
+        breached, alert}`` — the mobile app renders progress + banners.
+        """
+        try:
+            from agent.budgets import budget_status as _budget_status
+        except ImportError:
+            self._error(500, "INTERNAL_ERROR", "budget system unavailable")
+            return
+        try:
+            status = _budget_status()
+        except Exception:
+            logger.debug("wangsa_mobile: budget status failed", exc_info=True)
+            self._error(500, "INTERNAL_ERROR", "could not read budget")
+            return
+        self._json(200, {"success": True, "data": status})
+
+    def _handle_token_revoke(self) -> None:
+        """Revoke the caller's own bearer token (logout).
+
+        Removes file-store tokens issued by open signup. Operator-managed
+        env/legacy tokens return 409 — the user must ask the admin to rotate
+        them instead of silently keeping a dead session.
+        """
+        presented = self._presented_token()
+        if not presented:
+            self._error(401, "UNAUTHORIZED", "missing bearer token")
+            return
+        if _revoke_mobile_token(presented):
+            self._json(200, {"success": True, "data": {"revoked": True}})
+            return
+        self._error(409, "CONFLICT", "token ini dikelola server dan tidak bisa dicabut dari aplikasi")
+
+    def _handle_me(self) -> None:
+        """Return the caller's profile plus whether an LLM is connected.
+
+        Requires a valid bearer token (``_route_requires_auth`` gates
+        ``/api/v1/auth/*``). Runs inside the caller's profile scope so
+        ``configured`` reflects their own ``.env``, not another user's.
+        """
+        profile = getattr(self, "_profile", None) or "default"
+        try:
+            configured = _is_provider_configured()
+        except Exception:
+            configured = False
+        self._json(200, {"success": True, "data": {"profile": profile, "configured": configured}})
+
+    def _handle_signup(self) -> None:
+        """Open registration: create a profile and issue its bearer token.
+
+        Public route (no token needed). Body: ``{"username": "<name>"}``.
+        Rate-limited per IP (5/hour). Username 3-32 chars, lowercase,
+        ``_SIGNUP_NAME_RE``; reserved names and existing profiles rejected
+        with 409 CONFLICT so a taken name is distinguishable from bad input.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            body = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self._error(400, "VALIDATION_ERROR", "invalid JSON body")
+            return
+        if not isinstance(body, dict):
+            self._error(400, "VALIDATION_ERROR", "body must be a JSON object")
+            return
+        username = str(body.get("username") or body.get("name") or "").strip().lower()
+        if not username:
+            self._error(400, "VALIDATION_ERROR", "username is required")
+            return
+        if len(username) < 3 or len(username) > 32 or not _SIGNUP_NAME_RE.match(username):
+            self._error(
+                400,
+                "VALIDATION_ERROR",
+                "username must be 3-32 lowercase letters, digits, - or _",
+            )
+            return
+        if username in _SIGNUP_RESERVED:
+            self._error(409, "CONFLICT", f"username {username!r} is reserved")
+            return
+        client_ip = self.client_address[0] if self.client_address else "unknown"
+        if not _signup_limiter.allow(f"signup:{client_ip}"):
+            self._error(429, "RATE_LIMITED", "too many registrations from this address, try again later")
+            return
+        try:
+            from wangsa_cli.profiles import create_profile, profile_exists
+        except ImportError:
+            try:
+                from hermes_cli.profiles import create_profile, profile_exists
+            except ImportError:
+                self._error(500, "INTERNAL_ERROR", "profile system unavailable")
+                return
+        try:
+            if profile_exists(username):
+                self._error(409, "CONFLICT", f"username {username!r} is already taken")
+                return
+        except Exception:
+            logger.debug("wangsa_mobile: profile_exists check failed", exc_info=True)
+            self._error(500, "INTERNAL_ERROR", "could not check username")
+            return
+        try:
+            create_profile(username, no_alias=True)
+        except FileExistsError:
+            self._error(409, "CONFLICT", f"username {username!r} is already taken")
+            return
+        except ValueError as e:
+            self._error(400, "VALIDATION_ERROR", str(e) or "invalid username")
+            return
+        except Exception as e:
+            logger.warning("wangsa_mobile: could not create profile %r", username, exc_info=True)
+            self._error(500, "INTERNAL_ERROR", "could not create profile")
+            return
+        try:
+            # Validate the new profile is actually served (multiplex allowlist).
+            self.adapter._ensure_profile(username)
+        except _ProfileUnavailable as e:
+            self._error(503, "PROFILE_UNAVAILABLE", str(e))
+            return
+        try:
+            token = _issue_mobile_token(username)
+        except Exception:
+            logger.warning("wangsa_mobile: could not issue token for %r", username, exc_info=True)
+            self._error(500, "INTERNAL_ERROR", "could not issue token")
+            return
+        self._json(
+            201,
+            {"success": True, "data": {"profile": username, "token": token, "configured": False}},
         )
 
     def _handle_auth_providers_get(self) -> None:
@@ -1138,6 +1590,9 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         adapter = self.adapter
         profile = getattr(self, "_profile", None)
         path = self.path.split("?", 1)[0]
+        if path == "/api/v1/auth/signup":
+            self._handle_signup()
+            return
         if path.startswith("/api/v1/auth/providers/"):
             provider_id = path[len("/api/v1/auth/providers/") :].strip("/")
             self._handle_auth_provider_save(provider_id)
@@ -1187,6 +1642,28 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         session_id = body.get("sessionId") or None
         if session_id is not None:
             session_id = str(session_id).strip() or None
+
+        # Capabilities are selected before the first message and remain fixed
+        # for this mobile session, preserving the tool schema prefix/cache.
+        # Older clients omit this field; existing sessions keep their stored
+        # selection and new sessions default to no tools.
+        raw_toolsets = body.get("toolsets", None)
+        requested_toolsets: Optional[list[str]] = None
+        if raw_toolsets is not None:
+            if not isinstance(raw_toolsets, list) or any(
+                not isinstance(item, str) for item in raw_toolsets
+            ):
+                self._error(400, "VALIDATION_ERROR", "toolsets must be a list of strings")
+                return
+            normalized_toolsets = {item.strip().lower() for item in raw_toolsets if item.strip()}
+            if normalized_toolsets - _MOBILE_TOOLSETS:
+                self._error(
+                    400,
+                    "VALIDATION_ERROR",
+                    "mobile chat only supports the web and vision capabilities",
+                )
+                return
+            requested_toolsets = sorted(normalized_toolsets)
 
         # New per-session model selection (validated against the catalog;
         # persisted like the /model slash command). The legacy BYOK ``llm``
@@ -1263,7 +1740,41 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             return
 
         effective_session_id = session_id or uuid.uuid4().hex
+        stored_toolsets = (
+            adapter._session_toolsets(effective_session_id, profile)
+            if session_id is not None
+            else None
+        )
+        if stored_toolsets is not None:
+            if requested_toolsets is not None and requested_toolsets != stored_toolsets:
+                self._error(
+                    409,
+                    "SESSION_TOOLSETS_LOCKED",
+                    "Capabilities are fixed for this conversation. Start a new chat to change them.",
+                )
+                return
+            active_toolsets = stored_toolsets
+        else:
+            active_toolsets = requested_toolsets or []
+
         thread_id = _chat_id(agent_id, effective_session_id or "anon", profile)
+
+        # Spend-budget pre-flight (runs inside the caller's profile scope
+        # installed by _guarded, so the ledger + config are theirs). Fast
+        # reject before a turn slot, queue entry, or agent thread is spent.
+        try:
+            from agent.budgets import check_budget as _check_budget
+        except ImportError:
+            _check_budget = None  # type: ignore
+        if _check_budget is not None:
+            try:
+                _allowed, _budget_msg, _ = _check_budget()
+            except Exception:
+                logger.debug("wangsa_mobile: budget check failed open", exc_info=True)
+                _allowed, _budget_msg = True, ""
+            if not _allowed:
+                self._error(429, "BUDGET_EXCEEDED", _budget_msg or "budget exceeded")
+                return
 
         if model is not None and str(model).strip():
             err = adapter._apply_model_override(thread_id, str(model).strip(), provider, profile=profile)
@@ -1285,6 +1796,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             user_name=user_name,
             user_bio=user_bio,
             profile=profile,
+            toolsets=active_toolsets,
         )
         reply_text = reply.get("text", "") if isinstance(reply, dict) else (reply or "")
         reply_images = reply.get("images") if isinstance(reply, dict) else None
@@ -1323,6 +1835,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             title=title,
             last_message=reply_text[:60],
             profile=profile,
+            toolsets=active_toolsets,
         )
 
         if is_stream:
@@ -1419,13 +1932,36 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         identity here, so stamp it explicitly. The gateway then namespaces the
         session key and runs the turn in that profile's home.
         """
-        source = self.build_source(
-            chat_id=chat_id,
-            chat_name=chat_name,
-            chat_type="dm",
-            user_id=chat_id,
+        source_kwargs = {
+            "chat_id": chat_id,
+            "chat_name": chat_name,
+            "chat_type": "dm",
+            "user_id": chat_id,
             **kwargs,
+        }
+        # A mobile app can be newer than the gateway runtime it connects to
+        # (for example a desktop-managed ~/.hermes installation). Older
+        # BasePlatformAdapter.build_source versions do not accept user_bio;
+        # passing it through raises before the message is dispatched, making
+        # the client see a dropped connection instead of an API error.
+        parameters = inspect.signature(self.build_source).parameters
+        accepts_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
         )
+        supported_kwargs = (
+            source_kwargs
+            if accepts_kwargs
+            else {key: value for key, value in source_kwargs.items() if key in parameters}
+        )
+        source = self.build_source(**supported_kwargs)
+        if "user_bio" in source_kwargs and "user_bio" not in parameters:
+            # Newer SessionSource objects can still carry the field even when
+            # an older build_source helper has not learned to forward it.
+            try:
+                source.user_bio = source_kwargs["user_bio"]
+            except AttributeError:
+                pass
         if profile:
             source.profile = profile
         return source
@@ -1449,7 +1985,10 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             # Multiplexing makes unscoped credential reads fail closed, so the
             # default profile needs its own scope too.
             from gateway.run import _profile_runtime_scope
-            from wangsa_constants import get_hermes_home
+            try:
+                from wangsa_constants import get_hermes_home
+            except ImportError:
+                from hermes_constants import get_hermes_home
 
             return _profile_runtime_scope(get_hermes_home())
         if not multiplex:
@@ -1467,12 +2006,20 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         A new user therefore starts from a blank profile (no keys, no memory)
         and is guided through setup, instead of inheriting anyone's config.
         """
-        from wangsa_cli.profiles import (
-            create_profile,
-            get_profile_dir,
-            profile_exists,
-            profiles_to_serve,
-        )
+        try:
+            from wangsa_cli.profiles import (
+                create_profile,
+                get_profile_dir,
+                profile_exists,
+                profiles_to_serve,
+            )
+        except ImportError:
+            from hermes_cli.profiles import (
+                create_profile,
+                get_profile_dir,
+                profile_exists,
+                profiles_to_serve,
+            )
 
         with self._profile_lock:
             if not profile_exists(profile):
@@ -1488,7 +2035,16 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             try:
                 from gateway.run import _gateway_runner_ref
 
-                cfg = getattr(_gateway_runner_ref(), "config", None)
+                runner = _gateway_runner_ref()
+            except Exception as e:
+                runner = None
+            if runner is None:
+                # No live gateway runner (unit tests, standalone HTTP harness):
+                # profile was just created/verified above, served-set check is
+                # deferred to first use under _profile_context.
+                return get_profile_dir(profile)
+            try:
+                cfg = getattr(runner, "config", None)
                 served = {
                     name
                     for name, _home in profiles_to_serve(
@@ -1511,6 +2067,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         title: str = "",
         last_message: str = "",
         profile: Optional[str] = None,
+        toolsets: Optional[list[str]] = None,
     ) -> None:
         if not session_id:
             return
@@ -1526,12 +2083,24 @@ class WangsaMobileAdapter(BasePlatformAdapter):
                     "lastMessage": last_message,
                     "updatedAt": now_iso,
                     "turnCount": 1,
+                    "toolsets": sorted(set(toolsets or [])),
                 }
             else:
                 if last_message:
                     existing["lastMessage"] = last_message
                 existing["updatedAt"] = now_iso
                 existing["turnCount"] = existing.get("turnCount", 1) + 1
+                if toolsets is not None:
+                    existing.setdefault("toolsets", sorted(set(toolsets)))
+
+    def _session_toolsets(
+        self, session_id: str, profile: Optional[str] = None
+    ) -> Optional[list[str]]:
+        with self._pending_lock:
+            session = self._mobile_sessions.get((profile or "", session_id))
+            if session is None or "toolsets" not in session:
+                return None
+            return list(session["toolsets"])
 
     def _list_sessions(self, agent_id: str, profile: Optional[str] = None) -> list[dict]:
         owner = profile or ""
@@ -1903,6 +2472,9 @@ class WangsaMobileAdapter(BasePlatformAdapter):
             logger.debug("wangsa_mobile: model catalog unavailable", exc_info=True)
             return "could not validate model"
         rows = [r for r in (payload.get("providers") or []) if isinstance(r, dict)]
+        for row in rows:
+            if str(row.get("slug") or "") == "opencode-free":
+                row["models"] = _opencode_free_model_ids()
         current_provider = str(payload.get("provider") or "")
         current_model = str(payload.get("model") or "")
         if provider:
@@ -2027,6 +2599,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         user_name: Optional[str] = None,
         user_bio: Optional[str] = None,
         profile: Optional[str] = None,
+        toolsets: Optional[list[str]] = None,
     ) -> tuple:
         """Runs on an HTTP worker thread. Returns (state, payload_dict)."""
         if self._loop is None or self._message_handler is None:
@@ -2041,16 +2614,20 @@ class WangsaMobileAdapter(BasePlatformAdapter):
         message_id = uuid.uuid4().hex
         fut = self._add_pending(message_id, chat_id)
 
+        source = self._source_for(
+            chat_id,
+            f"wangsa-mobile:{agent_id}",
+            profile,
+            user_name=user_name or "mobile",
+            user_bio=user_bio,
+        )
+        # Transport-only metadata: the gateway consumes it before AIAgent
+        # construction; it is intentionally excluded from session identity.
+        source._wangsa_mobile_toolsets = sorted(set(toolsets or []))
         event = MessageEvent(
             text=message,
             message_type=MessageType.TEXT,
-            source=self._source_for(
-                chat_id,
-                f"wangsa-mobile:{agent_id}",
-                profile,
-                user_name=user_name or "mobile",
-                user_bio=user_bio,
-            ),
+            source=source,
             message_id=message_id,
             media_urls=list(media_urls or []),
             media_types=list(media_types or []),
@@ -2333,3 +2910,7 @@ class WangsaMobileAdapter(BasePlatformAdapter):
 
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         return {"name": chat_id, "type": "dm"}
+
+    def toolsets_for_source(self, source: Any) -> list[str]:
+        """Return capabilities fixed at the start of this mobile session."""
+        return list(getattr(source, "_wangsa_mobile_toolsets", []) or [])

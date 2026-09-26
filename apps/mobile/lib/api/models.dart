@@ -13,13 +13,17 @@ class PublicAgent {
   final String name;
   final String purpose;
 
-  const PublicAgent({required this.id, required this.name, required this.purpose});
+  const PublicAgent({
+    required this.id,
+    required this.name,
+    required this.purpose,
+  });
 
   factory PublicAgent.fromJson(Map<String, dynamic> json) => PublicAgent(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        purpose: json['purpose'] as String,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    purpose: json['purpose'] as String,
+  );
 }
 
 /// Informasi satu pemanggilan alat/tool yang dijalankan AI saat memproses pesan.
@@ -35,16 +39,16 @@ class ToolCallInfo {
   });
 
   factory ToolCallInfo.fromJson(Map<String, dynamic> json) => ToolCallInfo(
-        tool: json['tool'] as String? ?? 'tool',
-        preview: json['preview'] as String? ?? '',
-        status: json['status'] as String? ?? 'completed',
-      );
+    tool: json['tool'] as String? ?? 'tool',
+    preview: json['preview'] as String? ?? '',
+    status: json['status'] as String? ?? 'completed',
+  );
 
   Map<String, dynamic> toJson() => {
-        'tool': tool,
-        'preview': preview,
-        'status': status,
-      };
+    'tool': tool,
+    'preview': preview,
+    'status': status,
+  };
 }
 
 /// Ringkasan sesi percakapan untuk drawer multi-session.
@@ -55,6 +59,7 @@ class SessionSummary {
   final String lastMessage;
   final String updatedAt;
   final int turnCount;
+  final List<String> toolsets;
 
   const SessionSummary({
     required this.sessionId,
@@ -63,16 +68,20 @@ class SessionSummary {
     this.lastMessage = '',
     this.updatedAt = '',
     this.turnCount = 1,
+    this.toolsets = const [],
   });
 
   factory SessionSummary.fromJson(Map<String, dynamic> json) => SessionSummary(
-        sessionId: json['sessionId'] as String? ?? '',
-        agentId: json['agentId'] as String? ?? '',
-        title: json['title'] as String? ?? 'Percakapan',
-        lastMessage: json['lastMessage'] as String? ?? '',
-        updatedAt: json['updatedAt'] as String? ?? '',
-        turnCount: (json['turnCount'] as num?)?.toInt() ?? 1,
-      );
+    sessionId: json['sessionId'] as String? ?? '',
+    agentId: json['agentId'] as String? ?? '',
+    title: json['title'] as String? ?? 'Percakapan',
+    lastMessage: json['lastMessage'] as String? ?? '',
+    updatedAt: json['updatedAt'] as String? ?? '',
+    turnCount: (json['turnCount'] as num?)?.toInt() ?? 1,
+    toolsets: json['toolsets'] is List
+        ? (json['toolsets'] as List).whereType<String>().toList()
+        : const [],
+  );
 }
 
 /// Satu giliran bicara dari riwayat sesi lampau, dari
@@ -91,9 +100,9 @@ class HistoryTurn {
   bool get isUser => role == 'user';
 
   factory HistoryTurn.fromJson(Map<String, dynamic> json) => HistoryTurn(
-        role: json['role'] as String? ?? 'agent',
-        content: json['content'] as String? ?? '',
-      );
+    role: json['role'] as String? ?? 'agent',
+    content: json['content'] as String? ?? '',
+  );
 }
 
 /// Balasan satu giliran percakapan.
@@ -265,15 +274,13 @@ class ProviderOption {
     return ProviderOption(
       id: json['id'] as String? ?? json['slug'] as String? ?? '',
       name: json['name'] as String? ?? json['slug'] as String? ?? '',
-      models: rawModels is List ? [for (final m in rawModels) m.toString()] : const [],
+      models: rawModels is List
+          ? [for (final m in rawModels) m.toString()]
+          : const [],
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'models': models,
-      };
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'models': models};
 }
 
 /// Daftar model dari deployment — persis seperti yang diberikan
@@ -329,6 +336,86 @@ class ChatImage {
   });
 }
 
+/// Hasil pendaftaran terbuka (`POST /api/v1/auth/signup`): profile baru
+/// plus bearer token miliknya. Token wajib disimpan klien dan dikirim
+/// balik sebagai `Authorization: Bearer` pada setiap panggilan berikutnya.
+class SignupResult {
+  final String profile;
+  final String token;
+  final bool configured;
+
+  const SignupResult({
+    required this.profile,
+    required this.token,
+    this.configured = false,
+  });
+
+  factory SignupResult.fromJson(Map<String, dynamic> json) => SignupResult(
+    profile: json['profile'] as String? ?? '',
+    token: json['token'] as String? ?? '',
+    configured: json['configured'] as bool? ?? false,
+  );
+}
+
+/// Identitas pemanggil (`GET /api/v1/auth/me`): profile milik token ini
+/// plus apakah LLM sudah terhubung. Dipakai onboarding gate untuk
+/// memaksa user baru ke layar Connect LLM sebelum boleh chat.
+class MeInfo {
+  final String profile;
+  final bool configured;
+
+  const MeInfo({required this.profile, this.configured = false});
+
+  factory MeInfo.fromJson(Map<String, dynamic> json) => MeInfo(
+    profile: json['profile'] as String? ?? 'default',
+    configured: json['configured'] as bool? ?? false,
+  );
+}
+
+/// Ringkasan budget spend profile (`GET /api/v1/auth/budget`).
+class BudgetInfo {
+  final bool enabled;
+  final double? dailyUsd;
+  final double? monthlyUsd;
+  final double spentDay;
+  final double spentMonth;
+  final String? breached;
+  final bool alert;
+
+  const BudgetInfo({
+    this.enabled = true,
+    this.dailyUsd,
+    this.monthlyUsd,
+    this.spentDay = 0,
+    this.spentMonth = 0,
+    this.breached,
+    this.alert = false,
+  });
+
+  bool get hasCap => dailyUsd != null || monthlyUsd != null;
+  bool get isBreached => breached != null;
+
+  double _pct(double spent, double? cap) {
+    if (cap == null || cap <= 0) return 0;
+    final p = spent / cap;
+    if (p.isNaN || p.isInfinite) return 0;
+    return p.clamp(0.0, 1.0);
+  }
+
+  double get dayPct => _pct(spentDay, dailyUsd);
+  double get monthPct => _pct(spentMonth, monthlyUsd);
+
+  factory BudgetInfo.fromJson(Map<String, dynamic> json) => BudgetInfo(
+    enabled: json['enabled'] as bool? ?? true,
+    dailyUsd: (json['daily_usd'] as num?)?.toDouble(),
+    monthlyUsd: (json['monthly_usd'] as num?)?.toDouble(),
+    spentDay: (json['spent_day'] as num?)?.toDouble() ?? 0,
+    spentMonth: (json['spent_month'] as num?)?.toDouble() ?? 0,
+    breached: json['breached'] as String?,
+    alert: json['alert'] as bool? ?? false,
+  );
+}
+
 /// Informasi status autentikasi provider inference AI (persis seperti di hermes setup / hermes auth).
 class AuthProviderItem {
   final String id;
@@ -365,13 +452,13 @@ class AuthProviderItem {
   }
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "name": name,
-        "authType": authType,
-        "configured": configured,
-        "envVar": envVar,
-        "keyPreview": keyPreview,
-        "description": description,
-        "helpUrl": helpUrl,
-      };
+    "id": id,
+    "name": name,
+    "authType": authType,
+    "configured": configured,
+    "envVar": envVar,
+    "keyPreview": keyPreview,
+    "description": description,
+    "helpUrl": helpUrl,
+  };
 }

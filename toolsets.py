@@ -213,6 +213,24 @@ TOOLSETS = {
         ],
         "includes": []
     },
+
+    # Available only to the isolated mobile runtime. Values are injected from
+    # encrypted job storage and never appear in the model's tool arguments.
+    "mobile_browser": {
+        "description": "Isolated mobile browser control with secret-safe result handling",
+        "tools": [
+            "browser_navigate", "browser_snapshot", "browser_click",
+            "browser_type", "browser_scroll", "browser_back", "browser_press",
+            "browser_get_images", "browser_console", "browser_cdp",
+            "browser_dialog", "browser_exec", "web_search",
+        ],
+        "includes": []
+    },
+    "mobile_browser_secrets": {
+        "description": "Fill browser login fields from encrypted mobile job credentials",
+        "tools": ["browser_fill_secret"],
+        "includes": []
+    },
     
     "cronjob": {
         "description": "Cronjob management tool - create, list, update, pause, resume, remove, and trigger scheduled tasks",

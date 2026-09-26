@@ -2,6 +2,16 @@
 
 Versi 1, 12 September 2026. Target demo 20 September 2026.
 
+## Addendum produk, 25 September 2026
+
+Keputusan berikut menggantikan bagian yang bertentangan di bawah ini: layar
+default aplikasi adalah chat kosong yang siap dipakai. Sidebar menyediakan
+percakapan baru, riwayat percakapan, dan ruang kerja Bangun Agent. Builder
+mobile saat ini mengumpulkan brief lalu membukanya sebagai percakapan desain
+baru; pembuatan Blueprint, persetujuan, dan publikasi tetap memerlukan API
+builder yang belum tersedia. Mode pekerjaan akun + BYOK port 9902 tetap ada
+sebagai mode eksplisit, bukan halaman awal.
+
 Dokumen ini fokus pada produk. Alasan teknis di balik pemilihan stack
 ada di [`docs/mobile-client-decision.md`](../../docs/mobile-client-decision.md).
 

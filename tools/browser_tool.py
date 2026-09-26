@@ -122,6 +122,7 @@ _BROWSER_PASSTHROUGH_KEYS: tuple[str, ...] = (
     "FIRECRAWL_API_KEY",
     "FIRECRAWL_API_URL",
     "FIRECRAWL_BROWSER_TTL",
+    "AGENT_BROWSER_EXECUTABLE_PATH",
 )
 
 
@@ -2781,6 +2782,9 @@ def _run_browser_command(
     args: List[str] = None,
     timeout: Optional[int] = None,
     _engine_override: Optional[str] = None,
+    stdin_data: Optional[bytes] = None,
+    json_output: bool = True,
+    secure_output: bool = False,
 ) -> Dict[str, Any]:
     """
     Run an agent-browser CLI command using our pre-created Browserbase session.
@@ -2884,10 +2888,7 @@ def _run_browser_command(
     else:
         cmd_prefix = [browser_cmd]
 
-    cmd_parts = cmd_prefix + backend_args + [
-        "--json",
-        command
-    ] + args
+    cmd_parts = cmd_prefix + backend_args + (["--json"] if json_output else []) + [command] + args
 
     try:
         # Give each task its own socket directory to prevent concurrency conflicts.
@@ -2971,7 +2972,7 @@ def _run_browser_command(
                 cmd_parts,
                 stdout=stdout_fd,
                 stderr=stderr_fd,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
                 env=browser_env,
                 **_popen_extra,
             )
@@ -2980,13 +2981,16 @@ def _run_browser_command(
             os.close(stderr_fd)
 
         try:
-            proc.wait(timeout=timeout)
+            if stdin_data is not None:
+                proc.communicate(input=stdin_data, timeout=timeout)
+            else:
+                proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
             stdout, stderr = _read_command_output_files(stdout_path, stderr_path)
             _unlink_command_output_files(stdout_path, stderr_path)
-            if stderr and stderr.strip():
+            if stderr and stderr.strip() and not secure_output:
                 logger.warning(
                     "browser '%s' stderr after timeout: %s",
                     command,
@@ -2994,10 +2998,14 @@ def _run_browser_command(
                 )
             logger.warning("browser '%s' timed out after %ds (task=%s, socket_dir=%s)",
                            command, timeout, task_id, task_socket_dir)
-            result = {
-                "success": False,
-                "error": _format_browser_timeout_error(command, timeout, stdout, stderr),
-            }
+            result = (
+                {"success": False, "error": "Secure browser action timed out."}
+                if secure_output
+                else {
+                    "success": False,
+                    "error": _format_browser_timeout_error(command, timeout, stdout, stderr),
+                }
+            )
             # Fall through to fallback check below
         else:
             with open(stdout_path, "r", encoding="utf-8") as f:
@@ -3014,11 +3022,24 @@ def _run_browser_command(
                     pass
 
             # Log stderr for diagnostics — use warning level on failure so it's visible
-            if stderr and stderr.strip():
+            if stderr and stderr.strip() and not secure_output:
                 level = logging.WARNING if returncode != 0 else logging.DEBUG
                 logger.log(level, "browser '%s' stderr: %s", command, stderr.strip()[:500])
 
             stdout_text = stdout.strip()
+
+            if secure_output:
+                result = (
+                    {"success": True, "data": {"command_count": 1}}
+                    if returncode == 0
+                    else {"success": False, "error": "Secure browser action failed."}
+                )
+                for p in (stdout_path, stderr_path):
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
+                return result
 
             # Empty output with rc=0 is a broken state — treat as failure rather
             # than silently returning {"success": True, "data": {}}.
@@ -3086,7 +3107,9 @@ def _run_browser_command(
     # --- Lightpanda automatic Chrome fallback ---
     # If engine is lightpanda and the result looks broken, retry with Chrome.
     # This runs for ALL exit paths (timeout, empty, non-JSON, nonzero rc, parsed).
-    fallback_reason = _lightpanda_fallback_reason(engine, command, result)
+    fallback_reason = (
+        None if secure_output else _lightpanda_fallback_reason(engine, command, result)
+    )
     if fallback_reason:
         logger.info(
             "Lightpanda fallback: retrying '%s' with Chrome (task=%s): %s",
@@ -3103,6 +3126,23 @@ def _run_browser_command(
         return _annotate_lightpanda_fallback(fallback_result, fallback_reason)
 
     return result
+
+
+def browser_type_secret(ref: str, text: str, task_id: Optional[str] = None) -> str:
+    """Fill a field through agent-browser stdin so the secret is not in argv."""
+    effective_task_id = _last_session_key(task_id or "default")
+    blocked = _blocked_private_page_action(effective_task_id, "type")
+    if blocked is not None:
+        return json.dumps({"success": False, "error": "Browser action blocked."})
+    ref = ref if ref.startswith("@") else f"@{ref}"
+    result = _run_browser_command(
+        effective_task_id,
+        "batch",
+        stdin_data=json.dumps([["fill", ref, text]], ensure_ascii=False).encode(),
+        json_output=False,
+        secure_output=True,
+    )
+    return json.dumps({"success": bool(result.get("success"))})
 
 
 def _store_full_snapshot(snapshot_text: str) -> Optional[str]:

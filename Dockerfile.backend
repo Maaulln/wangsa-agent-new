@@ -40,6 +40,7 @@ ENV WANGSA_MOBILE_PORT=9901 \
     WANGSA_MOBILE_HOST=0.0.0.0 \
     WANGSA_MOBILE_ALLOW_INSECURE_HOST=1 \
     WANGSA_MOBILE_ENABLED=1 \
+    GATEWAY_MULTIPLEX_PROFILES=1 \
     HERMES_HOME=/root/.hermes
 
 # Data directory volume for persistence (sessions, config, credentials)

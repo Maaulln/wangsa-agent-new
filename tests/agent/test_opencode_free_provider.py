@@ -91,9 +91,10 @@ class TestOpenCodeFreeModelLists:
         for mid in _PROVIDER_MODELS["opencode-free"]:
             assert is_opencode_zen_free_model(mid), mid
 
-    def test_ox_alpha_is_listed(self):
+    def test_current_free_catalog_fallback_excludes_retired_model(self):
         from wangsa_cli.models import _PROVIDER_MODELS
-        assert "x-preview-f-free" in _PROVIDER_MODELS["opencode-free"]
+        assert "nemotron-3-ultra-free" in _PROVIDER_MODELS["opencode-free"]
+        assert "hy3-free" not in _PROVIDER_MODELS["opencode-free"]
 
 
 class TestOpenCodeFreeRuntimeKeyless:

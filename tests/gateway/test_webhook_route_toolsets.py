@@ -71,6 +71,17 @@ class TestWebhookAdapterToolsetsForSource:
 
 
 class TestGatewayResolveEnabledToolsetsForSource:
+    def test_explicit_empty_override_disables_platform_toolsets(self):
+        wa = _make_adapter({})
+        wa.toolsets_for_source = lambda source: []
+        gr = _make_runner(wa)
+
+        res = GatewayRunner._resolve_enabled_toolsets_for_source(
+            gr, BASE_CONFIG, _Src("webhook:plain:d"), "webhook"
+        )
+
+        assert res == []
+
     def test_override_replaces_platform_resolution(self):
         wa = _make_adapter(
             {"mon": {"secret": "x", "toolsets": ["terminal", "file", "web"]}}

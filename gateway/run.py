@@ -424,6 +424,16 @@ _GATEWAY_AUTH_ERROR_RE = re.compile(
     re.IGNORECASE,
 )
 
+_GATEWAY_MODEL_UNAVAILABLE_RE = re.compile(
+    r"(unsupported\s+model|model\s+[^\n]{1,120}?\s+is\s+not\s+supported|model\s+not\s+found)",
+    re.IGNORECASE,
+)
+
+_GATEWAY_OPENCODE_FREE_BLOCK_RE = re.compile(
+    r"opencode['’]s\s+free\s+tier\s+can\s+only\s+be\s+used\s+from\s+within\s+opencode",
+    re.IGNORECASE,
+)
+
 _GATEWAY_RATE_LIMIT_RE = re.compile(
     r"(rate\s+limit|rate-limited|\b429\b|quota|usage\s+limit)",
     re.IGNORECASE,
@@ -729,6 +739,17 @@ def _format_exec_approval_fallback(
 
 def _gateway_provider_error_reply(text: str) -> str:
     """Map raw provider/API errors to a short user-safe Telegram reply."""
+    if _GATEWAY_OPENCODE_FREE_BLOCK_RE.search(text):
+        return (
+            "⚠️ OpenCode memblokir penggunaan free tier dari aplikasi lain. "
+            "Wangsa tidak dapat mengakses model gratis OpenCode; sambungkan "
+            "provider yang mendukung akses API atau pilih provider lain."
+        )
+    if _GATEWAY_MODEL_UNAVAILABLE_RE.search(text):
+        return (
+            "⚠️ Model yang dipilih sudah tidak tersedia di provider. "
+            "Pilih model lain dari menu model chat lalu coba lagi."
+        )
     if _GATEWAY_AUTH_ERROR_RE.search(text):
         return (
             "⚠️ Provider authentication failed. Check the configured credentials; "
@@ -22653,7 +22674,12 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         except Exception:
             override = None
 
-        if override and isinstance(override, list):
+        if isinstance(override, list):
+            # An explicit empty list is a meaningful opt-out (e.g. a mobile
+            # plain-chat session). Do not fall back to the platform-wide
+            # default toolset in that case.
+            if not override:
+                return []
             cfg = dict(user_config)
             pts = dict(cfg.get("platform_toolsets") or {})
             pts[platform_key] = [str(t) for t in override]
@@ -28130,6 +28156,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         change for single-profile gateways.
         """
         if not getattr(getattr(self, "config", None), "multiplex_profiles", False):
+            _budget = self._budget_exceeded_result()
+            if _budget is not None:
+                return _budget
             return await self._run_agent_inner(
                 message, context_prompt, history, source, session_id,
                 session_key=session_key, run_generation=run_generation,
@@ -28143,6 +28172,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         profile_home = self._resolve_profile_home_for_source(source)
         with _profile_runtime_scope(profile_home):
+            _budget = self._budget_exceeded_result()
+            if _budget is not None:
+                return _budget
             return await self._run_agent_inner(
                 message, context_prompt, history, source, session_id,
                 session_key=session_key, run_generation=run_generation,
@@ -28153,6 +28185,33 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 persist_user_display_kind=persist_user_display_kind,
                 message_type=message_type,
             )
+
+    def _budget_exceeded_result(self) -> Optional[Dict[str, Any]]:
+        """Pre-turn spend gate. Returns a terminal result when the active
+        profile's budget is exhausted, else None.
+
+        Must run inside the profile scope (process home for single-profile,
+        ``_profile_runtime_scope`` for multiplex) so the ledger + config are
+        the caller's. Delivered as a normal reply (same as provider-billing
+        failures) so messaging platforms render it as text, not a crash.
+        """
+        try:
+            from agent.budgets import check_budget
+        except ImportError:
+            return None
+        try:
+            allowed, message, _status = check_budget()
+        except Exception:
+            return None
+        if allowed:
+            return None
+        return {
+            "final_response": message or "Budget tercapai.",
+            "messages": [],
+            "api_calls": 0,
+            "completed": True,
+            "budget_exceeded": True,
+        }
 
     def _profile_name_for_source(self, source: SessionSource) -> Optional[str]:
         """Resolve the profile name for an inbound source via configured routes.

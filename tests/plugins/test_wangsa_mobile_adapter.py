@@ -57,6 +57,15 @@ def _get_json(url, headers=None):
         return r.status, json.loads(r.read().decode())
 
 
+def _get_json_allow_error(url, headers=None):
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode())
+
+
 def _post_json(url, body, headers=None, timeout=15):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(),
@@ -79,6 +88,64 @@ def _delete_json(url, headers=None, timeout=15):
 
 
 class TestWangsaMobileRoutes:
+    def test_default_mobile_chat_has_no_toolsets(self):
+        adapter = WangsaMobileAdapter(PlatformConfig(enabled=True))
+        selected = adapter.toolsets_for_source(None)
+
+        from wangsa_cli.tools_config import _get_platform_tools
+        from toolsets import resolve_toolset
+
+        enabled = _get_platform_tools(
+            {"platform_toolsets": {"wangsa_mobile": selected}}, "wangsa_mobile"
+        )
+        tool_names = set().union(*(set(resolve_toolset(name)) for name in enabled))
+
+        assert enabled == set()
+        assert tool_names == set()
+        assert not {"terminal", "cronjob", "delegate_task", "computer_use"} & tool_names
+
+    def test_explicit_mobile_capabilities_are_resolved(self):
+        adapter = WangsaMobileAdapter(PlatformConfig(enabled=True))
+        source = type("Source", (), {"_wangsa_mobile_toolsets": ["web", "vision"]})()
+
+        selected = adapter.toolsets_for_source(source)
+
+        assert selected == ["web", "vision"]
+
+    def test_profile_fields_are_compatible_with_older_gateway_build_source(
+        self, monkeypatch
+    ):
+        """New mobile code can run against gateways predating user_bio."""
+        adapter, _ = _make_live_adapter(monkeypatch)
+        original = adapter.build_source
+
+        def older_build_source(
+            chat_id,
+            chat_name=None,
+            chat_type="dm",
+            user_id=None,
+            user_name=None,
+        ):
+            return original(
+                chat_id=chat_id,
+                chat_name=chat_name,
+                chat_type=chat_type,
+                user_id=user_id,
+                user_name=user_name,
+            )
+
+        monkeypatch.setattr(adapter, "build_source", older_build_source)
+        source = adapter._source_for(
+            "mobile:agent1:session1",
+            "mobile",
+            None,
+            user_name="Doni",
+            user_bio="replies in Indonesian",
+        )
+
+        assert source.user_name == "Doni"
+        assert source.user_bio == "replies in Indonesian"
+
     def test_get_agent_identity(self, monkeypatch):
         monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
         monkeypatch.setenv("WANGSA_MOBILE_AGENT_NAME", "Test Agent")
@@ -187,6 +254,55 @@ class TestWangsaMobileRoutes:
             assert d2["data"]["sessionId"] == "sess-abc"
             assert len(seen_chat_ids) == 2
             assert seen_chat_ids[0] == seen_chat_ids[1] == "mobile:agentX:sess-abc"
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_toolsets_are_default_empty_and_locked_for_session(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        seen_toolsets = []
+
+        def reply_fn(event):
+            seen_toolsets.append(event.source._wangsa_mobile_toolsets)
+            return "ok"
+
+        adapter, base = _make_live_adapter(monkeypatch, reply_fn=reply_fn)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, first = await asyncio.to_thread(
+                _post_json,
+                base + "/api/v1/agents/agent1/messages",
+                {"message": "first", "sessionId": "cap-session", "toolsets": ["web"]},
+            )
+            assert status == 200, first
+            assert seen_toolsets == [["web"]]
+
+            status, second = await asyncio.to_thread(
+                _post_json,
+                base + "/api/v1/agents/agent1/messages",
+                {"message": "second", "sessionId": "cap-session", "toolsets": ["vision"]},
+            )
+            assert status == 409
+            assert second["error"]["code"] == "SESSION_TOOLSETS_LOCKED"
+            assert seen_toolsets == [["web"]]
+
+            status, third = await asyncio.to_thread(
+                _post_json,
+                base + "/api/v1/agents/agent1/messages",
+                {"message": "third", "sessionId": "cap-session"},
+            )
+            assert status == 200, third
+            assert seen_toolsets == [["web"], ["web"]]
+            assert adapter._list_sessions("agent1")[0]["toolsets"] == ["web"]
+
+            status, invalid = await asyncio.to_thread(
+                _post_json,
+                base + "/api/v1/agents/agent1/messages",
+                {"message": "bad", "toolsets": ["terminal"]},
+            )
+            assert status == 400
+            assert invalid["error"]["code"] == "VALIDATION_ERROR"
             await adapter.disconnect()
 
         asyncio.run(run())
@@ -372,6 +488,36 @@ class TestWangsaMobileRoutes:
             assert status == 200
             slugs = [p["slug"] for p in data["data"]["providers"]]
             assert slugs == ["mine"]
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_get_models_refreshes_opencode_free_catalog(self, monkeypatch):
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        import wangsa_cli.inventory as inventory
+        import plugins.platforms.wangsa_mobile.adapter as mobile_adapter
+
+        monkeypatch.setattr(inventory, "load_picker_context", lambda: object())
+        monkeypatch.setattr(inventory, "build_model_options_payload", lambda ctx, **_: {
+            "providers": [{"slug": "opencode-free", "name": "OpenCode Free", "models": ["hy3-free"]}],
+            "provider": "opencode-free",
+            "model": "hy3-free",
+        })
+        monkeypatch.setattr(
+            mobile_adapter, "_opencode_free_model_ids",
+            lambda: ["nemotron-3-ultra-free", "space-bunny-free"],
+        )
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _get_json, base + "/api/v1/agents/agent1/models",
+            )
+            assert status == 200
+            result = data["data"]
+            assert result["models"] == ["nemotron-3-ultra-free", "space-bunny-free"]
+            assert result["providers"][0]["models"] == result["models"]
             await adapter.disconnect()
 
         asyncio.run(run())
@@ -1014,6 +1160,267 @@ class TestWangsaMobileSessionHistory:
 
         asyncio.run(run())
 
+class TestWangsaMobileSignup:
+    """Open signup: POST /api/v1/auth/signup + GET /api/v1/auth/me.
+
+    Anyone can register (no token needed). Signup creates an isolated
+    profile and issues its bearer token; /me proves the token routes to
+    that profile with its own configured flag.
+    """
+
+    def test_signup_creates_profile_and_token(self, monkeypatch, tmp_path):
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        from agent.secret_scope import set_multiplex_active
+
+        set_multiplex_active(True)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "alicebaru"},
+            )
+            assert status == 201, data
+            assert data["success"] is True
+            assert data["data"]["profile"] == "alicebaru"
+            token = data["data"]["token"]
+            assert isinstance(token, str) and len(token) >= 16
+            assert data["data"]["configured"] is False
+
+            # Token persists and identifies the profile via /me.
+            status2, data2 = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert status2 == 200, data2
+            assert data2["data"]["profile"] == "alicebaru"
+            assert data2["data"]["configured"] is False
+
+            # /me without token is 401 once tokens exist.
+            status3, data3 = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/me",
+            )
+            assert status3 == 401
+            assert data3["success"] is False
+            await adapter.disconnect()
+
+        try:
+            asyncio.run(run())
+        finally:
+            from agent.secret_scope import set_multiplex_active as _sma
+
+            _sma(False)
+
+    def test_signup_rejects_bad_and_taken_names(self, monkeypatch):
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            for bad in ["", "AB", "a", "has space", "default", "ab"]:
+                status, data = await asyncio.to_thread(
+                    _post_json, base + "/api/v1/auth/signup", {"username": bad},
+                )
+                assert status in (400, 409), (bad, data)
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "bobbaru"},
+            )
+            assert status == 201, data
+            status2, data2 = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "bobbaru"},
+            )
+            assert status2 == 409
+            assert data2["error"]["code"] == "CONFLICT"
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_signup_is_public_but_me_requires_auth(self, monkeypatch):
+        monkeypatch.setenv("WANGSA_MOBILE_BEARER_TOKEN", "secret-tok")
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            # Signup stays public even when a legacy token is configured.
+            status, _ = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "terbuka"},
+            )
+            assert status == 201
+            # But /me still needs a valid token.
+            status2, _ = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/me",
+                headers={"Authorization": "Bearer wrong"},
+            )
+            assert status2 == 401
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+
+class TestWangsaMobileBudgetAndRevoke:
+    """Budget status + logout: GET /api/v1/auth/budget, DELETE /api/v1/auth/token,
+    and the 429 BUDGET_EXCEEDED pre-flight on POST /messages."""
+
+    def test_budget_shape_and_revoke(self, monkeypatch):
+        from agent.secret_scope import set_multiplex_active
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        set_multiplex_active(True)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "danabaru"}
+            )
+            assert status == 201, data
+            token = data["data"]["token"]
+            headers = {"Authorization": f"Bearer {token}"}
+            # Second user keeps the token map non-empty after revoke below
+            # (otherwise the server falls back to open localhost-only mode).
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "danabaru2"}
+            )
+            assert status == 201, data
+            other_headers = {"Authorization": f"Bearer {data['data']['token']}"}
+
+            status, data = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/budget", headers=headers
+            )
+            assert status == 200, data
+            body = data["data"]
+            for key in ("enabled", "spent_day", "spent_month", "breached", "alert"):
+                assert key in body, body
+            assert body["breached"] is None
+
+            # Logout revokes the token: /me rejects it afterwards, while the
+            # other user's token keeps working.
+            status, data = await asyncio.to_thread(_delete_json, base + "/api/v1/auth/token", headers=headers)
+            assert status == 200, data
+            assert data["data"]["revoked"] is True
+            status, _ = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/me", headers=headers
+            )
+            assert status == 401
+            status, _ = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/me", headers=other_headers
+            )
+            assert status == 200
+            await adapter.disconnect()
+
+        try:
+            asyncio.run(run())
+        finally:
+            from agent.secret_scope import set_multiplex_active as _sma
+
+            _sma(False)
+
+    def test_revoke_env_token_conflicts(self, monkeypatch):
+        monkeypatch.setenv("WANGSA_MOBILE_BEARER_TOKEN", "secret-tok")
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _delete_json,
+                base + "/api/v1/auth/token",
+                headers={"Authorization": "Bearer secret-tok"},
+            )
+            assert status == 409
+            assert data["error"]["code"] == "CONFLICT"
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_message_blocked_when_budget_exceeded(self, monkeypatch):
+        import sqlite3
+        import time
+
+        from agent.secret_scope import set_multiplex_active
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        set_multiplex_active(True)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup", {"username": "hematbaru"}
+            )
+            assert status == 201, data
+            token = data["data"]["token"]
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Seed $5 spend today + a $0.05 daily cap in the new profile.
+            from wangsa_cli.profiles import get_profile_dir
+
+            home = get_profile_dir("hematbaru")
+            con = sqlite3.connect(str(home / "state.db"))
+            con.execute(
+                "CREATE TABLE sessions (id TEXT PRIMARY KEY, started_at REAL,"
+                " estimated_cost_usd REAL, actual_cost_usd REAL)"
+            )
+            con.execute(
+                "CREATE TABLE session_model_usage (session_id TEXT, model TEXT,"
+                " billing_provider TEXT DEFAULT '', billing_base_url TEXT DEFAULT '',"
+                " billing_mode TEXT DEFAULT '', task TEXT DEFAULT '',"
+                " api_call_count INT DEFAULT 0, input_tokens INT DEFAULT 0,"
+                " output_tokens INT DEFAULT 0, cache_read_tokens INT DEFAULT 0,"
+                " cache_write_tokens INT DEFAULT 0, reasoning_tokens INT DEFAULT 0,"
+                " estimated_cost_usd REAL DEFAULT 0, actual_cost_usd REAL DEFAULT 0,"
+                " cost_status TEXT, cost_source TEXT, first_seen REAL, last_seen REAL,"
+                " PRIMARY KEY(session_id,model,billing_provider,billing_base_url,billing_mode,task))"
+            )
+            now = time.time()
+            con.execute(
+                "INSERT INTO sessions(id,started_at,estimated_cost_usd,actual_cost_usd)"
+                " VALUES (?,?,?,?)",
+                ("s1", now - 100, 5.0, None),
+            )
+            con.execute(
+                "INSERT INTO session_model_usage(session_id,model,task,estimated_cost_usd,actual_cost_usd)"
+                " VALUES (?,?,?,?,?)",
+                ("s1", "m", "", 5.0, None),
+            )
+            con.commit()
+            con.close()
+            (home / "config.yaml").write_text(
+                "budgets:\n  enabled: true\n  daily_usd: 0.05\n", encoding="utf-8"
+            )
+
+            status, data = await asyncio.to_thread(
+                _post_json,
+                base + "/api/v1/agents/agent1/messages",
+                {"message": "halo"},
+                headers=headers,
+            )
+            assert status == 429, data
+            assert data["error"]["code"] == "BUDGET_EXCEEDED"
+            await adapter.disconnect()
+
+        try:
+            asyncio.run(run())
+        finally:
+            from agent.secret_scope import set_multiplex_active as _sma
+
+            _sma(False)
+
+
+class TestWangsaMobileSessionHistoryExtra:
     def test_reads_transcript_through_the_gateway_session_store(self, monkeypatch):
         """Drives the real resolution chain: build_source -> session_key ->
         peek_session_id -> SessionDB.get_messages_as_conversation, exactly

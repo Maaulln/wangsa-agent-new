@@ -592,6 +592,23 @@ DEFAULT_CONFIG = {
         },
     },
 
+    # Per-profile spend budgets — enforced pre-turn on gateway + mobile.
+    # Each profile carries its own values in its own config.yaml, so one
+    # user's cap never affects another's. null = unlimited for that window.
+    # Costs come from the profile's own state.db ledger
+    # (session_model_usage, aux-inclusive, actual-over-estimated).
+    "budgets": {
+        # Master switch. False disables all budget checks for this profile
+        # (spend is still recorded, just never blocked).
+        "enabled": True,
+        # Max USD per calendar day (UTC) / rolling 30-day month.
+        "daily_usd": None,
+        "monthly_usd": None,
+        # Fraction (0..1) of a set cap at which the mobile app shows a
+        # warning banner. No blocking, display only.
+        "alert_threshold": 0.8,
+    },
+
     # Filesystem checkpoints — automatic snapshots before destructive file ops.
     # When enabled, the agent takes a snapshot of the working directory once
     # per conversation turn (on first write_file/patch call).  Use /rollback

@@ -77,7 +77,8 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
       });
     } else {
       setState(() {
-        _errorMessage = res.errorOrNull?.message ?? "Gagal memuat daftar provider.";
+        _errorMessage =
+            res.errorOrNull?.message ?? "Gagal memuat daftar provider.";
         _loading = false;
       });
     }
@@ -273,7 +274,10 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -321,7 +325,11 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
             alignment: Alignment.center,
             child: Column(
               children: [
-                Icon(Icons.search_off_rounded, size: 48, color: scheme.onSurfaceVariant),
+                Icon(
+                  Icons.search_off_rounded,
+                  size: 48,
+                  color: scheme.onSurfaceVariant,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   "Tidak ada provider yang cocok",
@@ -362,7 +370,11 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
     );
   }
 
-  Widget _buildProviderCard(AuthProviderItem provider, ThemeData theme, ColorScheme scheme) {
+  Widget _buildProviderCard(
+    AuthProviderItem provider,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
     final isConfigured = provider.configured;
     final isFree = provider.authType == "free";
 
@@ -400,7 +412,9 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
                     ),
                     child: Icon(
                       _iconForProvider(provider.id),
-                      color: isConfigured ? Colors.green.shade700 : scheme.primary,
+                      color: isConfigured
+                          ? Colors.green.shade700
+                          : scheme.primary,
                       size: 22,
                     ),
                   ),
@@ -422,7 +436,10 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
                             if (isFree) ...[
                               const SizedBox(width: 6),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.blue.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(6),
@@ -439,7 +456,8 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
                             ],
                           ],
                         ),
-                        if (provider.keyPreview != null && provider.keyPreview!.isNotEmpty)
+                        if (provider.keyPreview != null &&
+                            provider.keyPreview!.isNotEmpty)
                           Text(
                             provider.keyPreview!,
                             style: TextStyle(
@@ -454,7 +472,10 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: isConfigured
                           ? Colors.green.withValues(alpha: 0.15)
@@ -469,19 +490,23 @@ class _ProviderSetupPageState extends State<ProviderSetupPage> {
                               ? Icons.check_circle_rounded
                               : Icons.radio_button_unchecked_rounded,
                           size: 14,
-                          color: isConfigured ? Colors.green.shade700 : scheme.onSurfaceVariant,
+                          color: isConfigured
+                              ? Colors.green.shade700
+                              : scheme.onSurfaceVariant,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           isFree
                               ? "Aktif (Gratis)"
                               : isConfigured
-                                  ? "Terhubung"
-                                  : "Belum aktif",
+                              ? "Terhubung"
+                              : "Belum aktif",
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: isConfigured ? Colors.green.shade800 : scheme.onSurfaceVariant,
+                            color: isConfigured
+                                ? Colors.green.shade800
+                                : scheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -571,10 +596,7 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
   void _copyToClipboard(String text, String message) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -589,37 +611,48 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
 
     if (res.isSuccess) {
       final data = res.dataOrNull ?? {};
-      final rawData = data["data"] is Map<String, dynamic> ? data["data"] as Map<String, dynamic> : data;
+      final rawData = data["data"] is Map<String, dynamic>
+          ? data["data"] as Map<String, dynamic>
+          : data;
       setState(() {
         _submitting = false;
         _copilotUserCode = rawData["user_code"] as String?;
         _copilotDeviceCode = rawData["device_code"] as String?;
-        _copilotUri = rawData["verification_uri"] as String? ?? "https://github.com/login/device";
+        _copilotUri =
+            rawData["verification_uri"] as String? ??
+            "https://github.com/login/device";
         _copilotPolling = true;
       });
       _startCopilotPolling();
     } else {
       setState(() {
         _submitting = false;
-        _statusError = res.errorOrNull?.message ?? "Gagal memulai otorisasi GitHub.";
+        _statusError =
+            res.errorOrNull?.message ?? "Gagal memulai otorisasi GitHub.";
       });
     }
   }
 
   void _startCopilotPolling() {
     _copilotPollTimer?.cancel();
-    _copilotPollTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+    _copilotPollTimer = Timer.periodic(const Duration(seconds: 4), (
+      timer,
+    ) async {
       if (!mounted || _copilotDeviceCode == null) {
         timer.cancel();
         return;
       }
 
-      final pollRes = await widget.apiClient.pollCopilotDeviceCode(_copilotDeviceCode!);
+      final pollRes = await widget.apiClient.pollCopilotDeviceCode(
+        _copilotDeviceCode!,
+      );
       if (!mounted) return;
 
       if (pollRes.isSuccess) {
         final data = pollRes.dataOrNull ?? {};
-        final rawData = data["data"] is Map<String, dynamic> ? data["data"] as Map<String, dynamic> : data;
+        final rawData = data["data"] is Map<String, dynamic>
+            ? data["data"] as Map<String, dynamic>
+            : data;
         final status = rawData["status"] as String?;
 
         if (status == "ready") {
@@ -628,9 +661,7 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
             _copilotPolling = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("GitHub Copilot berhasil terhubung!"),
-            ),
+            const SnackBar(content: Text("GitHub Copilot berhasil terhubung!")),
           );
           widget.onSuccess();
           Navigator.of(context).pop();
@@ -638,7 +669,8 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
           timer.cancel();
           setState(() {
             _copilotPolling = false;
-            _statusError = rawData["message"] as String? ?? "Gagal memverifikasi token.";
+            _statusError =
+                rawData["message"] as String? ?? "Gagal memverifikasi token.";
           });
         }
       }
@@ -650,11 +682,17 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
     final isCopilot = widget.provider.id == "copilot";
 
     final String? apiKeyVal = isCustom
-        ? (_keyController.text.trim().isNotEmpty ? _keyController.text.trim() : null)
+        ? (_keyController.text.trim().isNotEmpty
+              ? _keyController.text.trim()
+              : null)
         : (isCopilot ? null : _keyController.text.trim());
-    final String? tokenVal = (isCopilot && !_copilotDeviceMode) ? _keyController.text.trim() : null;
+    final String? tokenVal = (isCopilot && !_copilotDeviceMode)
+        ? _keyController.text.trim()
+        : null;
     final String? nameVal = isCustom
-        ? (_nameController.text.trim().isNotEmpty ? _nameController.text.trim() : "Custom")
+        ? (_nameController.text.trim().isNotEmpty
+              ? _nameController.text.trim()
+              : "Custom")
         : null;
     final String? baseUrlVal = isCustom ? _urlController.text.trim() : null;
     final String? modelVal = isCustom ? _modelController.text.trim() : null;
@@ -663,7 +701,9 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
       setState(() => _statusError = "Base URL wajib diisi.");
       return;
     }
-    if (isCopilot && !_copilotDeviceMode && (tokenVal == null || tokenVal.isEmpty)) {
+    if (isCopilot &&
+        !_copilotDeviceMode &&
+        (tokenVal == null || tokenVal.isEmpty)) {
       setState(() => _statusError = "GitHub Token wajib diisi.");
       return;
     }
@@ -698,7 +738,8 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
       Navigator.of(context).pop();
     } else {
       setState(() {
-        _statusError = res.errorOrNull?.message ?? "Gagal menyimpan kredensial.";
+        _statusError =
+            res.errorOrNull?.message ?? "Gagal menyimpan kredensial.";
       });
     }
   }
@@ -718,7 +759,9 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text("Hapus / Putuskan"),
           ),
         ],
@@ -732,7 +775,9 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
       _statusError = null;
     });
 
-    final res = await widget.apiClient.deleteProviderCredentials(widget.provider.id);
+    final res = await widget.apiClient.deleteProviderCredentials(
+      widget.provider.id,
+    );
     if (!mounted) return;
     setState(() => _submitting = false);
 
@@ -746,7 +791,8 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
       Navigator.of(context).pop();
     } else {
       setState(() {
-        _statusError = res.errorOrNull?.message ?? "Gagal menghapus kredensial.";
+        _statusError =
+            res.errorOrNull?.message ?? "Gagal menghapus kredensial.";
       });
     }
   }
@@ -779,7 +825,9 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    isFree ? widget.provider.name : "Hubungkan ${widget.provider.name}",
+                    isFree
+                        ? widget.provider.name
+                        : "Hubungkan ${widget.provider.name}",
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -817,7 +865,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                 ),
                 child: Text(
                   _statusError!,
-                  style: TextStyle(color: scheme.onErrorContainer, fontSize: 13),
+                  style: TextStyle(
+                    color: scheme.onErrorContainer,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ],
@@ -829,12 +880,18 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                 decoration: BoxDecoration(
                   color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: Colors.green.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.check_circle_rounded, color: Colors.green.shade700, size: 28),
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: Colors.green.shade700,
+                      size: 28,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -850,8 +907,12 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            "${widget.provider.name} bersifat keyless dan tidak memerlukan API key atau akun. Model bawaan seperti hy3-free, laguna-s-2.1-free, dan nemotron-3-ultra-free sudah langsung dapat Anda pilih di kolom model chat.",
-                            style: TextStyle(fontSize: 13, color: Colors.green.shade800, height: 1.4),
+                            "${widget.provider.name} bersifat keyless dan tidak memerlukan API key atau akun. Model gratis yang tersedia diperbarui dari katalog provider dan dapat dipilih dari menu model di chat.",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.green.shade800,
+                              height: 1.4,
+                            ),
                           ),
                         ],
                       ),
@@ -893,7 +954,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                 if (_copilotUserCode == null) ...[
                   Text(
                     "Otorisasi cepat via browser akun GitHub Anda menggunakan Device Flow.",
-                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
@@ -902,7 +966,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.login_rounded),
                     label: const Text("Mulai Login GitHub"),
@@ -919,7 +986,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                       children: [
                         const Text(
                           "Kode Verifikasi Anda:",
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -946,16 +1016,23 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                         const SizedBox(height: 8),
                         Text(
                           "Buka ${_copilotUri ?? 'https://github.com/login/device'} di browser, lalu masukkan kode di atas untuk menyelesaikan login.",
-                          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Row(
                           children: [
                             OutlinedButton.icon(
-                              icon: const Icon(Icons.open_in_browser_rounded, size: 16),
+                              icon: const Icon(
+                                Icons.open_in_browser_rounded,
+                                size: 16,
+                              ),
                               label: const Text("Buka Tautan"),
                               onPressed: () => _copyToClipboard(
-                                _copilotUri ?? "https://github.com/login/device",
+                                _copilotUri ??
+                                    "https://github.com/login/device",
                                 "Tautan verifikasi disalin",
                               ),
                             ),
@@ -966,7 +1043,9 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                                   SizedBox(
                                     width: 14,
                                     height: 14,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   ),
                                   SizedBox(width: 8),
                                   Text(
@@ -992,8 +1071,13 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: Icon(_obscureKey ? Icons.visibility_off : Icons.visibility),
-                          onPressed: () => setState(() => _obscureKey = !_obscureKey),
+                          icon: Icon(
+                            _obscureKey
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                          ),
+                          onPressed: () =>
+                              setState(() => _obscureKey = !_obscureKey),
                         ),
                         IconButton(
                           icon: const Icon(Icons.paste_rounded),
@@ -1011,7 +1095,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Text("Simpan Token"),
                 ),
@@ -1052,7 +1139,9 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                   labelText: "API Key (Opsional untuk server lokal)",
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
-                    icon: Icon(_obscureKey ? Icons.visibility_off : Icons.visibility),
+                    icon: Icon(
+                      _obscureKey ? Icons.visibility_off : Icons.visibility,
+                    ),
                     onPressed: () => setState(() => _obscureKey = !_obscureKey),
                   ),
                 ),
@@ -1064,7 +1153,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text("Simpan Konfigurasi Custom"),
               ),
@@ -1084,8 +1176,11 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: Icon(_obscureKey ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => _obscureKey = !_obscureKey),
+                        icon: Icon(
+                          _obscureKey ? Icons.visibility_off : Icons.visibility,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscureKey = !_obscureKey),
                       ),
                       IconButton(
                         icon: const Icon(Icons.paste_rounded),
@@ -1103,7 +1198,10 @@ class _ProviderConfigSheetState extends State<_ProviderConfigSheet> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text("Simpan API Key"),
               ),

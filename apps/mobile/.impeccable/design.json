@@ -1,0 +1,414 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-25T02:22:03.786755+00:00",
+  "title": "Design System: Wangsa Mobile",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Background",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 89.88)",
+          "oklch(26.43% 0.00000 89.88)",
+          "oklch(37.86% 0.00000 89.88)",
+          "oklch(49.29% 0.00000 89.88)",
+          "oklch(60.71% 0.00000 89.88)",
+          "oklch(72.14% 0.00000 89.88)",
+          "oklch(83.57% 0.00000 89.88)",
+          "oklch(95.00% 0.00000 89.88)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 89.88)",
+          "oklch(26.43% 0.00000 89.88)",
+          "oklch(37.86% 0.00000 89.88)",
+          "oklch(49.29% 0.00000 89.88)",
+          "oklch(60.71% 0.00000 89.88)",
+          "oklch(72.14% 0.00000 89.88)",
+          "oklch(83.57% 0.00000 89.88)",
+          "oklch(95.00% 0.00000 89.88)"
+        ]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "Surface muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.00133 286.38)",
+          "oklch(26.43% 0.00133 286.38)",
+          "oklch(37.86% 0.00133 286.38)",
+          "oklch(49.29% 0.00133 286.38)",
+          "oklch(60.71% 0.00133 286.38)",
+          "oklch(72.14% 0.00133 286.38)",
+          "oklch(83.57% 0.00133 286.38)",
+          "oklch(95.00% 0.00133 286.38)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Foreground",
+        "tonalRamp": [
+          "oklch(15.00% 0.00586 285.89)",
+          "oklch(26.43% 0.00586 285.89)",
+          "oklch(37.86% 0.00586 285.89)",
+          "oklch(49.29% 0.00586 285.89)",
+          "oklch(60.71% 0.00586 285.89)",
+          "oklch(72.14% 0.00586 285.89)",
+          "oklch(83.57% 0.00586 285.89)",
+          "oklch(95.00% 0.00586 285.89)"
+        ]
+      },
+      "foreground-muted": {
+        "role": "neutral",
+        "displayName": "Foreground muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.01381 285.94)",
+          "oklch(26.43% 0.01381 285.94)",
+          "oklch(37.86% 0.01381 285.94)",
+          "oklch(49.29% 0.01381 285.94)",
+          "oklch(60.71% 0.01381 285.94)",
+          "oklch(72.14% 0.01381 285.94)",
+          "oklch(83.57% 0.01381 285.94)",
+          "oklch(95.00% 0.01381 285.94)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(15.00% 0.00403 286.32)",
+          "oklch(26.43% 0.00403 286.32)",
+          "oklch(37.86% 0.00403 286.32)",
+          "oklch(49.29% 0.00403 286.32)",
+          "oklch(60.71% 0.00403 286.32)",
+          "oklch(72.14% 0.00403 286.32)",
+          "oklch(83.57% 0.00403 286.32)",
+          "oklch(95.00% 0.00403 286.32)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(15.00% 0.23005 276.97)",
+          "oklch(26.43% 0.23005 276.97)",
+          "oklch(37.86% 0.23005 276.97)",
+          "oklch(49.29% 0.23005 276.97)",
+          "oklch(60.71% 0.23005 276.97)",
+          "oklch(72.14% 0.23005 276.97)",
+          "oklch(83.57% 0.23005 276.97)",
+          "oklch(95.00% 0.23005 276.97)"
+        ]
+      },
+      "primary-subtle": {
+        "role": "primary",
+        "displayName": "Primary subtle",
+        "tonalRamp": [
+          "oklch(15.00% 0.01793 272.31)",
+          "oklch(26.43% 0.01793 272.31)",
+          "oklch(37.86% 0.01793 272.31)",
+          "oklch(49.29% 0.01793 272.31)",
+          "oklch(60.71% 0.01793 272.31)",
+          "oklch(72.14% 0.01793 272.31)",
+          "oklch(83.57% 0.01793 272.31)",
+          "oklch(95.00% 0.01793 272.31)"
+        ]
+      },
+      "primary-active": {
+        "role": "primary",
+        "displayName": "Primary active",
+        "tonalRamp": [
+          "oklch(15.00% 0.17734 277.37)",
+          "oklch(26.43% 0.17734 277.37)",
+          "oklch(37.86% 0.17734 277.37)",
+          "oklch(49.29% 0.17734 277.37)",
+          "oklch(60.71% 0.17734 277.37)",
+          "oklch(72.14% 0.17734 277.37)",
+          "oklch(83.57% 0.17734 277.37)",
+          "oklch(95.00% 0.17734 277.37)"
+        ]
+      },
+      "danger": {
+        "role": "error",
+        "displayName": "Error danger",
+        "tonalRamp": [
+          "oklch(15.00% 0.21516 27.33)",
+          "oklch(26.43% 0.21516 27.33)",
+          "oklch(37.86% 0.21516 27.33)",
+          "oklch(49.29% 0.21516 27.33)",
+          "oklch(60.71% 0.21516 27.33)",
+          "oklch(72.14% 0.21516 27.33)",
+          "oklch(83.57% 0.21516 27.33)",
+          "oklch(95.00% 0.21516 27.33)"
+        ]
+      },
+      "danger-subtle": {
+        "role": "error",
+        "displayName": "Error danger subtle",
+        "tonalRamp": [
+          "oklch(15.00% 0.01295 17.38)",
+          "oklch(26.43% 0.01295 17.38)",
+          "oklch(37.86% 0.01295 17.38)",
+          "oklch(49.29% 0.01295 17.38)",
+          "oklch(60.71% 0.01295 17.38)",
+          "oklch(72.14% 0.01295 17.38)",
+          "oklch(83.57% 0.01295 17.38)",
+          "oklch(95.00% 0.01295 17.38)"
+        ]
+      },
+      "background-dark": {
+        "role": "neutral",
+        "displayName": "Background dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.00439 285.82)",
+          "oklch(26.43% 0.00439 285.82)",
+          "oklch(37.86% 0.00439 285.82)",
+          "oklch(49.29% 0.00439 285.82)",
+          "oklch(60.71% 0.00439 285.82)",
+          "oklch(72.14% 0.00439 285.82)",
+          "oklch(83.57% 0.00439 285.82)",
+          "oklch(95.00% 0.00439 285.82)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Surface dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.00586 285.89)",
+          "oklch(26.43% 0.00586 285.89)",
+          "oklch(37.86% 0.00586 285.89)",
+          "oklch(49.29% 0.00586 285.89)",
+          "oklch(60.71% 0.00586 285.89)",
+          "oklch(72.14% 0.00586 285.89)",
+          "oklch(83.57% 0.00586 285.89)",
+          "oklch(95.00% 0.00586 285.89)"
+        ]
+      },
+      "surface-muted-dark": {
+        "role": "neutral",
+        "displayName": "Surface muted dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.00548 286.03)",
+          "oklch(26.43% 0.00548 286.03)",
+          "oklch(37.86% 0.00548 286.03)",
+          "oklch(49.29% 0.00548 286.03)",
+          "oklch(60.71% 0.00548 286.03)",
+          "oklch(72.14% 0.00548 286.03)",
+          "oklch(83.57% 0.00548 286.03)",
+          "oklch(95.00% 0.00548 286.03)"
+        ]
+      },
+      "foreground-dark": {
+        "role": "neutral",
+        "displayName": "Foreground dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 89.88)",
+          "oklch(26.43% 0.00000 89.88)",
+          "oklch(37.86% 0.00000 89.88)",
+          "oklch(49.29% 0.00000 89.88)",
+          "oklch(60.71% 0.00000 89.88)",
+          "oklch(72.14% 0.00000 89.88)",
+          "oklch(83.57% 0.00000 89.88)",
+          "oklch(95.00% 0.00000 89.88)"
+        ]
+      },
+      "foreground-muted-dark": {
+        "role": "neutral",
+        "displayName": "Foreground muted dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.01294 286.07)",
+          "oklch(26.43% 0.01294 286.07)",
+          "oklch(37.86% 0.01294 286.07)",
+          "oklch(49.29% 0.01294 286.07)",
+          "oklch(60.71% 0.01294 286.07)",
+          "oklch(72.14% 0.01294 286.07)",
+          "oklch(83.57% 0.01294 286.07)",
+          "oklch(95.00% 0.01294 286.07)"
+        ]
+      },
+      "border-dark": {
+        "role": "neutral",
+        "displayName": "Border dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.00548 286.03)",
+          "oklch(26.43% 0.00548 286.03)",
+          "oklch(37.86% 0.00548 286.03)",
+          "oklch(49.29% 0.00548 286.03)",
+          "oklch(60.71% 0.00548 286.03)",
+          "oklch(72.14% 0.00548 286.03)",
+          "oklch(83.57% 0.00548 286.03)",
+          "oklch(95.00% 0.00548 286.03)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "Primary dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.15830 276.93)",
+          "oklch(26.43% 0.15830 276.93)",
+          "oklch(37.86% 0.15830 276.93)",
+          "oklch(49.29% 0.15830 276.93)",
+          "oklch(60.71% 0.15830 276.93)",
+          "oklch(72.14% 0.15830 276.93)",
+          "oklch(83.57% 0.15830 276.93)",
+          "oklch(95.00% 0.15830 276.93)"
+        ]
+      },
+      "primary-subtle-dark": {
+        "role": "primary",
+        "displayName": "Primary subtle dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.08607 281.29)",
+          "oklch(26.43% 0.08607 281.29)",
+          "oklch(37.86% 0.08607 281.29)",
+          "oklch(49.29% 0.08607 281.29)",
+          "oklch(60.71% 0.08607 281.29)",
+          "oklch(72.14% 0.08607 281.29)",
+          "oklch(83.57% 0.08607 281.29)",
+          "oklch(95.00% 0.08607 281.29)"
+        ]
+      },
+      "primary-muted-dark": {
+        "role": "primary",
+        "displayName": "Primary muted dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.06222 274.04)",
+          "oklch(26.43% 0.06222 274.04)",
+          "oklch(37.86% 0.06222 274.04)",
+          "oklch(49.29% 0.06222 274.04)",
+          "oklch(60.71% 0.06222 274.04)",
+          "oklch(72.14% 0.06222 274.04)",
+          "oklch(83.57% 0.06222 274.04)",
+          "oklch(95.00% 0.06222 274.04)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline-small": {
+        "displayName": "Headline Small",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      },
+      "title-large": {
+        "displayName": "Title Large",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      },
+      "title-medium": {
+        "displayName": "Title Medium",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      },
+      "body-large": {
+        "displayName": "Body Large",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      },
+      "body-medium": {
+        "displayName": "Body Medium",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      },
+      "body-small": {
+        "displayName": "Body Small",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      },
+      "label-large": {
+        "displayName": "Label Large",
+        "purpose": "Inherited Flutter Material 3 role used by the product UI."
+      }
+    },
+    "shadows": [
+      {
+        "name": "flat-app-bar",
+        "value": "none",
+        "purpose": "AppBar elevation and scrolledUnderElevation are both zero in WangsaTheme."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Native Material action preview; minimum size and theme colors follow source, browser states approximate Material.",
+      "html": "<button class=\"ds-button-primary\">Buat pekerjaan</button>",
+      "css": ".ds-button-primary{font-family:Roboto,sans-serif;font-size:14px;font-weight:500;min-height:48px;padding:0 24px;border-radius:999px;cursor:pointer;min-width:48px;background:#4F46E5;color:#FFFFFF;border:none}.ds-button-primary:hover{filter:brightness(.97)}.ds-button-primary:focus-visible{outline:2px solid #4F46E5;outline-offset:3px}.ds-button-primary:active{filter:brightness(.92)}.ds-button-primary:disabled{background:#E4E4E7;color:#71717A;cursor:default}"
+    },
+    {
+      "name": "Text button",
+      "kind": "button",
+      "refersTo": "button-text",
+      "description": "Native Material action preview; minimum size and theme colors follow source, browser states approximate Material.",
+      "html": "<button class=\"ds-button-text\">Coba lagi</button>",
+      "css": ".ds-button-text{font-family:Roboto,sans-serif;font-size:14px;font-weight:500;min-height:48px;padding:0 24px;border-radius:999px;cursor:pointer;min-width:48px;background:transparent;color:#4F46E5;border:none}.ds-button-text:hover{filter:brightness(.97)}.ds-button-text:focus-visible{outline:2px solid #4F46E5;outline-offset:3px}.ds-button-text:active{filter:brightness(.92)}.ds-button-text:disabled{background:#E4E4E7;color:#71717A;cursor:default}"
+    },
+    {
+      "name": "Outlined button",
+      "kind": "button",
+      "refersTo": "button-outlined",
+      "description": "Native Material action preview; minimum size and theme colors follow source, browser states approximate Material.",
+      "html": "<button class=\"ds-button-outlined\">Batalkan pekerjaan</button>",
+      "css": ".ds-button-outlined{font-family:Roboto,sans-serif;font-size:14px;font-weight:500;min-height:48px;padding:0 24px;border-radius:999px;cursor:pointer;min-width:48px;background:transparent;color:#4F46E5;border:1px solid #E4E4E7}.ds-button-outlined:hover{filter:brightness(.97)}.ds-button-outlined:focus-visible{outline:2px solid #4F46E5;outline-offset:3px}.ds-button-outlined:active{filter:brightness(.92)}.ds-button-outlined:disabled{background:#E4E4E7;color:#71717A;cursor:default}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Shared filled outline decoration; native floating-label behavior is represented by a static HTML label.",
+      "html": "<label class=\"ds-field\">Username<input aria-label=\"Username\" placeholder=\"Username\"><small>3\u201332 huruf kecil, angka, tanda - atau _</small></label>",
+      "css": ".ds-field{display:grid;gap:8px;font:14px Roboto,sans-serif;color:#18181B}.ds-field input{font:16px Roboto,sans-serif;background:#FFFFFF;color:#18181B;border:1px solid #E4E4E7;border-radius:8px;padding:12px 14px}.ds-field input:hover{border-color:#71717A}.ds-field input:focus-visible{outline:none;border-color:#4F46E5}.ds-field small{font-size:12px;color:#71717A}"
+    },
+    {
+      "name": "Job status",
+      "kind": "custom",
+      "refersTo": "job-status",
+      "description": "Completed status with text and outlined native-icon approximation.",
+      "html": "<span class=\"ds-status\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m7 12 3 3 7-7\"/></svg><span>Selesai</span></span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:8px;font:500 14px/1.43 Roboto,sans-serif;color:#71717A}"
+    },
+    {
+      "name": "Bottom navigation",
+      "kind": "nav",
+      "description": "Three native destinations; HTML silhouette approximates the captured light state, not a replacement implementation.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Utama\"><button class=\"ds-destination\" aria-current=\"true\"><span><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><rect x=\"4\" y=\"7\" width=\"16\" height=\"13\" rx=\"2\"/><path d=\"M9 7V4h6v3\"/></svg></span>Pekerjaan</button><button class=\"ds-destination\" aria-current=\"false\"><span><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M6 3h12v18l-6-4-6 4Z\"/></svg></span>Prosedur</button><button class=\"ds-destination\" aria-current=\"false\"><span><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"7\" r=\"3\"/><path d=\"M4 21v-3c0-6 16-6 16 0v3Z\"/></svg></span>Akun</button></nav>",
+      "css": ".ds-nav{display:flex;background:#FFFFFF;justify-content:space-around;padding:12px 0}.ds-destination{border:0;background:transparent;color:#71717A;font:500 14px Roboto,sans-serif;display:grid;justify-items:center;gap:6px;cursor:pointer}.ds-destination span{display:grid;place-items:center;min-width:64px;height:32px;border-radius:999px}.ds-destination[aria-current=\"true\"]{color:#18181B}.ds-destination[aria-current=\"true\"] span{background:#71717A;color:white}.ds-destination:hover{background:#F4F4F5}.ds-destination:focus-visible{outline:2px solid #4F46E5;outline-offset:2px}.ds-destination:active{opacity:.8}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Native Operate UI",
+    "overview": "Wangsa Mobile preserves the incumbent Android Material 3 interface: bundled Roboto, indigo actions, neutral reading surfaces, and restrained outlines. Its character is calm and practical. The existing Wangsa logo remains the identity asset; this record introduces no new visual identity.\n\nThe product extension uses the existing WangsaTheme rather than defining a second theme. Native controls, readable text, and generous vertical separation carry the hierarchy. Authentication, jobs, results, and procedures share that grammar.",
+    "keyCharacteristics": [
+      "A single indigo action accent with neutral supporting information.",
+      "Native Material controls and a shared Roboto hierarchy.",
+      "Flat reading surfaces, thin separators, and a bounded scrolling column."
+    ],
+    "rules": [
+      {
+        "name": "The Existing Theme Rule",
+        "body": "Resolve screen colors through WangsaTheme and ColorScheme; extend the incumbent identity instead of inventing a second palette.",
+        "section": "colors"
+      },
+      {
+        "name": "The Role Before Size Rule",
+        "body": "Use the inherited TextTheme roles for headings, body copy, and labels instead of individually sizing each screen.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Reading Surface Rule",
+        "body": "Keep app bars and reading surfaces flat; use spacing, text hierarchy, and thin dividers to separate content.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the shared ProductBody column for product screens.",
+      "Do use the shared 48 logical-pixel minimum button size for main form actions.",
+      "Do pair job status text with its native status icon; color alone is insufficient.",
+      "Do keep long results and procedures selectable and scrollable.",
+      "Do preserve the bundled Roboto family and existing Wangsa logo."
+    ],
+    "donts": [
+      "Don't replace native product controls with a new brand treatment.",
+      "Don't present every job as a raised card; the shipped collection uses divided list rows.",
+      "Don't hard-code light colors into widgets that already consume ColorScheme.",
+      "Don't treat generated palette ramps or HTML previews as new Flutter theme tokens."
+    ]
+  }
+}

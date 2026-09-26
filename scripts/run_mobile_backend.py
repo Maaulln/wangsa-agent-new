@@ -14,6 +14,7 @@ os.environ["WANGSA_MOBILE_PORT"] = str(port)
 os.environ["WANGSA_MOBILE_HOST"] = str(host)
 os.environ["WANGSA_MOBILE_ENABLED"] = "1"
 os.environ.setdefault("WANGSA_MOBILE_ALLOW_INSECURE_HOST", "1")
+os.environ.setdefault("GATEWAY_MULTIPLEX_PROFILES", "1")
 
 print("==================================================================")
 print(f"🚀 Wangsa Mobile Backend Server Starting")

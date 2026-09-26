@@ -1422,6 +1422,16 @@ class TestParseContextLimitFromError:
         )
         assert get_context_length_from_provider_error(msg, 131072) == 32768
 
+    def test_parses_available_context_size_from_llamacpp_error(self):
+        from agent.model_metadata import get_context_length_from_provider_error
+
+        msg = (
+            "request (20348 tokens) exceeds the available context size "
+            "(8192 tokens), try increasing it"
+        )
+        assert parse_context_limit_from_error(msg) == 8192
+        assert get_context_length_from_provider_error(msg, 256000) == 8192
+
 
 
 

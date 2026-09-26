@@ -22,9 +22,29 @@ class WangsaApiClient {
 
   String baseUrl;
 
+  /// Bearer token milik user ini (dari signup / layar token). Null berarti
+  /// belum daftar — server localhost-terbuka tetap bisa dijangkau tanpa ini,
+  /// tapi gateway multiplex menolak request profile tanpa token valid.
+  String? authToken;
+
   void updateBaseUrl(String newUrl) {
     baseUrl = _trimTrailingSlash(newUrl);
   }
+
+  void updateToken(String? newToken) {
+    final v = newToken?.trim();
+    authToken = (v == null || v.isEmpty) ? null : v;
+  }
+
+  Map<String, String> _authHeaders([Map<String, String>? extra]) {
+    final headers = <String, String>{...?extra};
+    final token = authToken;
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
+
   http.Client _httpClient;
 
   /// Batas tunggu untuk permintaan biasa, misalnya memuat Agent.
@@ -55,8 +75,8 @@ class WangsaApiClient {
     http.Client? httpClient,
     this.requestTimeout = const Duration(seconds: 15),
     this.replyTimeout = const Duration(seconds: 300),
-  })  : baseUrl = _trimTrailingSlash(baseUrl),
-        _httpClient = httpClient ?? http.Client();
+  }) : baseUrl = _trimTrailingSlash(baseUrl),
+       _httpClient = httpClient ?? http.Client();
 
   static String _trimTrailingSlash(String value) {
     var result = value.trim();
@@ -66,67 +86,125 @@ class WangsaApiClient {
     return result;
   }
 
+  /// Pendaftaran terbuka: buat profile + terbitkan token (`POST /api/v1/auth/signup`).
+  /// Tetap publik tanpa token lama — ini pintu masuk user baru.
+  Future<ApiResult<SignupResult>> signup(String username) {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/signup');
+    return _send(
+      () => _httpClient.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'username': username.trim().toLowerCase()}),
+      ),
+      SignupResult.fromJson,
+      requestTimeout,
+    );
+  }
+
+  /// Identitas pemanggil + status LLM (`GET /api/v1/auth/me`, butuh token).
+  Future<ApiResult<MeInfo>> getMe() {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/me');
+    return _send(
+      () => _httpClient.get(uri, headers: _authHeaders()),
+      MeInfo.fromJson,
+      requestTimeout,
+    );
+  }
+
+  /// Ringkasan budget spend profile (`GET /api/v1/auth/budget`, butuh token).
+  Future<ApiResult<BudgetInfo>> getBudget() {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/budget');
+    return _send(
+      () => _httpClient.get(uri, headers: _authHeaders()),
+      BudgetInfo.fromJson,
+      requestTimeout,
+    );
+  }
+
+  /// Cabut token sendiri / logout (`DELETE /api/v1/auth/token`, butuh token).
+  /// Sukses berarti server menghapus token — klien wajib membuang token lokal.
+  Future<ApiResult<bool>> revokeToken() {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/token');
+    return _send(
+      () => _httpClient.delete(uri, headers: _authHeaders()),
+      (json) => (json['revoked'] as bool?) ?? true,
+      requestTimeout,
+    );
+  }
+
   Future<ApiResult<PublicAgent>> getAgent(String agentId) {
-    final uri = Uri.parse('$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}');
-    return _send(() => _httpClient.get(uri), PublicAgent.fromJson, requestTimeout);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}',
+    );
+    return _send(
+      () => _httpClient.get(uri, headers: _authHeaders()),
+      PublicAgent.fromJson,
+      requestTimeout,
+    );
   }
 
   /// Daftar model deployment dari `GET /api/v1/agents/:agentId/models`.
   /// Gagal di sini tidak fatal — pemanggil memakai bawaan server.
   Future<ApiResult<ModelOptions>> getModels(String agentId) {
-    final uri = Uri.parse('$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/models');
-    return _send(() => _httpClient.get(uri), ModelOptions.fromJson, requestTimeout);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/models',
+    );
+    return _send(
+      () => _httpClient.get(uri, headers: _authHeaders()),
+      ModelOptions.fromJson,
+      requestTimeout,
+    );
   }
 
   /// Daftar sesi aktif untuk drawer percakapan.
   Future<ApiResult<List<SessionSummary>>> getSessions(String agentId) async {
-    final uri = Uri.parse('$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions');
-    return _send(
-      () => _httpClient.get(uri),
-      (json) {
-        final list = json['sessions'];
-        if (list is List) {
-          return [
-            for (final item in list)
-              if (item is Map<String, dynamic>) SessionSummary.fromJson(item),
-          ];
-        }
-        return <SessionSummary>[];
-      },
-      requestTimeout,
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions',
     );
+    return _send(() => _httpClient.get(uri, headers: _authHeaders()), (json) {
+      final list = json['sessions'];
+      if (list is List) {
+        return [
+          for (final item in list)
+            if (item is Map<String, dynamic>) SessionSummary.fromJson(item),
+        ];
+      }
+      return <SessionSummary>[];
+    }, requestTimeout);
   }
 
   /// Ambil transkrip tersimpan satu sesi lampau, dipakai saat pengguna
   /// beralih sesi dari drawer supaya layar tidak tiba-tiba kosong padahal
   /// percakapan di server masih ada.
-  Future<ApiResult<List<HistoryTurn>>> getSessionMessages(String agentId, String sessionId) async {
+  Future<ApiResult<List<HistoryTurn>>> getSessionMessages(
+    String agentId,
+    String sessionId,
+  ) async {
     final uri = Uri.parse(
       '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions/${Uri.encodeComponent(sessionId)}/messages',
     );
-    return _send(
-      () => _httpClient.get(uri),
-      (json) {
-        final list = json['turns'];
-        if (list is List) {
-          return [
-            for (final item in list)
-              if (item is Map<String, dynamic>) HistoryTurn.fromJson(item),
-          ];
-        }
-        return <HistoryTurn>[];
-      },
-      requestTimeout,
-    );
+    return _send(() => _httpClient.get(uri, headers: _authHeaders()), (json) {
+      final list = json['turns'];
+      if (list is List) {
+        return [
+          for (final item in list)
+            if (item is Map<String, dynamic>) HistoryTurn.fromJson(item),
+        ];
+      }
+      return <HistoryTurn>[];
+    }, requestTimeout);
   }
 
   /// Hapus riwayat sesi di server.
-  Future<ApiResult<bool>> deleteSession(String agentId, String sessionId) async {
+  Future<ApiResult<bool>> deleteSession(
+    String agentId,
+    String sessionId,
+  ) async {
     final uri = Uri.parse(
       '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/sessions/${Uri.encodeComponent(sessionId)}',
     );
     return _send(
-      () => _httpClient.delete(uri),
+      () => _httpClient.delete(uri, headers: _authHeaders()),
       (json) => json['deleted'] as bool? ?? true,
       requestTimeout,
     );
@@ -135,20 +213,16 @@ class WangsaApiClient {
   /// Ambil daftar provider AI dan status autentikasinya dari server.
   Future<ApiResult<List<AuthProviderItem>>> getAuthProviders() async {
     final uri = Uri.parse('$baseUrl/api/v1/auth/providers');
-    return _send(
-      () => _httpClient.get(uri),
-      (json) {
-        final list = json['providers'];
-        if (list is List) {
-          return [
-            for (final item in list)
-              if (item is Map<String, dynamic>) AuthProviderItem.fromJson(item),
-          ];
-        }
-        return <AuthProviderItem>[];
-      },
-      requestTimeout,
-    );
+    return _send(() => _httpClient.get(uri, headers: _authHeaders()), (json) {
+      final list = json['providers'];
+      if (list is List) {
+        return [
+          for (final item in list)
+            if (item is Map<String, dynamic>) AuthProviderItem.fromJson(item),
+        ];
+      }
+      return <AuthProviderItem>[];
+    }, requestTimeout);
   }
 
   /// Simpan kredensial untuk provider AI tertentu di server.
@@ -160,7 +234,9 @@ class WangsaApiClient {
     String? baseUrl,
     String? model,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/auth/providers/${Uri.encodeComponent(providerId)}');
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/auth/providers/${Uri.encodeComponent(providerId)}',
+    );
     final body = jsonEncode({
       'apiKey': ?apiKey,
       'token': ?token,
@@ -171,7 +247,7 @@ class WangsaApiClient {
     return _send(
       () => _httpClient.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: _authHeaders({'Content-Type': 'application/json'}),
         body: body,
       ),
       (json) => json['message'] as String? ?? 'Berhasil disimpan',
@@ -181,9 +257,11 @@ class WangsaApiClient {
 
   /// Hapus kredensial provider AI dari server.
   Future<ApiResult<String>> deleteProviderCredentials(String providerId) async {
-    final uri = Uri.parse('$baseUrl/api/v1/auth/providers/${Uri.encodeComponent(providerId)}');
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/auth/providers/${Uri.encodeComponent(providerId)}',
+    );
     return _send(
-      () => _httpClient.delete(uri),
+      () => _httpClient.delete(uri, headers: _authHeaders()),
       (json) => json['message'] as String? ?? 'Berhasil dihapus',
       requestTimeout,
     );
@@ -193,19 +271,21 @@ class WangsaApiClient {
   Future<ApiResult<Map<String, dynamic>>> startCopilotDeviceCode() async {
     final uri = Uri.parse('$baseUrl/api/v1/auth/copilot/device-code');
     return _send(
-      () => _httpClient.post(uri),
+      () => _httpClient.post(uri, headers: _authHeaders()),
       (json) => json,
       requestTimeout,
     );
   }
 
   /// Polling status GitHub Copilot Device Flow.
-  Future<ApiResult<Map<String, dynamic>>> pollCopilotDeviceCode(String deviceCode) async {
+  Future<ApiResult<Map<String, dynamic>>> pollCopilotDeviceCode(
+    String deviceCode,
+  ) async {
     final uri = Uri.parse('$baseUrl/api/v1/auth/copilot/poll');
     return _send(
       () => _httpClient.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: _authHeaders({'Content-Type': 'application/json'}),
         body: jsonEncode({'device_code': deviceCode}),
       ),
       (json) => json,
@@ -245,6 +325,7 @@ class WangsaApiClient {
     String? sessionId,
     String? userName,
     String? userBio,
+    List<String> toolsets = const [],
   }) {
     final lampiran = images ?? const <ChatImage>[];
     if (message.trim().isEmpty && lampiran.isEmpty) {
@@ -263,12 +344,16 @@ class WangsaApiClient {
       );
     }
 
-    final uri = Uri.parse('$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/messages');
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/agents/${Uri.encodeComponent(agentId)}/messages',
+    );
     final body = <String, Object?>{
       'message': message,
+      'toolsets': toolsets,
       if (llm != null) 'llm': llm.toJson(),
       if (model != null && model.trim().isNotEmpty) 'model': model.trim(),
-      if (provider != null && provider.trim().isNotEmpty) 'provider': provider.trim(),
+      if (provider != null && provider.trim().isNotEmpty)
+        'provider': provider.trim(),
       if (lampiran.isNotEmpty)
         'images': [
           for (final img in lampiran)
@@ -279,13 +364,17 @@ class WangsaApiClient {
             },
         ],
       if (sessionId != null && sessionId.isNotEmpty) 'sessionId': sessionId,
-      if (userName != null && userName.trim().isNotEmpty) 'userName': userName.trim(),
-      if (userBio != null && userBio.trim().isNotEmpty) 'userBio': userBio.trim(),
+      if (userName != null && userName.trim().isNotEmpty)
+        'userName': userName.trim(),
+      if (userBio != null && userBio.trim().isNotEmpty)
+        'userBio': userBio.trim(),
     };
     return _send(
       () => _httpClient.post(
         uri,
-        headers: const {'content-type': 'application/json; charset=utf-8'},
+        headers: _authHeaders(const {
+          'content-type': 'application/json; charset=utf-8',
+        }),
         body: jsonEncode(body),
       ),
       AgentReply.fromJson,
@@ -307,10 +396,44 @@ class WangsaApiClient {
   ) async {
     try {
       final response = await call().timeout(timeout);
-      try {
-        return ApiResult.fromEnvelope<T>(jsonDecode(response.body), parse);
-      } catch (_) {
-        return ApiResult.runtimeError<T>('Balasan API tidak bisa dibaca.');
+      final result = () {
+        try {
+          return ApiResult.fromEnvelope<T>(jsonDecode(response.body), parse);
+        } catch (_) {
+          return ApiResult.runtimeError<T>('Balasan API tidak bisa dibaca.');
+        }
+      }();
+      if (result.isSuccess) return result;
+      final err = result.errorOrNull;
+      if (err == null) return result;
+      // Pesan ramah untuk galat auth yang sering ditemui user baru.
+      // Kode asli dipertahankan supaya pemanggil bisa membedakan 401/429/503.
+      switch (err.code) {
+        case 'UNAUTHORIZED':
+          return ApiResult<T>.failure(
+            ApiError(
+              err.code,
+              'Token tidak valid atau kedaluwarsa. Daftar lagi atau masukkan token.',
+            ),
+          );
+        case 'PROFILE_UNAVAILABLE':
+          return ApiResult<T>.failure(
+            ApiError(
+              err.code,
+              'Profil belum siap di backend. Coba lagi sebentar atau hubungi admin.',
+            ),
+          );
+        case 'RATE_LIMITED':
+          return ApiResult<T>.failure(
+            ApiError(
+              err.code,
+              'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.',
+            ),
+          );
+        case 'CONFLICT':
+          return result;
+        default:
+          return result;
       }
     } catch (_) {
       return ApiResult.runtimeError<T>('Tidak bisa menghubungi API Wangsa.');

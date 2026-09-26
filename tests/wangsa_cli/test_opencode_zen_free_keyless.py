@@ -1,4 +1,4 @@
-"""OpenCode Zen free-tier keyless routing (x-preview-f-free / "Ox Alpha").
+"""OpenCode Zen free-tier keyless routing and live model catalog.
 
 The Zen relay serves ``*-free`` models ANONYMOUSLY: a request with no
 Authorization header succeeds, while any non-empty bearer the relay doesn't
@@ -64,7 +64,7 @@ class TestFreeSlugDetection:
 
 class TestFreeRuntime:
     def test_zen_provider_free_model(self):
-        rt = opencode_zen_free_runtime("opencode-zen", "x-preview-f-free")
+        rt = opencode_zen_free_runtime("opencode-zen", "nemotron-3-ultra-free")
         assert rt is not None
         assert rt["base_url"] == "https://opencode.ai/zen/v1"
         assert rt["api_key"] == OPENCODE_ZEN_FREE_KEYLESS_PLACEHOLDER
@@ -74,7 +74,7 @@ class TestFreeRuntime:
     def test_go_provider_heals_to_zen(self):
         # Free slugs only exist on the Zen relay; a Go selection must be
         # routed to Zen (the Go relay rejects the model outright).
-        rt = opencode_zen_free_runtime("opencode-go", "x-preview-f-free")
+        rt = opencode_zen_free_runtime("opencode-go", "nemotron-3-ultra-free")
         assert rt is not None
         assert rt["base_url"] == "https://opencode.ai/zen/v1"
 
@@ -89,13 +89,44 @@ class TestFreeRuntime:
         assert opencode_zen_free_runtime("opencode-zen", "claude-sonnet-5") is None
 
     def test_non_opencode_provider_returns_none(self):
-        assert opencode_zen_free_runtime("openrouter", "x-preview-f-free") is None
-        assert opencode_zen_free_runtime(None, "x-preview-f-free") is None
+        assert opencode_zen_free_runtime("openrouter", "nemotron-3-ultra-free") is None
+        assert opencode_zen_free_runtime(None, "nemotron-3-ultra-free") is None
 
     def test_headers_override_sdk_bearer(self):
         headers = opencode_zen_free_headers()
         assert headers["Authorization"] == ""
         assert headers["X-Title"] == "Wangsa Agent"
+
+
+class TestLiveFreeModelCatalog:
+    def test_excludes_retired_and_incompatible_models(self, monkeypatch):
+        import io
+        import json
+
+        from wangsa_cli import urllib_security
+        from wangsa_cli.opencode_free_catalog import opencode_free_model_ids
+
+        monkeypatch.setattr(
+            urllib_security,
+            "open_credentialed_url",
+            lambda request, timeout: io.BytesIO(
+                json.dumps(
+                    {
+                        "data": [
+                            {"id": "nemotron-3-ultra-free"},
+                            {"id": "jev-1.13-free"},
+                            {"id": "muse-spark-1.3-contributor-free"},
+                            {"id": "deepseek-v4-flash-free"},
+                            {"id": "mimo-v2.5-free"},
+                            {"id": "paid-model"},
+                        ]
+                    }
+                ).encode()
+            ),
+        )
+        models = opencode_free_model_ids(refresh=True)
+        assert models == ["nemotron-3-ultra-free"]
+
 
 
 class TestRuntimeProviderKeylessRouting:
@@ -114,13 +145,13 @@ class TestRuntimeProviderKeylessRouting:
             return resolve_runtime_provider(requested=provider, target_model=model)
 
     def test_zen_free_model_resolves_keyless(self):
-        rt = self._resolve("opencode-zen", "x-preview-f-free")
+        rt = self._resolve("opencode-zen", "nemotron-3-ultra-free")
         assert rt["api_key"] == OPENCODE_ZEN_FREE_KEYLESS_PLACEHOLDER
         assert rt["base_url"] == "https://opencode.ai/zen/v1"
         assert rt["api_mode"] == "chat_completions"
 
     def test_go_free_model_resolves_keyless_on_zen(self):
-        rt = self._resolve("opencode-go", "x-preview-f-free")
+        rt = self._resolve("opencode-go", "nemotron-3-ultra-free")
         assert rt["api_key"] == OPENCODE_ZEN_FREE_KEYLESS_PLACEHOLDER
         assert rt["base_url"] == "https://opencode.ai/zen/v1"
 
