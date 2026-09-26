@@ -29,6 +29,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   /// yang tiba dengan nomor lama (mis. balasan yang datang setelah
   /// tombol batal ditekan) diabaikan begitu saja dan tidak menimpa status.
   int _activeSendId = 0;
+  _RetryPayload? _retryPayload;
 
   /// Id sesi percakapan yang diterbitkan server pada balasan pertama.
   /// Null berarti percakapan baru belum dimulai; diteruskan kembali
@@ -74,6 +75,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }) : super(const ChatState()) {
     on<ChatOpened>(_onOpened);
     on<MessageSubmitted>(_onMessageSubmitted);
+    on<MessageRetried>(_onMessageRetried);
     on<ModelSelected>(_onModelSelected);
     on<ToolsetsSelected>(_onToolsetsSelected);
     on<ConversationCleared>(_onConversationCleared);
@@ -97,9 +99,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       state.copyWith(
         status: ChatStatus.loading,
         turns: const [],
+        clearCurrentActivity: true,
+        clearToolActivities: true,
+        clearStreamingText: true,
         clearSessionId: true,
         selectedToolsets: const [],
         clearError: true,
+        canRetry: false,
       ),
     );
     add(const ChatOpened());
@@ -306,9 +312,25 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   Future<void> _onMessageSubmitted(
     MessageSubmitted event,
     Emitter<ChatState> emit,
+  ) => _sendMessage(event.message, event.images, emit);
+
+  Future<void> _onMessageRetried(
+    MessageRetried event,
+    Emitter<ChatState> emit,
   ) async {
-    final message = event.message.trim();
-    if ((message.isEmpty && event.images.isEmpty) || state.isSending) return;
+    final retry = _retryPayload;
+    if (retry == null || state.isSending) return;
+    await _sendMessage(retry.message, retry.images, emit, retry: true);
+  }
+
+  Future<void> _sendMessage(
+    String rawMessage,
+    List<ChatImage> images,
+    Emitter<ChatState> emit, {
+    bool retry = false,
+  }) async {
+    final message = rawMessage.trim();
+    if ((message.isEmpty && images.isEmpty) || state.isSending) return;
     if (state.needsSetup) {
       emit(
         state.copyWith(
@@ -320,16 +342,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
 
     final sendId = ++_activeSendId;
+    final baseTurns = retry
+        ? (_retryPayload?.baseTurns ?? state.turns)
+        : state.turns;
     final withUserTurn = [
-      ...state.turns,
-      Turn(
-        role: TurnRole.user,
-        content: message,
-        imageCount: event.images.length,
-      ),
+      ...baseTurns,
+      Turn(role: TurnRole.user, content: message, imageCount: images.length),
     ];
+    _retryPayload = _RetryPayload(message, images, baseTurns);
     emit(
-      state.copyWith(turns: withUserTurn, isSending: true, clearError: true),
+      state.copyWith(
+        turns: withUserTurn,
+        isSending: true,
+        clearCurrentActivity: true,
+        clearToolActivities: true,
+        clearStreamingText: true,
+        clearError: true,
+        canRetry: false,
+      ),
     );
 
     final profile = userProfile?.value;
@@ -339,7 +369,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       model: state.effectiveModel,
       provider: state.effectiveProvider,
       toolsets: state.selectedToolsets,
-      images: event.images,
+      images: images,
       sessionId: _sessionId,
       userName: profile != null && profile.name.trim().isNotEmpty
           ? profile.name
@@ -347,6 +377,43 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       userBio: profile != null && profile.preferences.trim().isNotEmpty
           ? profile.preferences
           : null,
+      onActivity: (activity) {
+        if (sendId == _activeSendId && !emit.isDone) {
+          final activities = [...state.toolActivities];
+          final match = activity.index == null
+              ? -1
+              : activities.lastIndexWhere(
+                  (item) =>
+                      item.index == activity.index &&
+                      item.tool == activity.tool &&
+                      item.status == 'running',
+                );
+          if (match >= 0) {
+            final previous = activities[match];
+            activities[match] = ToolCallInfo(
+              tool: activity.tool,
+              preview: activity.preview.isEmpty
+                  ? previous.preview
+                  : activity.preview,
+              status: activity.status,
+              index: activity.index,
+            );
+          } else {
+            activities.add(activity);
+          }
+          emit(
+            state.copyWith(
+              currentActivity: activity,
+              toolActivities: activities,
+            ),
+          );
+        }
+      },
+      onDelta: (delta) {
+        if (sendId == _activeSendId && !emit.isDone) {
+          emit(state.copyWith(streamingText: '${state.streamingText}$delta'));
+        }
+      },
     );
     if (sendId != _activeSendId) return;
     final reply = result.dataOrNull;
@@ -366,12 +433,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               images: reply.images,
               files: reply.files,
               thought: reply.thought,
-              toolCalls: reply.toolCalls,
+              toolCalls: reply.toolCalls.isNotEmpty
+                  ? reply.toolCalls
+                  : state.toolActivities,
+              sources: reply.sources,
             ),
           ],
           isSending: false,
+          clearCurrentActivity: true,
+          clearToolActivities: true,
+          clearStreamingText: true,
+          canRetry: false,
         ),
       );
+      _retryPayload = null;
       return;
     }
 
@@ -382,16 +457,35 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isSending: false,
+          clearCurrentActivity: true,
+          clearToolActivities: true,
+          clearStreamingText: true,
+          canRetry: false,
           errorMessage: result.errorOrNull?.message ?? 'Budget tercapai.',
         ),
       );
+      _retryPayload = null;
       add(const SetupStatusRequested());
       return;
     }
 
     emit(
       state.copyWith(
+        turns: state.streamingText.isEmpty
+            ? null
+            : [
+                ...state.turns,
+                Turn(
+                  role: TurnRole.agent,
+                  content: state.streamingText,
+                  toolCalls: state.toolActivities,
+                ),
+              ],
         isSending: false,
+        clearCurrentActivity: true,
+        clearToolActivities: true,
+        clearStreamingText: true,
+        canRetry: _retryPayload != null,
         errorMessage: result.errorOrNull?.message ?? 'Pesan gagal terkirim.',
       ),
     );
@@ -403,12 +497,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) {
     if (state.isSending) return;
     _sessionId = null;
+    _retryPayload = null;
     emit(
       state.copyWith(
         turns: const [],
+        clearCurrentActivity: true,
+        clearToolActivities: true,
+        clearStreamingText: true,
         clearSessionId: true,
         selectedToolsets: const [],
         clearError: true,
+        canRetry: false,
       ),
     );
   }
@@ -426,7 +525,27 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (!state.isSending) return;
     _activeSendId++;
     apiClient.cancelInFlight();
-    emit(state.copyWith(isSending: false));
+    emit(
+      state.copyWith(
+        turns: state.streamingText.isEmpty
+            ? null
+            : [
+                ...state.turns,
+                Turn(
+                  role: TurnRole.agent,
+                  content: state.streamingText,
+                  toolCalls: state.toolActivities,
+                ),
+              ],
+        isSending: false,
+        clearCurrentActivity: true,
+        clearToolActivities: true,
+        clearStreamingText: true,
+        canRetry: _retryPayload != null,
+        errorMessage:
+            'Jawaban dihentikan. Kamu bisa melanjutkan dengan mencoba lagi.',
+      ),
+    );
   }
 
   Future<void> _onSessionsRequested(
@@ -448,6 +567,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) async {
     if (state.isSending) return;
     _sessionId = event.sessionId;
+    _retryPayload = null;
     final selectedSession = state.sessions.where(
       (session) => session.sessionId == event.sessionId,
     );
@@ -458,9 +578,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       state.copyWith(
         sessionId: _sessionId,
         turns: const [],
+        clearCurrentActivity: true,
+        clearToolActivities: true,
+        clearStreamingText: true,
         selectedToolsets: sessionToolsets,
         isLoadingHistory: true,
         clearError: true,
+        canRetry: false,
       ),
     );
 
@@ -502,6 +626,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final bool clearingCurrent = state.sessionId == event.sessionId;
       if (clearingCurrent) {
         _sessionId = null;
+        _retryPayload = null;
       }
       emit(
         state.copyWith(
@@ -509,6 +634,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           sessionId: clearingCurrent ? null : state.sessionId,
           clearSessionId: clearingCurrent,
           turns: clearingCurrent ? const [] : state.turns,
+          canRetry: clearingCurrent ? false : state.canRetry,
           selectedToolsets: clearingCurrent ? const [] : state.selectedToolsets,
         ),
       );
@@ -555,4 +681,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       ),
     );
   }
+}
+
+class _RetryPayload {
+  final String message;
+  final List<ChatImage> images;
+  final List<Turn> baseTurns;
+
+  const _RetryPayload(this.message, this.images, this.baseTurns);
 }

@@ -28,6 +28,11 @@ final class MessageSubmitted extends ChatEvent {
   List<Object?> get props => [message, images];
 }
 
+/// Mengulang kiriman terakhir yang gagal dengan prompt dan lampiran yang sama.
+final class MessageRetried extends ChatEvent {
+  const MessageRetried();
+}
+
 /// Pengguna memilih model lewat pil model. Null berarti kembali ke
 /// bawaan (model aktif server).
 final class ModelSelected extends ChatEvent {

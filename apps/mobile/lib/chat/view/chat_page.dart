@@ -19,6 +19,7 @@ import '../../theme/theme_controller.dart';
 import '../../voice/voice_input.dart';
 import '../bloc/chat_bloc.dart';
 import 'agent_builder_page.dart';
+import 'chat_icons.dart';
 import 'message_bubble.dart';
 import 'widgets/chat_notice.dart';
 import 'widgets/thinking_indicator.dart';
@@ -97,12 +98,14 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   late AppConfig _activeConfig = widget.config;
   final _draftController = TextEditingController();
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _followLatest = true;
+  bool _showLatestButton = false;
+  int _lastObservedTurnCount = 0;
 
   StreamSubscription<VoiceEvent>? _voiceSubscription;
   VoiceStatus _voiceStatus = VoiceStatus.off;
@@ -113,8 +116,6 @@ class _ChatPageState extends State<ChatPage>
   /// ditekan atau kata pemicu terdengar, ditutup waktu ucapan selesai
   /// dikirim atau tombol Batal ditekan.
   bool _voiceOverlayOpen = false;
-
-  late final AnimationController _waveController;
 
   static const List<Map<String, String>> _slashCommands = [
     {'command': '/status', 'desc': 'Status runtime & gateway agent'},
@@ -128,39 +129,37 @@ class _ChatPageState extends State<ChatPage>
   @override
   void initState() {
     super.initState();
-    _waveController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat();
-
     _voiceStatus = widget.voiceInput.status;
+    _scrollController.addListener(_handleScrollPosition);
     WidgetsBinding.instance.addObserver(this);
     _voiceSubscription = widget.voiceInput.events.listen(_onVoiceEvent);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.of(context).disableAnimations) {
-      _waveController.stop();
-    } else if (!_waveController.isAnimating) {
-      _waveController.repeat();
-    }
   }
 
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
     final views = WidgetsBinding.instance.platformDispatcher.views;
-    if (views.isNotEmpty && views.first.viewInsets.bottom > 0) {
+    if (_followLatest &&
+        views.isNotEmpty &&
+        views.first.viewInsets.bottom > 0) {
       _scrollToLatest();
+    }
+  }
+
+  void _handleScrollPosition() {
+    if (!_scrollController.hasClients) return;
+    final nearLatest = _scrollController.position.extentAfter <= 140;
+    _followLatest = nearLatest;
+    final shouldShow = !nearLatest;
+    if (_showLatestButton != shouldShow && mounted) {
+      setState(() => _showLatestButton = shouldShow);
     }
   }
 
   @override
   void dispose() {
-    _waveController.dispose();
     _voiceSubscription?.cancel();
+    _scrollController.removeListener(_handleScrollPosition);
     _draftController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     widget.voiceInput.dispose();
@@ -179,6 +178,8 @@ class _ChatPageState extends State<ChatPage>
           _voiceError = null;
           _voiceStatus = widget.voiceInput.status;
         });
+      case WakeWordStatusChanged():
+        break;
       case PartialTranscript(text: final text):
         setState(() {
           _voiceStatus = widget.voiceInput.status;
@@ -279,7 +280,7 @@ class _ChatPageState extends State<ChatPage>
                       ),
                     ),
                     SwitchListTile(
-                      secondary: const Icon(Icons.travel_explore_rounded),
+                      secondary: const Icon(ChatIcons.web),
                       title: const Text('Pencarian web'),
                       subtitle: const Text(
                         'Izinkan Wangsa mencari informasi terbaru',
@@ -294,7 +295,7 @@ class _ChatPageState extends State<ChatPage>
                             },
                     ),
                     SwitchListTile(
-                      secondary: const Icon(Icons.image_search_rounded),
+                      secondary: const Icon(ChatIcons.image),
                       title: const Text('Analisis gambar'),
                       subtitle: const Text(
                         'Izinkan Wangsa memahami gambar yang dikirim',
@@ -418,6 +419,11 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  void _retryMessage(BuildContext context) {
+    _scrollToLatest();
+    context.read<ChatBloc>().add(const MessageRetried());
+  }
+
   /// Pil model diketuk: lembar pilihan berisi model aktif server dan
   /// daftar dari `GET .../models`.
   void _showModelPicker(BuildContext context, ChatState state) {
@@ -450,14 +456,21 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  void _scrollToLatest() {
+  void _scrollToLatest({bool animate = true}) {
+    _followLatest = true;
+    if (_showLatestButton) setState(() => _showLatestButton = false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      final latest = _scrollController.position.maxScrollExtent;
+      if (!animate) {
+        _scrollController.jumpTo(latest);
+      } else {
+        _scrollController.animateTo(
+          latest,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -467,7 +480,9 @@ class _ChatPageState extends State<ChatPage>
       listenWhen: (before, after) => before.isSending && !after.isSending,
       listener: (_, state) {
         final last = state.turns.isEmpty ? null : state.turns.last;
-        if (last != null && last.role == TurnRole.agent) {
+        if (last != null &&
+            last.role == TurnRole.agent &&
+            state.errorMessage == null) {
           _draftController.clear();
           if (_pendingImages.isNotEmpty) {
             setState(() => _pendingImages.clear());
@@ -498,9 +513,22 @@ class _ChatPageState extends State<ChatPage>
       listenWhen: (before, after) =>
           before.turns.length != after.turns.length ||
           before.isSending != after.isSending ||
-          before.status != after.status,
-      listener: (_, state) {
-        _scrollToLatest();
+          before.status != after.status ||
+          before.streamingText != after.streamingText ||
+          before.toolActivities != after.toolActivities ||
+          before.errorMessage != after.errorMessage,
+      listener: (context, state) {
+        final justSubmitted =
+            state.isSending && _lastObservedTurnCount < state.turns.length;
+        _lastObservedTurnCount = state.turns.length;
+        if (justSubmitted) _followLatest = true;
+        if (!_followLatest) {
+          if (!_showLatestButton && mounted) {
+            setState(() => _showLatestButton = true);
+          }
+          return;
+        }
+        _scrollToLatest(animate: !state.isSending);
       },
       builder: (context, state) {
         return Scaffold(
@@ -536,7 +564,7 @@ class _ChatPageState extends State<ChatPage>
               _scaffoldKey.currentState?.openDrawer();
             },
             tooltip: 'Menu',
-            icon: const Icon(Icons.menu_rounded, size: 24),
+            icon: const Icon(ChatIcons.menu, size: 22),
             color: scheme.onSurfaceVariant,
           ),
           const Spacer(),
@@ -545,7 +573,7 @@ class _ChatPageState extends State<ChatPage>
                 ? () => _startNewConversation(context)
                 : null,
             tooltip: 'Percakapan baru',
-            icon: const Icon(Icons.edit_square, size: 22),
+            icon: const Icon(ChatIcons.newChat, size: 22),
             color: scheme.onSurfaceVariant,
           ),
         ],
@@ -614,7 +642,7 @@ class _ChatPageState extends State<ChatPage>
                 children: [
                   _drawerRow(
                     context,
-                    Icons.edit_square,
+                    ChatIcons.newChat,
                     'Percakapan baru',
                     onTap: state.status == ChatStatus.ready
                         ? () {
@@ -626,7 +654,7 @@ class _ChatPageState extends State<ChatPage>
                   const Divider(height: 16),
                   _drawerRow(
                     context,
-                    Icons.smart_toy_outlined,
+                    Icons.auto_awesome_outlined,
                     'Bangun Agent',
                     onTap: () {
                       Navigator.of(context).pop();
@@ -730,7 +758,7 @@ class _ChatPageState extends State<ChatPage>
                       ),
                       IconButton(
                         tooltip: 'Pengaturan',
-                        icon: const Icon(Icons.settings_outlined),
+                        icon: const Icon(ChatIcons.settings),
                         color: scheme.onSurfaceVariant,
                         onPressed: () {
                           Navigator.of(context).pop();
@@ -773,7 +801,7 @@ class _ChatPageState extends State<ChatPage>
         child: Row(
           children: [
             Icon(
-              Icons.chat_bubble_outline_rounded,
+              ChatIcons.history,
               size: 18,
               color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
             ),
@@ -949,21 +977,66 @@ class _ChatPageState extends State<ChatPage>
                     itemCount: state.turns.length + (state.isSending ? 1 : 0),
                     itemBuilder: (_, index) {
                       if (index == state.turns.length) {
+                        if (state.streamingText.isNotEmpty) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (state.currentActivity != null)
+                                ThinkingIndicator(
+                                  activity: state.currentActivity,
+                                  activities: state.toolActivities,
+                                  isWaitingForReply:
+                                      state.streamingText.isEmpty,
+                                ),
+                              MessageBubble(
+                                turn: Turn(
+                                  role: TurnRole.agent,
+                                  content: state.streamingText,
+                                  isStreaming: true,
+                                ),
+                                onSpeak: (text) =>
+                                    widget.voiceInput.readAloud(text),
+                                onFollowUp: (text) => context
+                                    .read<ChatBloc>()
+                                    .add(MessageSubmitted(text)),
+                              ),
+                            ],
+                          );
+                        }
                         return Align(
                           alignment: Alignment.centerLeft,
                           child: ThinkingIndicator(
-                            avatarAnimation: _waveController,
+                            activity: state.currentActivity,
+                            activities: state.toolActivities,
+                            isWaitingForReply: true,
                           ),
                         );
                       }
                       return MessageBubble(
                         turn: state.turns[index],
                         onSpeak: (text) => widget.voiceInput.readAloud(text),
+                        onFollowUp: (text) => context.read<ChatBloc>().add(
+                          MessageSubmitted(text),
+                        ),
                       );
                     },
                   ),
                 ),
         ),
+        if (_showLatestButton && state.turns.isNotEmpty)
+          Positioned(
+            right: 16,
+            bottom: _composerReserve - 2,
+            child: Semantics(
+              button: true,
+              label: 'Ke pesan terbaru',
+              child: IconButton.filledTonal(
+                tooltip: 'Ke pesan terbaru',
+                onPressed: () => _scrollToLatest(),
+                icon: const Icon(ChatIcons.latest),
+              ),
+            ),
+          ),
         Positioned(
           left: 0,
           right: 0,
@@ -1129,9 +1202,21 @@ class _ChatPageState extends State<ChatPage>
                     color: scheme.surface.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
-                    state.errorMessage!,
-                    style: TextStyle(color: scheme.error),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          state.errorMessage!,
+                          style: TextStyle(color: scheme.error),
+                        ),
+                      ),
+                      if (state.canRetry)
+                        TextButton.icon(
+                          onPressed: () => _retryMessage(context),
+                          icon: const Icon(ChatIcons.refresh, size: 18),
+                          label: const Text('Coba lagi'),
+                        ),
+                    ],
                   ),
                 ),
               _commandSuggester(context),
@@ -1188,7 +1273,7 @@ class _ChatPageState extends State<ChatPage>
                   dense: true,
                   visualDensity: VisualDensity.compact,
                   leading: Icon(
-                    Icons.bolt_rounded,
+                    ChatIcons.tool,
                     size: 18,
                     color: scheme.primary,
                   ),
@@ -1265,8 +1350,8 @@ class _ChatPageState extends State<ChatPage>
                             ),
                             avatar: Icon(
                               toolset == 'web'
-                                  ? Icons.travel_explore_rounded
-                                  : Icons.image_search_rounded,
+                                  ? ChatIcons.web
+                                  : ChatIcons.image,
                               size: 16,
                             ),
                           ),
@@ -1302,7 +1387,7 @@ class _ChatPageState extends State<ChatPage>
                           ? null
                           : () => unawaited(_showAttachmentPicker()),
                       tooltip: 'Lampiran',
-                      icon: const Icon(Icons.add_circle_outline_rounded),
+                      icon: const Icon(ChatIcons.attach),
                       color: scheme.onSurfaceVariant,
                     ),
                     _ModelPill(
@@ -1315,7 +1400,7 @@ class _ChatPageState extends State<ChatPage>
                       onPressed: () => unawaited(_toggleListening()),
                       tooltip: _isListening ? 'Berhenti mendengar' : 'Bicara',
                       icon: Icon(
-                        _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                        _isListening ? ChatIcons.stop : ChatIcons.microphone,
                       ),
                       style: IconButton.styleFrom(
                         backgroundColor: scheme.surface,
@@ -1331,7 +1416,7 @@ class _ChatPageState extends State<ChatPage>
                             onPressed: () => context.read<ChatBloc>().add(
                               const MessageCancelled(),
                             ),
-                            icon: const Icon(Icons.stop_rounded),
+                            icon: const Icon(ChatIcons.stop),
                             tooltip: 'Berhenti',
                           );
                         }
@@ -1339,7 +1424,7 @@ class _ChatPageState extends State<ChatPage>
                         final canSend = hasText || _hasPendingImages;
                         return IconButton.filled(
                           onPressed: canSend ? () => _submit(context) : null,
-                          icon: const Icon(Icons.arrow_upward_rounded),
+                          icon: const Icon(ChatIcons.send),
                           tooltip: 'Kirim',
                           style: !canSend
                               ? IconButton.styleFrom(
@@ -1792,7 +1877,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                 controller: _searchController,
                 decoration: InputDecoration(
                   hintText: "Cari nama model...",
-                  prefixIcon: const Icon(Icons.search_rounded),
+                  prefixIcon: const Icon(ChatIcons.search),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear_rounded),
@@ -1870,7 +1955,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                             const SizedBox(height: 12),
                             FilledButton.icon(
                               onPressed: widget.onRefreshModels,
-                              icon: const Icon(Icons.refresh_rounded),
+                              icon: const Icon(ChatIcons.refresh),
                               label: const Text('Coba lagi'),
                             ),
                           ],
@@ -1905,7 +1990,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                                 const SizedBox(height: 8),
                                 TextButton.icon(
                                   onPressed: widget.onRefreshModels,
-                                  icon: const Icon(Icons.refresh_rounded),
+                                  icon: const Icon(ChatIcons.refresh),
                                   label: const Text('Coba lagi'),
                                 ),
                               ],
@@ -1969,7 +2054,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                           ].join(" • ");
 
                           return ListTile(
-                            leading: const Icon(Icons.auto_awesome_rounded),
+                            leading: const Icon(ChatIcons.tool),
                             title: const Text(
                               "Bawaan deployment",
                               style: TextStyle(fontWeight: FontWeight.w600),

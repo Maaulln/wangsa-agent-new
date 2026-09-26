@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/chat_bloc.dart';
+import 'chat_icons.dart';
 
 /// A focused brief workspace that hands the request to Wangsa's configured
 /// assistant. Publishing a real agent needs a blueprint API that the mobile
@@ -131,7 +132,7 @@ Susun ringkasan peran, alur kerja, kemampuan yang diperlukan, batas keamanan, da
               onPressed: !_busy && _purpose.text.trim().isNotEmpty
                   ? _submit
                   : null,
-              icon: const Icon(Icons.arrow_upward_rounded),
+              icon: const Icon(ChatIcons.send),
               label: const Text('Susun rancangan di chat'),
             ),
           ],

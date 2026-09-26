@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../api/models.dart';
+import '../chat_icons.dart';
 
 /// Baris pratinjau gambar yang dikirim Agent bersama balasan (screenshot,
 /// hasil image_gen, dst. — lihat [ReplyImage] dan
@@ -45,12 +46,12 @@ class _ImageThumbnail extends StatelessWidget {
       onTap: provider == null
           ? null
           : () => Navigator.of(context).push(
-                _ImagePreviewRoute(
-                  provider: provider,
-                  caption: image.caption,
-                  image: image,
-                ),
+              _ImagePreviewRoute(
+                provider: provider,
+                caption: image.caption,
+                image: image,
               ),
+            ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Container(
@@ -83,12 +84,16 @@ class _ImagePreviewRoute extends PageRouteBuilder<void> {
     String? caption,
     required ReplyImage image,
   }) : super(
-          opaque: false,
-          barrierColor: Colors.black87,
-          transitionDuration: const Duration(milliseconds: 180),
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              _ImagePreviewScreen(provider: provider, caption: caption, image: image),
-        );
+         opaque: false,
+         barrierColor: Colors.black87,
+         transitionDuration: const Duration(milliseconds: 180),
+         pageBuilder: (context, animation, secondaryAnimation) =>
+             _ImagePreviewScreen(
+               provider: provider,
+               caption: caption,
+               image: image,
+             ),
+       );
 }
 
 class _ImagePreviewScreen extends StatelessWidget {
@@ -145,7 +150,10 @@ class _ImagePreviewScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                      ),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -157,7 +165,10 @@ class _ImagePreviewScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.share_outlined, color: Colors.white),
+                          icon: const Icon(
+                            ChatIcons.share,
+                            color: Colors.white,
+                          ),
                           tooltip: 'Bagikan',
                           onPressed: _share,
                         ),
@@ -169,7 +180,10 @@ class _ImagePreviewScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                          ),
                           tooltip: 'Tutup',
                           onPressed: () => Navigator.of(context).pop(),
                         ),
@@ -185,7 +199,10 @@ class _ImagePreviewScreen extends StatelessWidget {
                 right: 16,
                 bottom: 16,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(12),

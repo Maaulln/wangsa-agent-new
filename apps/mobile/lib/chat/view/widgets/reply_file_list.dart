@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../api/models.dart';
+import '../chat_icons.dart';
 
 /// Daftar kartu dokumen/audio yang dikirim Agent bersama balasan (bukan
 /// gambar — lihat `ReplyImageGallery` untuk itu). Lihat [ReplyFile] dan
@@ -89,7 +90,7 @@ class _DocumentFileCard extends StatelessWidget {
           if (bytes != null) ...[
             const SizedBox(width: 8),
             IconButton(
-              icon: const Icon(Icons.share_outlined, size: 20),
+              icon: const Icon(ChatIcons.share, size: 20),
               tooltip: 'Bagikan',
               color: scheme.onSurfaceVariant,
               visualDensity: VisualDensity.compact,
@@ -129,7 +130,24 @@ class _AudioFileCardState extends State<_AudioFileCard> {
 
   // Bilah waveform simulasi
   static const List<double> _waveformHeights = [
-    0.3, 0.6, 0.4, 0.8, 0.5, 0.9, 0.7, 0.4, 0.6, 0.85, 0.55, 0.75, 0.45, 0.9, 0.65, 0.35, 0.7, 0.5,
+    0.3,
+    0.6,
+    0.4,
+    0.8,
+    0.5,
+    0.9,
+    0.7,
+    0.4,
+    0.6,
+    0.85,
+    0.55,
+    0.75,
+    0.45,
+    0.9,
+    0.65,
+    0.35,
+    0.7,
+    0.5,
   ];
 
   @override
@@ -219,11 +237,15 @@ class _AudioFileCardState extends State<_AudioFileCard> {
                 : Icon(
                     widget.file.bytes == null
                         ? Icons.error_outline
-                        : (isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled),
+                        : (isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded),
                   ),
             iconSize: 32,
             color: scheme.primary,
-            onPressed: widget.file.bytes == null || _loading ? null : _togglePlayback,
+            onPressed: widget.file.bytes == null || _loading
+                ? null
+                : _togglePlayback,
           ),
           const SizedBox(width: 4),
           // Waveform bars
@@ -261,8 +283,8 @@ class _AudioFileCardState extends State<_AudioFileCard> {
                           (controller != null
                               ? _formatDuration(position)
                               : (widget.file.caption?.trim().isNotEmpty == true
-                                  ? widget.file.caption!
-                                  : 'Audio klip')),
+                                    ? widget.file.caption!
+                                    : 'Audio klip')),
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
                         fontSize: 11,

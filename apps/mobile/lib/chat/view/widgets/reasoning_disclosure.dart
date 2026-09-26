@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../chat_icons.dart';
+
 /// Widget pengungkapan penalaran (Reasoning / Thought Collapsible Disclosure).
 /// Menampilkan proses berpikir AI secara ringkas dan rapi tanpa mendominasi tampilan balasan.
 class ReasoningDisclosure extends StatefulWidget {
   final String thought;
 
-  const ReasoningDisclosure({
-    super.key,
-    required this.thought,
-  });
+  const ReasoningDisclosure({super.key, required this.thought});
 
   @override
   State<ReasoningDisclosure> createState() => _ReasoningDisclosureState();
@@ -62,7 +61,7 @@ class _ReasoningDisclosureState extends State<ReasoningDisclosure> {
                       ),
                     ),
                     Icon(
-                      _expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                      _expanded ? ChatIcons.collapse : ChatIcons.expand,
                       size: 18,
                       color: scheme.onSurfaceVariant,
                     ),

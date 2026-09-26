@@ -12,6 +12,8 @@ class Turn extends Equatable {
   final List<ReplyFile> files;
   final String thought;
   final List<ToolCallInfo> toolCalls;
+  final List<ReplySource> sources;
+  final bool isStreaming;
 
   const Turn({
     required this.role,
@@ -21,6 +23,8 @@ class Turn extends Equatable {
     this.files = const [],
     this.thought = '',
     this.toolCalls = const [],
+    this.sources = const [],
+    this.isStreaming = false,
   });
 
   @override
@@ -32,6 +36,8 @@ class Turn extends Equatable {
     files,
     thought,
     toolCalls,
+    sources,
+    isStreaming,
   ];
 }
 
@@ -40,11 +46,15 @@ class ChatState extends Equatable {
   final PublicAgent? agent;
   final List<Turn> turns;
   final bool isSending;
+  final ToolCallInfo? currentActivity;
+  final List<ToolCallInfo> toolActivities;
+  final String streamingText;
 
   /// Galat satu kali yang layak ditunjukkan, misalnya pesan gagal
   /// terkirim. Selalu dikosongkan pada giliran berikutnya supaya tidak
   /// menempel di layar.
   final String? errorMessage;
+  final bool canRetry;
 
   /// Id model yang bisa dipilih di provider aktif, dari
   /// `GET .../models`. Kosong berarti daftar belum dimuat (atau gagal
@@ -105,7 +115,11 @@ class ChatState extends Equatable {
     this.agent,
     this.turns = const [],
     this.isSending = false,
+    this.currentActivity,
+    this.toolActivities = const [],
+    this.streamingText = '',
     this.errorMessage,
+    this.canRetry = false,
     this.models = const [],
     this.isLoadingModels = false,
     this.modelsError,
@@ -139,8 +153,15 @@ class ChatState extends Equatable {
     PublicAgent? agent,
     List<Turn>? turns,
     bool? isSending,
+    ToolCallInfo? currentActivity,
+    bool clearCurrentActivity = false,
+    List<ToolCallInfo>? toolActivities,
+    bool clearToolActivities = false,
+    String? streamingText,
+    bool clearStreamingText = false,
     String? errorMessage,
     bool clearError = false,
+    bool? canRetry,
     List<String>? models,
     bool? isLoadingModels,
     String? modelsError,
@@ -169,7 +190,17 @@ class ChatState extends Equatable {
     agent: agent ?? this.agent,
     turns: turns ?? this.turns,
     isSending: isSending ?? this.isSending,
+    currentActivity: clearCurrentActivity
+        ? null
+        : (currentActivity ?? this.currentActivity),
+    toolActivities: clearToolActivities
+        ? const []
+        : (toolActivities ?? this.toolActivities),
+    streamingText: clearStreamingText
+        ? ''
+        : (streamingText ?? this.streamingText),
     errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    canRetry: canRetry ?? this.canRetry,
     models: models ?? this.models,
     isLoadingModels: isLoadingModels ?? this.isLoadingModels,
     modelsError: clearModelsError ? null : (modelsError ?? this.modelsError),
@@ -202,7 +233,11 @@ class ChatState extends Equatable {
     agent?.id,
     turns,
     isSending,
+    currentActivity,
+    toolActivities,
+    streamingText,
     errorMessage,
+    canRetry,
     models,
     isLoadingModels,
     modelsError,

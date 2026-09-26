@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../chat_icons.dart';
+
 /// Kartu tersendiri untuk blok kode berpagar (```) di balasan Agent,
 /// terpisah dari `code` inline (satu kata di antara backtick tunggal,
 /// yang tetap memakai gaya pil kecil dari `MarkdownStyleSheet.code` di
@@ -111,7 +113,7 @@ class _CodeBlockCard extends StatelessWidget {
                         );
                     },
                     tooltip: 'Salin kode',
-                    icon: const Icon(Icons.copy_outlined, size: 16),
+                    icon: const Icon(ChatIcons.copy, size: 16),
                     color: scheme.onSurfaceVariant,
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints(

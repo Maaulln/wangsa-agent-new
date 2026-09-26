@@ -6,10 +6,12 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../bloc/chat_bloc.dart';
+import 'chat_icons.dart';
 import 'widgets/code_block.dart';
 import 'widgets/reasoning_disclosure.dart';
 import 'widgets/reply_file_list.dart';
 import 'widgets/reply_image_gallery.dart';
+import 'widgets/source_chips.dart';
 import 'widgets/tool_call_card.dart';
 
 /// Giliran pengguna tetap gelembung (dipindahkan dari rancangan Yardan:
@@ -28,17 +30,21 @@ import 'widgets/tool_call_card.dart';
 class MessageBubble extends StatelessWidget {
   final Turn turn;
   final void Function(String text)? onSpeak;
+  final void Function(String text)? onFollowUp;
 
   const MessageBubble({
     super.key,
     required this.turn,
     this.onSpeak,
+    this.onFollowUp,
   });
 
   @override
   Widget build(BuildContext context) {
     final fromUser = turn.role == TurnRole.user;
-    return fromUser ? _UserBubble(turn: turn) : _AgentAnswer(turn: turn, onSpeak: onSpeak);
+    return fromUser
+        ? _UserBubble(turn: turn)
+        : _AgentAnswer(turn: turn, onSpeak: onSpeak, onFollowUp: onFollowUp);
   }
 }
 
@@ -84,20 +90,20 @@ class _UserBubble extends StatelessWidget {
           children: [
             if (turn.imageCount > 0)
               Padding(
-                padding: EdgeInsets.only(
-                  bottom: turn.content.isEmpty ? 0 : 6,
-                ),
+                padding: EdgeInsets.only(bottom: turn.content.isEmpty ? 0 : 6),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.image_outlined,
+                      ChatIcons.image,
                       size: 14,
                       color: scheme.onPrimary.withValues(alpha: 0.85),
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      turn.imageCount == 1 ? '1 gambar' : '${turn.imageCount} gambar',
+                      turn.imageCount == 1
+                          ? '1 gambar'
+                          : '${turn.imageCount} gambar',
                       style: TextStyle(
                         color: scheme.onPrimary.withValues(alpha: 0.85),
                         fontSize: 12,
@@ -124,8 +130,9 @@ class _UserBubble extends StatelessWidget {
 class _AgentAnswer extends StatelessWidget {
   final Turn turn;
   final void Function(String text)? onSpeak;
+  final void Function(String text)? onFollowUp;
 
-  const _AgentAnswer({required this.turn, this.onSpeak});
+  const _AgentAnswer({required this.turn, this.onSpeak, this.onFollowUp});
 
   @override
   Widget build(BuildContext context) {
@@ -142,8 +149,7 @@ class _AgentAnswer extends StatelessWidget {
             if (turn.thought.isNotEmpty)
               ReasoningDisclosure(thought: turn.thought),
             if (turn.toolCalls.isNotEmpty) ...[
-              for (final tc in turn.toolCalls)
-                ToolCallCard(toolCall: tc),
+              for (final tc in turn.toolCalls) ToolCallCard(toolCall: tc),
               const SizedBox(height: 4),
             ],
             if (turn.images.isNotEmpty) ...[
@@ -163,7 +169,9 @@ class _AgentAnswer extends StatelessWidget {
                       listBullet: baseStyle,
                       code: baseStyle.copyWith(
                         fontFamily: 'monospace',
-                        backgroundColor: scheme.onSurface.withValues(alpha: 0.1),
+                        backgroundColor: scheme.onSurface.withValues(
+                          alpha: 0.1,
+                        ),
                       ),
                       blockquote: baseStyle.copyWith(
                         color: scheme.onSurface.withValues(alpha: 0.75),
@@ -182,12 +190,17 @@ class _AgentAnswer extends StatelessWidget {
                       ),
                     ),
               ),
+            if (!turn.isStreaming && turn.content.isNotEmpty)
+              SourceChips(sources: turn.sources, response: turn.content),
             if (turn.files.isNotEmpty) ...[
               const SizedBox(height: 8),
               ReplyFileList(files: turn.files),
             ],
-            const SizedBox(height: 6),
-            _ActionRow(text: turn.content, onSpeak: onSpeak),
+            if (!turn.isStreaming && turn.content.trim().isNotEmpty) ...[
+              _FollowUpSuggestions(onSelected: onFollowUp),
+              const SizedBox(height: 6),
+              _ActionRow(text: turn.content, onSpeak: onSpeak),
+            ],
           ],
         ),
       ),
@@ -195,8 +208,39 @@ class _AgentAnswer extends StatelessWidget {
   }
 }
 
-/// Ikon aksi ala Claude/ChatGPT di bawah tiap balasan. Salin, Bagikan,
-/// dan Bacakan (TTS) berfungsi nyata dengan haptic feedback.
+class _FollowUpSuggestions extends StatelessWidget {
+  final void Function(String text)? onSelected;
+
+  const _FollowUpSuggestions({required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    if (onSelected == null) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    final suggestions = ['Jelaskan lebih lanjut', 'Buat ringkasan'];
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (final suggestion in suggestions)
+            ActionChip(
+              label: Text(suggestion),
+              onPressed: () => onSelected!(suggestion),
+              side: BorderSide(color: scheme.outlineVariant),
+              backgroundColor: scheme.surface,
+              labelStyle: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aksi balasan yang tersedia di aplikasi: salin, bacakan, dan bagikan.
 class _ActionRow extends StatelessWidget {
   final String text;
   final void Function(String text)? onSpeak;
@@ -211,7 +255,7 @@ class _ActionRow extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _ActionIcon(
-          icon: Icons.copy_outlined,
+          icon: ChatIcons.copy,
           tooltip: 'Salin',
           color: scheme.onSurfaceVariant,
           onTap: () async {
@@ -226,25 +270,7 @@ class _ActionRow extends StatelessWidget {
           },
         ),
         _ActionIcon(
-          icon: Icons.thumb_up_outlined,
-          tooltip: 'Suka',
-          color: scheme.onSurfaceVariant,
-          onTap: () {
-            unawaited(HapticFeedback.lightImpact());
-            _notAvailableYet(context, 'Umpan balik');
-          },
-        ),
-        _ActionIcon(
-          icon: Icons.thumb_down_outlined,
-          tooltip: 'Tidak suka',
-          color: scheme.onSurfaceVariant,
-          onTap: () {
-            unawaited(HapticFeedback.lightImpact());
-            _notAvailableYet(context, 'Umpan balik');
-          },
-        ),
-        _ActionIcon(
-          icon: Icons.volume_up_outlined,
+          icon: ChatIcons.readAloud,
           tooltip: 'Bacakan',
           color: scheme.onSurfaceVariant,
           onTap: () {
@@ -257,7 +283,7 @@ class _ActionRow extends StatelessWidget {
           },
         ),
         _ActionIcon(
-          icon: Icons.share_outlined,
+          icon: ChatIcons.share,
           tooltip: 'Bagikan',
           color: scheme.onSurfaceVariant,
           onTap: () {
@@ -296,8 +322,7 @@ class _ActionIcon extends StatelessWidget {
       icon: Icon(icon, size: 18),
       tooltip: tooltip,
       color: color,
-      visualDensity: VisualDensity.compact,
-      splashRadius: 18,
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
     );
   }
 }
