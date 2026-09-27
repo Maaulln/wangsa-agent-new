@@ -1,13 +1,17 @@
 """Profile-based routing for the gateway with hierarchical matching.
 
-Allows a single Wangsa instance to route specific Discord guilds/channels/threads
-to different profiles — each with their own model, tools, memory, and persona.
+Allows a single Wangsa instance to route messages from users, Discord
+guilds/channels/threads, and other platform scopes to different profiles —
+each with their own model, tools, memory, and persona.
 
 Matching priority (most specific first):
-  1. platform + chat_id + thread_id (exact thread)  — specificity 14
-  2. platform + chat_id (channel route)             — specificity 6
-  3. platform + guild_id (guild/server route)       — specificity 2
-  4. No match                                       → default profile
+  1. platform + user_id + chat_id + thread_id       — specificity 30
+  2. platform + user_id + chat_id                   — specificity 22
+  3. platform + user_id                             — specificity 16
+  4. platform + chat_id + thread_id (exact thread)  — specificity 14
+  5. platform + chat_id (channel route)             — specificity 6
+  6. platform + guild_id (guild/server route)       — specificity 2
+  7. No match                                       → default profile
 
 Parent-chain matching:
 For Discord threads and forum posts, ``parent_chat_id`` carries the
@@ -35,6 +39,12 @@ Configuration (config.yaml):
           chat_id: "YOUR_CHANNEL_ID"
           thread_id: "YOUR_THREAD_ID"
           profile: thread-profile
+
+        - name: private-user-in-group
+          platform: telegram
+          chat_id: "YOUR_GROUP_ID"
+          user_id: "SENDER_TELEGRAM_ID"
+          profile: personal-profile
 """
 
 from __future__ import annotations
@@ -61,6 +71,8 @@ class ProfileRoute:
     guild_id: Optional[str] = None
     chat_id: Optional[str] = None
     thread_id: Optional[str] = None
+    user_id: Optional[str] = None
+    user_id_alt: Optional[str] = None
     enabled: bool = True
 
     @property
@@ -73,6 +85,10 @@ class ProfileRoute:
             s += 4
         if self.thread_id:
             s += 8
+        if self.user_id:
+            s += 16
+        if self.user_id_alt:
+            s += 16
         return s
 
     def matches(
@@ -82,6 +98,8 @@ class ProfileRoute:
         chat_id: Optional[str] = None,
         thread_id: Optional[str] = None,
         parent_chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        user_id_alt: Optional[str] = None,
     ) -> bool:
         """Return True if this route matches the given source fields.
 
@@ -92,6 +110,10 @@ class ProfileRoute:
         - Thread in channel: parent_chat_id == route.chat_id
         A route declaring both ``guild_id`` and ``chat_id`` requires both to
         match (a chat match alone does not satisfy a guild constraint).
+        User IDs are exact sender identifiers supplied by the platform adapter.
+        If a route declares ``user_id`` or ``user_id_alt``, that identity must
+        match too. User-scoped routes outrank chat/thread routes, so a user can
+        keep a separate profile while messaging in a shared group.
         """
         if not self.enabled:
             return False
@@ -102,6 +124,10 @@ class ProfileRoute:
         if self.chat_id and self.chat_id != chat_id and self.chat_id != parent_chat_id:
             return False
         if self.guild_id and self.guild_id != guild_id:
+            return False
+        if self.user_id and self.user_id != user_id:
+            return False
+        if self.user_id_alt and self.user_id_alt != user_id_alt:
             return False
         return True
 
@@ -146,6 +172,8 @@ def parse_profile_routes(raw: Optional[List[Dict[str, Any]]]) -> List[ProfileRou
                 guild_id=entry.get("guild_id"),
                 chat_id=entry.get("chat_id"),
                 thread_id=entry.get("thread_id"),
+                user_id=entry.get("user_id"),
+                user_id_alt=entry.get("user_id_alt"),
                 enabled=entry.get("enabled", True),
             )
         )
@@ -162,9 +190,19 @@ def match_profile_route(
     chat_id: Optional[str] = None,
     thread_id: Optional[str] = None,
     parent_chat_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    user_id_alt: Optional[str] = None,
 ) -> Optional[ProfileRoute]:
     """Return the best-matching route, or None for no match."""
     for route in routes:
-        if route.matches(platform, guild_id=guild_id, chat_id=chat_id, thread_id=thread_id, parent_chat_id=parent_chat_id):
+        if route.matches(
+            platform,
+            guild_id=guild_id,
+            chat_id=chat_id,
+            thread_id=thread_id,
+            parent_chat_id=parent_chat_id,
+            user_id=user_id,
+            user_id_alt=user_id_alt,
+        ):
             return route
     return None

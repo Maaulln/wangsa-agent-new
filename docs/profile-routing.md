@@ -8,12 +8,15 @@
 
 By default a single gateway run uses one profile (memory, persona, tools). **Profile-based
 routing** lets one gateway instance serve **multiple isolated profiles**, selecting which
-profile handles an inbound message based on *where the message came from* — the platform,
-server (`guild_id`), channel (`chat_id`), and/or thread (`thread_id`).
+profile handles an inbound message based on *where the message came from* — the
+platform, sender (`user_id` or `user_id_alt`), server (`guild_id`), channel
+(`chat_id`), and/or thread (`thread_id`).
 
 This is the inbound counterpart to multiplexing: instead of running N gateways, run one
-gateway and route per-community / per-channel / per-thread to a dedicated profile. Each
-profile keeps fully isolated state (`MEMORY.md`, `USER.md`, `SOUL.md`, sessions, tools).
+gateway and route per-community / per-channel / per-thread / per-user to a
+dedicated profile. Each profile keeps fully isolated state (`MEMORY.md`,
+`USER.md`, `SOUL.md`, sessions, tools).
+User routes allow people sharing a group chat to use separate profiles and provider settings.
 
 Routing is **platform-generic**: it works for Discord, Telegram, Feishu, Slack, and every
 adapter — not just Discord.
@@ -52,6 +55,13 @@ profile_routes:
     chat_id: "9876543210"
     thread_id: "1111111111"
     profile: standup
+
+  # Keep one sender in a shared Telegram group on their own profile.
+  - name: personal-user
+    platform: telegram
+    chat_id: "-1001234567890"
+    user_id: "123456789"
+    profile: personal
 ```
 
 ### Fields
@@ -64,6 +74,8 @@ profile_routes:
 | `guild_id` | no | Server/guild (Discord). |
 | `chat_id` | no | Channel/group/DM id. |
 | `thread_id` | no | Thread id within a channel. |
+| `user_id` | no | Platform sender ID, for example a Telegram numeric ID or Discord user ID. |
+| `user_id_alt` | no | Stable platform-specific sender ID when the adapter provides one (for example Signal UUID or Feishu union ID). |
 | `enabled` | no | Default `true`; set `false` to disable a route without removing it. |
 
 ## Matching rules
@@ -76,6 +88,8 @@ A route matches an inbound source when **every discriminator the route declares 
 - **`chat_id`** (if set) must match the source channel **or** its parent — a thread in a
   channel matches the channel's route (hierarchical match for Discord forums/threads).
 - **`guild_id`** (if set) must equal the source guild.
+- **`user_id`** (if set) must equal the source sender ID.
+- **`user_id_alt`** (if set) must equal the source's stable alternate sender ID.
 
 > A route declaring **both** `guild_id` and `chat_id` requires both to hold. A channel match
 > alone does not satisfy a guild constraint — this is intentional and tested.
@@ -84,12 +98,15 @@ When multiple routes match, the **most specific** one wins. Specificity is addit
 
 | Discriminator | Weight |
 |---|---|
+| `user_id` / `user_id_alt` | 16 each |
 | `thread_id` | 8 |
 | `chat_id` | 4 |
 | `guild_id` | 2 |
 | (platform only) | 0 |
 
-So a thread route (8) beats a channel route (4) beats a guild route (2) within the same server.
+So a sender route outranks a thread route, which outranks a channel route,
+which outranks a guild route. A sender+chat route outranks a sender-only route.
+When both user ID fields are set, both must match.
 If no route matches, the message uses the default/active profile.
 
 ## How it works at runtime
