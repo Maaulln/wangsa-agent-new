@@ -308,6 +308,58 @@ class TestAdapterToSessionKeyIntegration:
         # A default-profile key would land in agent:main — must differ.
         assert key != build_session_key(source, profile=None)
 
+    def test_two_users_in_one_group_route_to_isolated_profiles(self, mock_runner):
+        """Different Telegram senders in one shared group get separate profiles."""
+        mock_runner.config.multiplex_profiles = True
+        mock_runner.config.profile_routes = [
+            ProfileRoute(
+                name="teacher-user",
+                platform="telegram",
+                chat_id="class-group",
+                user_id="user-1",
+                profile="dosen-1",
+            ),
+            ProfileRoute(
+                name="student-user",
+                platform="telegram",
+                chat_id="class-group",
+                user_id="user-2",
+                profile="mahasiswa",
+            ),
+        ]
+        adapter = _stub_adapter(Platform.TELEGRAM, mock_runner)
+
+        with patch(
+            "wangsa_cli.profiles.profiles_to_serve",
+            return_value=[
+                ("default", Path("/profiles/default")),
+                ("dosen-1", Path("/profiles/dosen-1")),
+                ("mahasiswa", Path("/profiles/mahasiswa")),
+            ],
+        ):
+            teacher = adapter.build_source(
+                chat_id="class-group",
+                chat_type="group",
+                user_id="user-1",
+            )
+            student = adapter.build_source(
+                chat_id="class-group",
+                chat_type="group",
+                user_id="user-2",
+            )
+
+        assert teacher.profile == "dosen-1"
+        assert student.profile == "mahasiswa"
+        assert build_session_key(teacher, profile=teacher.profile).startswith(
+            "agent:dosen-1:"
+        )
+        assert build_session_key(student, profile=student.profile).startswith(
+            "agent:mahasiswa:"
+        )
+        assert build_session_key(teacher, profile=teacher.profile) != build_session_key(
+            student, profile=student.profile
+        )
+
     @pytest.mark.asyncio
     async def test_adapter_drops_rejected_route_before_dispatch(self, mock_runner):
         mock_runner.config.multiplex_profile_allowlist = []
@@ -385,5 +437,4 @@ class TestMultiplexGate:
         discord_source.profile = None
 
         assert mock_runner._profile_name_for_source(discord_source) is None
-
 
