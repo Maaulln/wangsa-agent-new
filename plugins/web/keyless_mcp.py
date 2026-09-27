@@ -56,11 +56,26 @@ _RATE_LIMIT_MARKERS = (
     "slow down",
 )
 
+_ACCESS_DENIAL_MARKERS = (
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "permission denied",
+    "access denied",
+)
+
 
 def _is_rate_limitish(message: str) -> bool:
     """Heuristic: does an error message look like free-tier throttling?"""
     lowered = (message or "").lower()
     return any(marker in lowered for marker in _RATE_LIMIT_MARKERS)
+
+
+def _is_access_deniedish(message: str) -> bool:
+    """Whether a provider rejected anonymous access with an auth/permission error."""
+    lowered = (message or "").lower()
+    return any(marker in lowered for marker in _ACCESS_DENIAL_MARKERS)
 
 
 def keyless_enabled() -> bool:
@@ -806,10 +821,16 @@ def search_with_failover(name: str, query: str, limit: int = 5) -> Dict[str, Any
     """Keyless search across the vendor ring with next-in-line failover.
 
     Starts at *name* when the user pinned it, otherwise at the round-robin
-    cursor. Rate-limit-shaped errors advance to the next ring vendor;
-    non-throttle errors stop the walk (a malformed query fails everywhere).
-    The result notes the serving vendor via ``data.served_by`` whenever it
-    differs from *name*.
+    cursor. Rate-limit errors advance to the next ring vendor. For an
+    automatically selected provider, auth/permission errors also advance:
+    anonymous endpoints can reject access independently, while another
+    provider in the ring may still serve the request. Empty successful
+    responses also advance in automatic mode so a weak provider result does
+    not prevent a useful result from another provider. Explicitly pinned
+    providers keep strict selection for access-denial and empty-result
+    responses. Other errors stop the walk (for example, a malformed query
+    would fail everywhere). The result notes the serving vendor via
+    ``data.served_by`` whenever it differs from *name*.
     """
     order = _ring_order(name)
     if not order:
@@ -818,24 +839,43 @@ def search_with_failover(name: str, query: str, limit: int = 5) -> Dict[str, Any
             "error": "All keyless web providers are pinned to paid tiers.",
         }
     last: Dict[str, Any] = {}
+    failure_kinds = set()
     for i, vendor in enumerate(order):
         result = _KEYLESS_SEARCHERS[vendor](query, limit)
         if result.get("success"):
-            if vendor != name:
-                result.setdefault("data", {})["served_by"] = vendor
-            return result
+            web_results = (result.get("data") or {}).get("web") or []
+            if web_results or _vendor_pinned(name):
+                if vendor != name:
+                    result.setdefault("data", {})["served_by"] = vendor
+                return result
+            failure_kinds.add("empty results")
+            nxt = order[i + 1] if i + 1 < len(order) else None
+            if not nxt:
+                if vendor != name:
+                    result.setdefault("data", {})["served_by"] = vendor
+                return result
+            logger.info(
+                "keyless %s search returned no results; trying %s", vendor, nxt
+            )
+            continue
         last = result
-        if not _is_rate_limitish(result.get("error", "")):
+        error = result.get("error", "")
+        is_throttled = _is_rate_limitish(error)
+        is_unpinned_access_denial = (
+            not _vendor_pinned(name) and _is_access_deniedish(error)
+        )
+        if not is_throttled and not is_unpinned_access_denial:
             return result
+        failure_kinds.add("throttled" if is_throttled else "access denied")
         nxt = order[i + 1] if i + 1 < len(order) else None
         if nxt:
-            logger.info(
-                "keyless %s search throttled; failing over to %s", vendor, nxt
-            )
-    last["error"] = (
-        f"{last.get('error', '')} (all keyless vendors throttled: "
-        f"{', '.join(order)})"
-    )
+            reason = "throttled" if is_throttled else "access denied"
+            logger.info("keyless %s search %s; failing over to %s", vendor, reason, nxt)
+    if failure_kinds == {"throttled"}:
+        summary = "all keyless vendors throttled"
+    else:
+        summary = "all keyless vendors unavailable or throttled"
+    last["error"] = f"{last.get('error', '')} ({summary}: {', '.join(order)})"
     return last
 
 

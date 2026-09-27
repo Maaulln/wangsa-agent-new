@@ -449,6 +449,65 @@ class TestKeylessFailover:
         assert out["success"] is True
         assert out["data"]["served_by"] == "parallel"
 
+    def test_unpinned_search_fails_over_on_provider_access_denial(self, monkeypatch):
+        monkeypatch.setattr(keyless_mcp, "_vendor_pinned", lambda name: False)
+        monkeypatch.setattr(keyless_mcp, "_ring_cursor", 3)  # Firecrawl first
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "firecrawl",
+            lambda q, l: {
+                "success": False,
+                "error": "Keyless Firecrawl search failed: Client error '403 Forbidden'",
+            },
+        )
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "keenable",
+            lambda q, l: self._ok("keenable"),
+        )
+
+        out = keyless_mcp.search_with_failover("firecrawl", "q", 3)
+
+        assert out["success"] is True
+        assert out["data"]["served_by"] == "keenable"
+
+    def test_pinned_search_does_not_fail_over_on_provider_access_denial(self, monkeypatch):
+        self._pin(monkeypatch, "firecrawl")
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "firecrawl",
+            lambda q, l: {"success": False, "error": "HTTP 403 Forbidden"},
+        )
+        called = []
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "keenable",
+            lambda q, l: called.append(1) or self._ok("keenable"),
+        )
+
+        out = keyless_mcp.search_with_failover("firecrawl", "q")
+
+        assert out["success"] is False
+        assert not called
+
+    def test_unpinned_search_fails_over_when_provider_returns_no_results(self, monkeypatch):
+        monkeypatch.setattr(keyless_mcp, "_vendor_pinned", lambda name: False)
+        monkeypatch.setattr(keyless_mcp, "_ring_cursor", 3)  # Firecrawl first
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "firecrawl",
+            lambda q, l: {"success": True, "data": {"web": []}},
+        )
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "keenable",
+            lambda q, l: {"success": True, "data": {"web": []}},
+        )
+        monkeypatch.setitem(
+            keyless_mcp._KEYLESS_SEARCHERS, "exa",
+            lambda q, l: self._ok("exa"),
+        )
+
+        out = keyless_mcp.search_with_failover("firecrawl", "q", 3)
+
+        assert out["success"] is True
+        assert out["data"]["served_by"] == "exa"
+        assert out["data"]["web"]
+
     def test_search_no_failover_on_non_throttle_error(self, monkeypatch):
         self._pin(monkeypatch, "exa")
         monkeypatch.setitem(
