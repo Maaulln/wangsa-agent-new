@@ -110,7 +110,7 @@ void main() {
   });
 
   group('WangsaApiClient.sendMessage', () {
-    test('mengirim pesan sebagai JSON ke endpoint pesan', () async {
+    test('mengirim JSON ke endpoint stream pesan', () async {
       late http.Request terkirim;
       final client = WangsaApiClient(
         baseUrl: 'https://api.wangsa.test',
@@ -130,8 +130,9 @@ void main() {
       final result = await client.sendMessage('agent-1', 'Halo');
 
       expect(terkirim.method, 'POST');
-      expect(terkirim.url.path, '/api/v1/agents/agent-1/messages');
+      expect(terkirim.url.path, '/api/v1/agents/agent-1/messages/stream');
       expect(terkirim.headers['content-type'], contains('application/json'));
+      expect(terkirim.headers['accept'], contains('text/event-stream'));
       expect(jsonDecode(terkirim.body), {'message': 'Halo', 'toolsets': []});
       expect(result.dataOrNull?.response, 'Halo juga');
     });
@@ -298,6 +299,39 @@ void main() {
 
         expect(result.isSuccess, isFalse);
         expect(result.errorOrNull?.code, 'RUNTIME_ERROR');
+      },
+    );
+
+    test(
+      'event done menyelesaikan balasan tanpa menunggu koneksi ditutup',
+      () async {
+        final cancelled = Completer<void>();
+        final stream = StreamController<List<int>>(
+          onCancel: cancelled.complete,
+        );
+        addTearDown(() async {
+          if (!stream.isClosed) await stream.close();
+        });
+        final doneEvent =
+            'event: done\ndata: ${jsonEncode({'response': 'Siap'})}\n\n';
+        final client = WangsaApiClient(
+          baseUrl: 'https://api.wangsa.test',
+          replyTimeout: const Duration(seconds: 1),
+          httpClient: _StreamingMockClient((request) async {
+            stream.add(utf8.encode(doneEvent));
+            return http.StreamedResponse(
+              stream.stream,
+              200,
+              headers: {'content-type': 'text/event-stream'},
+            );
+          }),
+        );
+
+        final resultFuture = client.sendMessage('agent-1', 'hi');
+        await cancelled.future.timeout(const Duration(milliseconds: 250));
+        final result = await resultFuture;
+
+        expect(result.dataOrNull?.response, 'Siap');
       },
     );
 
@@ -667,4 +701,18 @@ void main() {
 
 class SocketExceptionStub implements Exception {
   const SocketExceptionStub();
+}
+
+class _StreamingMockClient extends http.BaseClient {
+  final Future<http.StreamedResponse> Function(http.BaseRequest request)
+  respond;
+
+  _StreamingMockClient(this.respond);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      respond(request);
+
+  @override
+  void close() {}
 }

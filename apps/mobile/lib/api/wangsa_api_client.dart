@@ -449,7 +449,9 @@ class WangsaApiClient {
       final response = await _httpClient.send(request).timeout(replyTimeout);
       final contentType = response.headers['content-type'] ?? '';
       if (!contentType.contains('text/event-stream')) {
-        final text = await response.stream.bytesToString();
+        final text = await response.stream.bytesToString().timeout(
+          replyTimeout,
+        );
         try {
           return ApiResult.fromEnvelope<AgentReply>(
             jsonDecode(text),
@@ -500,21 +502,35 @@ class WangsaApiClient {
         eventData.clear();
       }
 
-      await response.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .forEach((line) {
-            if (line.isEmpty) {
-              dispatchEvent();
-            } else if (line.startsWith('event:')) {
-              eventName = line.substring(6).trim();
-            } else if (line.startsWith('data:')) {
-              if (eventData.isNotEmpty) eventData.write('\n');
-              eventData.write(line.substring(5).trimLeft());
-            }
-          })
-          .timeout(replyTimeout);
-      dispatchEvent();
+      final deadline = DateTime.now().add(replyTimeout);
+      final lines = StreamIterator<String>(
+        response.stream.transform(utf8.decoder).transform(const LineSplitter()),
+      );
+      try {
+        while (true) {
+          final remaining = deadline.difference(DateTime.now());
+          if (remaining <= Duration.zero) {
+            throw TimeoutException('Agent reply timed out.');
+          }
+          if (!await lines.moveNext().timeout(remaining)) break;
+          final line = lines.current;
+          if (line.isEmpty) {
+            dispatchEvent();
+          } else if (line.startsWith('event:')) {
+            eventName = line.substring(6).trim();
+          } else if (line.startsWith('data:')) {
+            if (eventData.isNotEmpty) eventData.write('\n');
+            eventData.write(line.substring(5).trimLeft());
+          }
+          // `done` and `error` are terminal protocol events. Cancel the
+          // response subscription now instead of waiting for the server to
+          // close a keep-alive SSE connection before updating the chat UI.
+          if (result != null) break;
+        }
+        dispatchEvent();
+      } finally {
+        await lines.cancel();
+      }
       return result ?? ApiResult.runtimeError('Aliran balasan terputus.');
     } on TimeoutException {
       return ApiResult.runtimeError('Wangsa belum membalas. Coba lagi.');
