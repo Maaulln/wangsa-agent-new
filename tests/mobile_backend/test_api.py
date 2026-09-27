@@ -83,6 +83,60 @@ def test_two_accounts_cannot_access_each_others_jobs_or_provider(app):
     )
 
 
+def test_mobile_teacher_and_student_accounts_are_tenant_isolated(app):
+    """Mobile API keeps provider settings and jobs private to each account."""
+    client = TestClient(app)
+    teacher = account(client, "user-1")
+    student = account(client, "user-2")
+    teacher_id = teacher["user"]["id"]
+    student_id = student["user"]["id"]
+    teacher_key = "sk-teacher-private-key-123456"
+    student_key = "sk-student-private-key-123456"
+
+    for user, model, api_key in (
+        (teacher, "teacher-model", teacher_key),
+        (student, "student-model", student_key),
+    ):
+        response = client.put(
+            PREFIX + "/provider",
+            headers=headers(user),
+            json={"provider": "openai", "model": model, "api_key": api_key},
+        )
+        assert response.status_code == 200, response.text
+        assert api_key not in response.text
+
+    teacher_job = job(client, teacher, "teacher-job-key").json()["data"]
+    student_job = job(client, student, "student-job-key").json()["data"]
+
+    teacher_jobs = client.get(PREFIX + "/jobs", headers=headers(teacher)).json()[
+        "data"
+    ]
+    student_jobs = client.get(PREFIX + "/jobs", headers=headers(student)).json()[
+        "data"
+    ]
+    assert [item["id"] for item in teacher_jobs] == [teacher_job["id"]]
+    assert [item["id"] for item in student_jobs] == [student_job["id"]]
+
+    teacher_provider = client.get(
+        PREFIX + "/provider", headers=headers(teacher)
+    ).json()["data"]
+    student_provider = client.get(
+        PREFIX + "/provider", headers=headers(student)
+    ).json()["data"]
+    assert teacher_provider["model"] == "teacher-model"
+    assert student_provider["model"] == "student-model"
+    assert teacher_key not in str(teacher_provider)
+    assert student_key not in str(student_provider)
+    assert app.state.store.provider_api_key(teacher_id, "openai") == teacher_key
+    assert app.state.store.provider_api_key(student_id, "openai") == student_key
+
+    for user, foreign_job in ((teacher, student_job), (student, teacher_job)):
+        denied = client.get(
+            PREFIX + "/jobs/" + foreign_job["id"], headers=headers(user)
+        )
+        assert denied.status_code == 404
+
+
 def test_authenticated_provider_catalog_uses_supported_keyed_transports(app):
     client = TestClient(app)
     user = account(client, "alice")
