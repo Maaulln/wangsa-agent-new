@@ -413,7 +413,7 @@ class TestWebSearchSchema:
 
         assert limit_schema["type"] == "integer"
         assert limit_schema["minimum"] == 1
-        assert limit_schema["maximum"] == 100
+        assert limit_schema["maximum"] == 5
         assert limit_schema["default"] == 5
         assert "limit" not in tools.web_tools.WEB_SEARCH_SCHEMA["parameters"]["required"]
 
@@ -442,7 +442,45 @@ class TestWebSearchSchema:
             result = json.loads(tools.web_tools.web_search_tool("docs", limit=500))
 
         assert result == {"success": True, "data": {"web": []}}
-        fake_search.assert_called_once_with("docs", 100)
+        fake_search.assert_called_once_with("docs", 5)
+
+    def test_search_bounds_result_count_and_snippet_size(self):
+        import tools.web_tools
+
+        fake_search = MagicMock(
+            return_value={
+                "success": True,
+                "data": {
+                    "web": [
+                        {
+                            "title": f"Result {index}",
+                            "url": f"https://example.com/{index}",
+                            "description": "x" * 1000,
+                            "position": index,
+                        }
+                        for index in range(8)
+                    ]
+                },
+            }
+        )
+        fake_provider = MagicMock(
+            name="ParallelWebSearchProvider",
+            supports_search=MagicMock(return_value=True),
+        )
+        fake_provider.search = fake_search
+
+        with patch("tools.web_tools._get_search_backend", return_value="parallel"), \
+             patch("agent.web_search_registry.get_provider", return_value=fake_provider), \
+             patch("tools.interrupt.is_interrupted", return_value=False), \
+             patch.object(tools.web_tools._debug, "log_call"), \
+             patch.object(tools.web_tools._debug, "save"):
+            raw = tools.web_tools.web_search_tool("docs", limit=100)
+
+        result = json.loads(raw)
+        results = result["data"]["web"]
+        assert len(results) == 5
+        assert all(len(item["description"]) == 500 for item in results)
+        assert raw == json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
 
 class TestWebSearchErrorHandling:

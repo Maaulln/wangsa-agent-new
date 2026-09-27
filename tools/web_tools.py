@@ -847,7 +847,7 @@ def web_search_tool(query: str, limit: int = 5) -> str:
     
     Args:
         query (str): The search query to look up
-        limit (int): Maximum number of results to return (default: 5)
+        limit (int): Maximum number of results to return (maximum: 5)
     
     Returns:
         str: JSON string containing search results with the following structure:
@@ -873,7 +873,7 @@ def web_search_tool(query: str, limit: int = 5) -> str:
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 5
-    limit = min(max(limit, 1), 100)
+    limit = min(max(limit, 1), _WEB_SEARCH_MAX_RESULTS)
 
     debug_call_data = {
         "parameters": {
@@ -988,8 +988,31 @@ def web_search_tool(query: str, limit: int = 5) -> str:
                         limit,
                     )
 
+        # Search descriptions are untrusted remote content and can vary wildly
+        # by provider. Keep the useful title/URL/snippet for each result, while
+        # bounding the content carried into the next model request. Compact
+        # JSON avoids spending tokens on indentation and repeated whitespace.
+        if isinstance(response_data, dict):
+            data = response_data.get("data")
+            if isinstance(data, dict) and isinstance(data.get("web"), list):
+                bounded_data = dict(data)
+                bounded_results = []
+                for item in data["web"][:limit]:
+                    if not isinstance(item, dict):
+                        continue
+                    bounded_item = dict(item)
+                    description = bounded_item.get("description")
+                    if isinstance(description, str) and len(description) > _WEB_SEARCH_SNIPPET_MAX_CHARS:
+                        bounded_item["description"] = (
+                            description[:_WEB_SEARCH_SNIPPET_MAX_CHARS - 1].rstrip() + "…"
+                        )
+                    bounded_results.append(bounded_item)
+                bounded_data["web"] = bounded_results
+                response_data = {**response_data, "data": bounded_data}
         debug_call_data["results_count"] = len(response_data.get("data", {}).get("web", []))
-        result_json = json.dumps(response_data, indent=2, ensure_ascii=False)
+        result_json = json.dumps(
+            response_data, ensure_ascii=False, separators=(",", ":")
+        )
         debug_call_data["final_response_size"] = len(result_json)
         _debug.log_call("web_search_tool", debug_call_data)
         _debug.save()
@@ -1529,9 +1552,12 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 from tools.registry import registry, tool_error
 
+_WEB_SEARCH_MAX_RESULTS = 5
+_WEB_SEARCH_SNIPPET_MAX_CHARS = 500
+
 WEB_SEARCH_SCHEMA = {
     "name": "web_search",
-    "description": "Search the web for information. Returns up to 5 results by default with titles, URLs, and descriptions. The query is passed through to the configured backend, so operators such as site:domain, filetype:pdf, intitle:word, -term, and \"exact phrase\" may work when the backend supports them.",
+    "description": "Search the web for information. Returns up to 5 results with titles, URLs, and concise descriptions. For deeper research, search again with a refined query or use web_extract on relevant URLs. The query is passed through to the configured backend, so operators such as site:domain, filetype:pdf, intitle:word, -term, and \"exact phrase\" may work when the backend supports them.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -1541,9 +1567,9 @@ WEB_SEARCH_SCHEMA = {
             },
             "limit": {
                 "type": "integer",
-                "description": "Maximum number of results to return. Defaults to 5.",
+                "description": "Maximum number of results to return (up to 5). Defaults to 5.",
                 "minimum": 1,
-                "maximum": 100,
+                "maximum": _WEB_SEARCH_MAX_RESULTS,
                 "default": 5
             }
         },
