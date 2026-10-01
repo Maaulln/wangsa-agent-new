@@ -557,15 +557,53 @@ void main() {
         }),
       );
 
-      final result = await client.signup('Budi');
+      final result = await client.signup('Budi', 'rahasia123');
 
       expect(
         terkirim.url.toString(),
         'https://api.wangsa.test/api/v1/auth/signup',
       );
-      expect(jsonDecode(terkirim.body), {'username': 'budi'});
+      expect(jsonDecode(terkirim.body), {
+        'username': 'budi',
+        'password': 'rahasia123',
+      });
       expect(result.dataOrNull?.profile, 'budi');
       expect(result.dataOrNull?.token, 'tok-123');
+    });
+
+    test('login memanggil endpoint publik dan mengembalikan token', () async {
+      late http.Request terkirim;
+      final client = WangsaApiClient(
+        baseUrl: 'https://api.wangsa.test',
+        httpClient: MockClient((request) async {
+          terkirim = request;
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'profile': 'budi',
+                'token': 'tok-456',
+                'configured': true,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      final result = await client.login('Budi', 'rahasia123');
+
+      expect(
+        terkirim.url.toString(),
+        'https://api.wangsa.test/api/v1/auth/login',
+      );
+      expect(jsonDecode(terkirim.body), {
+        'username': 'budi',
+        'password': 'rahasia123',
+      });
+      expect(result.dataOrNull?.profile, 'budi');
+      expect(result.dataOrNull?.token, 'tok-456');
     });
 
     test('getMe mengirim Authorization Bearer', () async {

@@ -22,15 +22,20 @@ abstract final class WangsaColors {
   static const danger = Color(0xFFDC2626);
   static const dangerSubtle = Color(0xFFFEF2F2);
 
-  // Dark theme
-  static const backgroundDark = Color(0xFF09090B);
-  static const surfaceDark = Color(0xFF18181B);
-  static const surfaceMutedDark = Color(0xFF27272A);
+  // Dark theme — diselaraskan dengan palet lokal ChatPage/SignupPage
+  // (`_ChatDark`/`_AuthDark`) supaya seluruh aplikasi terasa satu produk:
+  // hitam pekat solid, bukan abu-abu Material default. Halaman lain
+  // (Settings/Profile/AgentBuilder) memakai `Theme.of(context)` biasa,
+  // jadi menyamakan token di sini otomatis menyelaraskan semuanya tanpa
+  // menyentuh tiap halaman satu per satu.
+  static const backgroundDark = Color(0xFF000000);
+  static const surfaceDark = Color(0xFF1C1C1E);
+  static const surfaceMutedDark = Color(0xFF2A2A2A);
   static const foregroundDark = Color(0xFFFAFAFA);
-  static const foregroundMutedDark = Color(0xFFA1A1AA);
-  static const borderDark = Color(0xFF27272A);
+  static const foregroundMutedDark = Color(0xFF8E8E93);
+  static const borderDark = Color(0xFF2C2C2E);
 
-  static const primaryDark = Color(0xFF818CF8);
+  static const primaryDark = Color(0xFF0A84FF);
   static const primarySubtleDark = Color(0xFF1E1B4B);
   static const primaryMutedDark = Color(0xFFC7D2FE);
 }

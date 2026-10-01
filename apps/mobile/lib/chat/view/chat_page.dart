@@ -2,7 +2,6 @@ import "../../api/wangsa_api_client.dart";
 import "../../auth/mobile_auth_controller.dart";
 import "../../settings/view/provider_setup_page.dart";
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +23,22 @@ import 'message_bubble.dart';
 import 'widgets/chat_notice.dart';
 import 'widgets/thinking_indicator.dart';
 import 'widgets/voice_orb.dart';
+
+/// Palet gelap lokal khusus tampilan ChatPage (header + composer), meniru
+/// referensi desain Figma "ChatGPT UI Kit" (node 676:2547). Sengaja TIDAK
+/// menyentuh `WangsaTheme` global — halaman lain tetap ikut mode
+/// terang/gelap sistem seperti biasa; hanya kartu chat ini yang selalu
+/// gelap solid, sesuai keputusan pengguna saat sesi ini.
+abstract final class _ChatDark {
+  static const bg = Color(0xFF000000);
+  static const pill = Color(0xFF1C1C1E);
+  static const pillActive = Color(0xFF3A3A3C);
+  static const iconCircle = Color(0xFF2A2A2A);
+  static const composer = Color(0xFF1C1C1E);
+  static const hint = Color(0xFF8E8E93);
+  static const accent = Color(0xFF0A84FF);
+  static const border = Color(0xFF2C2C2E);
+}
 
 /// Satu gambar yang menunggu dikirim — sudah dibaca ke memori supaya
 /// pengiriman tidak menyentuh kanal platform lagi.
@@ -533,6 +548,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       builder: (context, state) {
         return Scaffold(
           key: _scaffoldKey,
+          backgroundColor: _ChatDark.bg,
           drawer: _drawer(context, state),
           body: SafeArea(
             child: Stack(
@@ -553,30 +569,139 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Widget _header(BuildContext context, ChatState state) {
-    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       child: Row(
         children: [
-          IconButton(
+          _circleIconButton(
+            icon: ChatIcons.menu,
+            tooltip: 'Menu',
+            showBadge: true,
             onPressed: () {
               context.read<ChatBloc>().add(const SessionsRequested());
               _scaffoldKey.currentState?.openDrawer();
             },
-            tooltip: 'Menu',
-            icon: const Icon(ChatIcons.menu, size: 22),
-            color: scheme.onSurfaceVariant,
           ),
           const Spacer(),
-          IconButton(
+          _chatWorkSwitch(context),
+          const Spacer(),
+          _circleIconButton(
+            icon: Icons.loop_rounded,
+            tooltip: 'Percakapan baru',
             onPressed: state.status == ChatStatus.ready
                 ? () => _startNewConversation(context)
                 : null,
-            tooltip: 'Percakapan baru',
-            icon: const Icon(ChatIcons.newChat, size: 22),
-            color: scheme.onSurfaceVariant,
           ),
         ],
+      ),
+    );
+  }
+
+  /// Tombol bulat gelap dipakai di header — dua-duanya identik secara
+  /// visual (bg abu gelap `_ChatDark.iconCircle`), hanya ikon & aksi
+  /// yang beda. Dipisah jadi helper supaya header tetap ringkas dibaca.
+  /// [showBadge] menambahkan titik biru kecil di pojok kanan-atas, dipakai
+  /// tombol menu sebagai penanda ada sesi/notifikasi baru di drawer.
+  Widget _circleIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+    bool showBadge = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onPressed,
+        radius: 24,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: _ChatDark.iconCircle,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: onPressed == null
+                    ? _ChatDark.hint.withValues(alpha: 0.5)
+                    : Colors.white,
+              ),
+            ),
+            if (showBadge)
+              Positioned(
+                right: -1,
+                top: -1,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: const BoxDecoration(
+                    color: _ChatDark.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Segmen pil "Chat" / "Work" di tengah header. "Work" belum punya
+  /// ruang kerja sendiri — ketuk hanya menampilkan pemberitahuan,
+  /// selalu kembali ke "Chat" yang aktif.
+  Widget _chatWorkSwitch(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _ChatDark.pill,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _switchSegment(label: 'Chat', selected: true, onTap: null),
+          _switchSegment(
+            label: 'Work',
+            selected: false,
+            onTap: () {
+              ScaffoldMessenger.of(context)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  const SnackBar(content: Text('Ruang kerja Work segera hadir.')),
+                );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _switchSegment({
+    required String label,
+    required bool selected,
+    required VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? _ChatDark.pillActive : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : _ChatDark.hint,
+            fontSize: 14,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
       ),
     );
   }
@@ -622,12 +747,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Widget _drawer(BuildContext context, ChatState state) {
-    final scheme = Theme.of(context).colorScheme;
     const bottomBarHeight = 72.0;
     final sessionGroups = _groupSessions(state.sessions);
+    final recentSessions = state.sessions.take(5).toList();
+    final hasMore = state.sessions.length > recentSessions.length;
 
     return Drawer(
-      backgroundColor: scheme.surface,
+      backgroundColor: _ChatDark.bg,
       child: SafeArea(
         child: Stack(
           children: [
@@ -640,6 +766,31 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   bottomBarHeight + 12,
                 ),
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 8, 12),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Wangsa',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: 'Cari percakapan',
+                          icon: const Icon(Icons.search_rounded),
+                          color: Colors.white,
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _openSessionSearch(context, state);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                   _drawerRow(
                     context,
                     ChatIcons.newChat,
@@ -651,7 +802,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           }
                         : null,
                   ),
-                  const Divider(height: 16),
                   _drawerRow(
                     context,
                     Icons.auto_awesome_outlined,
@@ -665,24 +815,49 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       );
                     },
                   ),
-                  const Divider(height: 16),
+                  _modelDrawerRow(context, state),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Divider(height: 1, color: _ChatDark.border),
+                  ),
                   if (state.isLoadingSessions) ...[
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ] else if (state.sessions.isEmpty) ...[
                     _drawerSectionHeader(context, 'Riwayat Percakapan'),
                     _drawerEmptyNote(context, 'Belum ada riwayat percakapan'),
                   ] else ...[
-                    for (final entry in sessionGroups.entries)
-                      if (entry.value.isNotEmpty) ...[
-                        _drawerSectionHeader(context, entry.key),
-                        for (final session in entry.value)
-                          _sessionRow(context, state, session),
-                      ],
+                    for (final session in recentSessions)
+                      _sessionRow(context, state, session),
+                    if (hasMore)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            _openAllSessions(context, state, sessionGroups);
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              'Lihat semua...',
+                              style: TextStyle(
+                                color: _ChatDark.hint,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -699,8 +874,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        scheme.surface.withValues(alpha: 0),
-                        scheme.surface,
+                        _ChatDark.bg.withValues(alpha: 0),
+                        _ChatDark.bg,
                       ],
                     ),
                   ),
@@ -713,57 +888,66 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               bottom: 0,
               height: bottomBarHeight,
               child: ColoredBox(
-                color: scheme.surface,
+                color: _ChatDark.bg,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                   child: Row(
                     children: [
                       Expanded(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(24),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => ProfilePage(
-                                  agent: state.agent,
-                                  userProfile: widget.userProfile,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundColor: scheme.primaryContainer,
-                                child: Icon(
-                                  Icons.person_outline,
-                                  size: 20,
-                                  color: scheme.onPrimaryContainer,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Profil',
-                                style: TextStyle(
-                                  color: scheme.onSurface,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
+                        child: SizedBox(
+                          height: 44,
+                          child: FilledButton.icon(
+                            onPressed: state.status == ChatStatus.ready
+                                ? () {
+                                    Navigator.of(context).pop();
+                                    _startNewConversation(context);
+                                  }
+                                : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _ChatDark.accent,
+                              foregroundColor: Colors.white,
+                              shape: const StadiumBorder(),
+                            ),
+                            icon: const Icon(Icons.edit_square, size: 18),
+                            label: const Text(
+                              'Chat',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                           ),
                         ),
                       ),
-                      IconButton(
+                      const SizedBox(width: 8),
+                      _circleIconButton(
+                        icon: ChatIcons.settings,
                         tooltip: 'Pengaturan',
-                        icon: const Icon(ChatIcons.settings),
-                        color: scheme.onSurfaceVariant,
                         onPressed: () {
                           Navigator.of(context).pop();
                           _openSettings(context);
                         },
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(22),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ProfilePage(
+                                agent: state.agent,
+                                userProfile: widget.userProfile,
+                              ),
+                            ),
+                          );
+                        },
+                        child: const CircleAvatar(
+                          radius: 20,
+                          backgroundColor: _ChatDark.iconCircle,
+                          child: Icon(
+                            Icons.person_outline,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -776,12 +960,179 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  /// Pencarian sesi sederhana: dibuka dari ikon kaca pembesar di header
+  /// drawer, filter langsung dari [ChatState.sessions] yang sudah dimuat
+  /// (tidak ada endpoint pencarian server tersendiri).
+  void _openSessionSearch(BuildContext context, ChatState state) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _ChatDark.bg,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        var query = '';
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final filtered = query.isEmpty
+                ? state.sessions
+                : state.sessions
+                      .where(
+                        (s) => s.title.toLowerCase().contains(
+                          query.toLowerCase(),
+                        ),
+                      )
+                      .toList();
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      autofocus: true,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        hintText: 'Cari percakapan',
+                        hintStyle: TextStyle(color: _ChatDark.hint),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: _ChatDark.hint,
+                        ),
+                        filled: true,
+                        fillColor: _ChatDark.pill,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(
+                            Radius.circular(12),
+                          ),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          setSheetState(() => query = value),
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight:
+                            MediaQuery.of(sheetContext).size.height * 0.5,
+                      ),
+                      child: filtered.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Text(
+                                'Tidak ada percakapan yang cocok.',
+                                style: TextStyle(color: _ChatDark.hint),
+                              ),
+                            )
+                          : ListView(
+                              shrinkWrap: true,
+                              children: [
+                                for (final session in filtered)
+                                  _sessionRow(sheetContext, state, session),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Daftar lengkap riwayat percakapan (dikelompokkan per tanggal), dibuka
+  /// dari "Lihat semua..." saat drawer hanya menampilkan 5 sesi terbaru.
+  void _openAllSessions(
+    BuildContext context,
+    ChatState state,
+    Map<String, List<SessionSummary>> sessionGroups,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _ChatDark.bg,
+      isScrollControlled: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (sheetContext, scrollController) => SafeArea(
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+            children: [
+              for (final entry in sessionGroups.entries)
+                if (entry.value.isNotEmpty) ...[
+                  _drawerSectionHeader(sheetContext, entry.key),
+                  for (final session in entry.value)
+                    _sessionRow(sheetContext, state, session),
+                ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Baris model di drawer — pindahan dari pil composer (keputusan
+  /// pengguna: composer disederhanakan jadi 1 baris ala referensi
+  /// Figma, jadi pemilihan model dipindah ke sini).
+  Widget _modelDrawerRow(BuildContext context, ChatState state) {
+    final label = state.effectiveModel ?? state.agent?.name ?? 'Wangsa';
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        Navigator.of(context).pop();
+        _showModelPicker(context, state);
+      },
+      child: SizedBox(
+        height: _drawerRowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: _drawerHorizontalPadding,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.memory_outlined, size: 22, color: Colors.white),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  'Model & Provider',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _ChatDark.hint, fontSize: 13),
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: _ChatDark.hint,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _sessionRow(
     BuildContext context,
     ChatState state,
     SessionSummary session,
   ) {
-    final scheme = Theme.of(context).colorScheme;
     final isSelected = state.sessionId == session.sessionId;
     return InkWell(
       borderRadius: BorderRadius.circular(10),
@@ -793,9 +1144,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         margin: const EdgeInsets.symmetric(vertical: 2),
         decoration: BoxDecoration(
-          color: isSelected
-              ? scheme.primaryContainer.withValues(alpha: 0.5)
-              : Colors.transparent,
+          color: isSelected ? _ChatDark.pillActive : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -803,7 +1152,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             Icon(
               ChatIcons.history,
               size: 18,
-              color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
+              color: isSelected ? _ChatDark.accent : _ChatDark.hint,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -820,9 +1169,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       fontWeight: isSelected
                           ? FontWeight.w600
                           : FontWeight.w500,
-                      color: isSelected
-                          ? scheme.onPrimaryContainer
-                          : scheme.onSurface,
+                      color: Colors.white,
                     ),
                   ),
                   if (session.lastMessage.isNotEmpty)
@@ -832,7 +1179,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
+                        color: _ChatDark.hint.withValues(alpha: 0.85),
                       ),
                     ),
                 ],
@@ -841,7 +1188,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 18),
               tooltip: 'Hapus sesi',
-              color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+              color: _ChatDark.hint,
               visualDensity: VisualDensity.compact,
               onPressed: () {
                 context.read<ChatBloc>().add(SessionDeleted(session.sessionId));
@@ -1310,147 +1657,155 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Widget _messageComposer(BuildContext context, ChatState state) {
-    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: scheme.outline.withValues(alpha: 0.5)),
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: 0.1),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+        decoration: BoxDecoration(
+          color: _ChatDark.composer,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_hasPendingImages) _pendingStrip(),
+            if (state.selectedToolsets.isNotEmpty) _toolsetChipsRow(state),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (_hasPendingImages) _pendingStrip(scheme),
-                if (state.selectedToolsets.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Wrap(
-                      spacing: 6,
-                      children: [
-                        for (final toolset in state.selectedToolsets)
-                          Chip(
-                            visualDensity: VisualDensity.compact,
-                            label: Text(
-                              toolset == 'web' ? 'Web' : 'Analisis gambar',
-                            ),
-                            avatar: Icon(
-                              toolset == 'web'
-                                  ? ChatIcons.web
-                                  : ChatIcons.image,
-                              size: 16,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                TextField(
-                  controller: _draftController,
-                  enabled: !state.isSending,
-                  minLines: 1,
-                  maxLines: 4,
-                  onSubmitted: (_) => _submit(context),
-                  decoration: InputDecoration(
-                    hintText: 'Tulis pesan untuk Wangsa',
-                    hintStyle: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    filled: false,
-                    isCollapsed: true,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  style: TextStyle(color: scheme.onSurface, fontSize: 16),
+                IconButton(
+                  onPressed: state.isSending
+                      ? null
+                      : () => unawaited(_showAttachmentPicker()),
+                  tooltip: 'Lampiran',
+                  icon: const Icon(ChatIcons.attach),
+                  color: Colors.white,
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: state.isSending
-                          ? null
-                          : () => unawaited(_showAttachmentPicker()),
-                      tooltip: 'Lampiran',
-                      icon: const Icon(ChatIcons.attach),
-                      color: scheme.onSurfaceVariant,
+                Expanded(
+                  child: TextField(
+                    controller: _draftController,
+                    enabled: !state.isSending,
+                    minLines: 1,
+                    maxLines: 4,
+                    onSubmitted: (_) => _submit(context),
+                    decoration: InputDecoration(
+                      hintText: 'Tulis pesan untuk Wangsa',
+                      hintStyle: const TextStyle(
+                        color: _ChatDark.hint,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      filled: false,
+                      isCollapsed: true,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     ),
-                    _ModelPill(
-                      label:
-                          state.effectiveModel ?? state.agent?.name ?? 'Wangsa',
-                      onTap: () => _showModelPicker(context, state),
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                if (!state.isSending)
+                  IconButton(
+                    onPressed: () => unawaited(_toggleListening()),
+                    tooltip: _isListening ? 'Berhenti mendengar' : 'Dikte suara',
+                    icon: Icon(
+                      _isListening
+                          ? ChatIcons.stop
+                          : Icons.mic_none_rounded,
                     ),
-                    const Spacer(),
-                    IconButton.filled(
+                    color: Colors.white,
+                  ),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _draftController,
+                  builder: (context, value, _) {
+                    final hasText = value.text.trim().isNotEmpty;
+                    final canSend = hasText || _hasPendingImages;
+                    if (state.isSending) {
+                      return _composerCircleButton(
+                        icon: ChatIcons.stop,
+                        tooltip: 'Berhenti',
+                        onPressed: () => context.read<ChatBloc>().add(
+                          const MessageCancelled(),
+                        ),
+                      );
+                    }
+                    if (canSend) {
+                      return _composerCircleButton(
+                        icon: ChatIcons.send,
+                        tooltip: 'Kirim',
+                        onPressed: () => _submit(context),
+                      );
+                    }
+                    return _composerCircleButton(
+                      icon: Icons.graphic_eq_rounded,
+                      tooltip: 'Bicara',
                       onPressed: () => unawaited(_toggleListening()),
-                      tooltip: _isListening ? 'Berhenti mendengar' : 'Bicara',
-                      icon: Icon(
-                        _isListening ? ChatIcons.stop : ChatIcons.microphone,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: scheme.surface,
-                        foregroundColor: scheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _draftController,
-                      builder: (context, value, _) {
-                        if (state.isSending) {
-                          return IconButton.filled(
-                            onPressed: () => context.read<ChatBloc>().add(
-                              const MessageCancelled(),
-                            ),
-                            icon: const Icon(ChatIcons.stop),
-                            tooltip: 'Berhenti',
-                          );
-                        }
-                        final hasText = value.text.trim().isNotEmpty;
-                        final canSend = hasText || _hasPendingImages;
-                        return IconButton.filled(
-                          onPressed: canSend ? () => _submit(context) : null,
-                          icon: const Icon(ChatIcons.send),
-                          tooltip: 'Kirim',
-                          style: !canSend
-                              ? IconButton.styleFrom(
-                                  backgroundColor:
-                                      scheme.surfaceContainerHighest,
-                                  disabledBackgroundColor:
-                                      scheme.surfaceContainerHighest,
-                                  foregroundColor: scheme.onSurfaceVariant,
-                                  disabledForegroundColor:
-                                      scheme.onSurfaceVariant,
-                                )
-                              : null,
-                        );
-                      },
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _pendingStrip(ColorScheme scheme) {
+  /// Tombol bulat biru di ujung kanan composer — dipakai untuk suara,
+  /// kirim, dan berhenti (ikon berganti sesuai `state.isSending` dan isi
+  /// draft). Warna solid biru meniru tombol "Voice" pada referensi desain.
+  Widget _composerCircleButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onPressed,
+        radius: 26,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: const BoxDecoration(
+            color: _ChatDark.accent,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Widget _toolsetChipsRow(ChatState state) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      child: Wrap(
+        spacing: 6,
+        children: [
+          for (final toolset in state.selectedToolsets)
+            Chip(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: _ChatDark.pill,
+              side: BorderSide.none,
+              label: Text(
+                toolset == 'web' ? 'Web' : 'Analisis gambar',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              avatar: Icon(
+                toolset == 'web' ? ChatIcons.web : ChatIcons.image,
+                size: 16,
+                color: Colors.white,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pendingStrip() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: SizedBox(
@@ -1473,10 +1828,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     errorBuilder: (_, _, _) => Container(
                       width: 64,
                       height: 64,
-                      color: scheme.surfaceContainerHighest,
-                      child: Icon(
+                      color: _ChatDark.pill,
+                      child: const Icon(
                         Icons.broken_image_outlined,
-                        color: scheme.onSurfaceVariant,
+                        color: _ChatDark.hint,
                       ),
                     ),
                   ),
@@ -1489,7 +1844,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     child: Container(
                       padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
-                        color: scheme.scrim.withValues(alpha: 0.7),
+                        color: Colors.black.withValues(alpha: 0.7),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -1517,11 +1872,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     String label, {
     VoidCallback? onTap,
   }) {
-    final scheme = Theme.of(context).colorScheme;
     final enabled = onTap != null;
-    final color = enabled
-        ? scheme.onSurface
-        : scheme.onSurface.withValues(alpha: 0.38);
+    final color = enabled ? Colors.white : _ChatDark.hint.withValues(alpha: 0.5);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
@@ -1562,8 +1914,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface,
+        style: const TextStyle(
+          color: Colors.white,
           fontSize: 13,
           fontWeight: FontWeight.w700,
         ),
@@ -1580,9 +1932,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       child: Text(
         text,
         style: TextStyle(
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+          color: _ChatDark.hint.withValues(alpha: 0.85),
           fontSize: 13,
         ),
       ),
@@ -1672,51 +2022,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case VoiceStatus.processing:
         return 'Merapikan ucapan...';
     }
-  }
-}
-
-class _ModelPill extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _ModelPill({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 170),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 2),
-              Icon(
-                Icons.expand_more_rounded,
-                size: 16,
-                color: scheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

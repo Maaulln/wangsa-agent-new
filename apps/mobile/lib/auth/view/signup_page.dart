@@ -1,18 +1,50 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../api/api_endpoints.dart';
+import '../../api/api_result.dart';
+import '../../api/models.dart';
 import '../../api/wangsa_api_client.dart';
 import '../mobile_auth_controller.dart';
 
-/// Layar pendaftaran terbuka: siapa saja bisa daftar.
+/// Palet gelap khusus layar ini, meniru referensi desain "Log in or
+/// sign up" ala ChatGPT (bottom-sheet dark modal) — sengaja lokal, tidak
+/// menyentuh `WangsaTheme` global (sama keputusan yang dipakai di
+/// ChatPage untuk `_ChatDark`).
+abstract final class _AuthDark {
+  static const bg = Color(0xFF000000);
+  static const card = Color(0xFF1C1C1E);
+  static const border = Color(0xFF3A3A3C);
+  static const hint = Color(0xFF8E8E93);
+}
+
+/// Layar pendaftaran/masuk terbuka: siapa saja bisa daftar dengan
+/// username + kata sandi, tampil sebagai kartu gelap penuh layar
+/// (referensi Figma "Log in or sign up") dengan logo Wangsa — tidak lagi
+/// meminta alamat server (dipakai diam-diam dari [initialApiUrl], bisa
+/// diganti belakangan dari Pengaturan bila memang perlu).
 ///
-/// Alur: isi alamat server + username → `POST /api/v1/auth/signup` →
-/// simpan token + profile → callback `onSignedIn`. Pengguna lama yang
-/// sudah punya token bisa lewat mode "punya token" tanpa daftar ulang.
+/// Baris "Continue with Google/Apple/phone" adalah placeholder visual
+/// murni (belum ada backend OAuth) — mengetuknya hanya menampilkan
+/// pemberitahuan "segera hadir"; satu-satunya jalur yang benar-benar
+/// jalan adalah username + kata sandi.
+///
+/// Alur daftar: isi username + kata sandi → `POST /api/v1/auth/signup` →
+/// simpan token + profile → callback `onSignedIn`.
+/// Alur masuk: username + kata sandi yang sama → `POST /api/v1/auth/login`.
+///
+/// [initialApiUrl] bisa basi (mis. IP Wi-Fi laptop yang tersimpan dari
+/// sesi lama, sudah tidak terjangkau lagi lewat USB) — sebelum menyerah
+/// dengan galat generik, [_submit] mencoba [apiCandidates] satu per satu
+/// (localhost via `adb reverse`, `10.0.2.2` di emulator, dst., lihat
+/// `buildApiCandidates`) dan melaporkan URL yang benar-benar hidup lewat
+/// `onSignedIn(apiUrl: ...)`, supaya AuthGate menyimpannya dan pengguna
+/// tidak mengalami masalah yang sama di percobaan berikutnya.
 class SignupPage extends StatefulWidget {
   final WangsaApiClient apiClient;
   final MobileAuthController auth;
   final String initialApiUrl;
+  final List<String> apiCandidates;
   final Future<void> Function({
     required String token,
     required String profile,
@@ -25,6 +57,7 @@ class SignupPage extends StatefulWidget {
     required this.apiClient,
     required this.auth,
     required this.initialApiUrl,
+    this.apiCandidates = const [],
     required this.onSignedIn,
   });
 
@@ -33,63 +66,88 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  late final TextEditingController _urlController;
-  late final TextEditingController _nameController;
-  late final TextEditingController _tokenController;
-  bool _useTokenMode = false;
+  final _nameController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  /// false = daftar (akun baru), true = masuk (akun lama).
+  bool _loginMode = false;
   bool _busy = false;
+  bool _obscurePassword = true;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _urlController = TextEditingController(text: widget.initialApiUrl);
-    _nameController = TextEditingController();
-    _tokenController = TextEditingController();
-  }
-
-  @override
   void dispose() {
-    _urlController.dispose();
     _nameController.dispose();
-    _tokenController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  String _normalizedUrl(String v) {
-    var r = v.trim();
-    while (r.endsWith('/')) {
-      r = r.substring(0, r.length - 1);
-    }
-    return r;
-  }
-
-  Future<void> _applyUrl(String url) async {
-    widget.apiClient.updateBaseUrl(url);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('wangsa_chat_api_url', url);
-  }
-
-  Future<void> _doSignup() async {
-    final url = _normalizedUrl(_urlController.text);
+  String? _validateUsername() {
     final name = _nameController.text.trim().toLowerCase();
-    if (url.isEmpty) {
-      setState(() => _error = 'Alamat server tidak boleh kosong.');
-      return;
-    }
     if (name.length < 3 ||
         name.length > 32 ||
         !RegExp(r'^[a-z0-9][a-z0-9_-]*$').hasMatch(name)) {
-      setState(() => _error = 'Username 3-32 huruf kecil, angka, - atau _.');
+      return 'Username 3-32 huruf kecil, angka, - atau _.';
+    }
+    return null;
+  }
+
+  String? _validatePassword() {
+    final password = _passwordController.text;
+    if (password.length < 8 || password.length > 128) {
+      return 'Kata sandi 8-128 karakter.';
+    }
+    return null;
+  }
+
+  Future<({ApiResult<SignupResult> result, String url})> _attempt(
+    String url,
+    String name,
+    String password,
+  ) async {
+    widget.apiClient.updateBaseUrl(url);
+    final res = _loginMode
+        ? await widget.apiClient.login(name, password)
+        : await widget.apiClient.signup(name, password);
+    return (result: res, url: url);
+  }
+
+  Future<void> _submit() async {
+    final usernameError = _validateUsername();
+    if (usernameError != null) {
+      setState(() => _error = usernameError);
       return;
     }
+    final passwordError = _validatePassword();
+    if (passwordError != null) {
+      setState(() => _error = passwordError);
+      return;
+    }
+    final name = _nameController.text.trim().toLowerCase();
+    final password = _passwordController.text;
     setState(() {
       _busy = true;
       _error = null;
     });
-    await _applyUrl(url);
-    final res = await widget.apiClient.signup(name);
+
+    var attempt = await _attempt(widget.initialApiUrl, name, password);
+    // URL utama mati total (RUNTIME_ERROR: jaringan/timeout/host tak
+    // dikenal) — coba kandidat lain sebelum menyerah, sama seperti
+    // ChatBloc melakukannya pasca-login (lihat api_endpoints.dart).
+    if (attempt.result.errorOrNull?.code == 'RUNTIME_ERROR') {
+      for (final candidate in widget.apiCandidates) {
+        if (candidate == widget.initialApiUrl) continue;
+        final next = await _attempt(candidate, name, password);
+        if (next.result.errorOrNull?.code != 'RUNTIME_ERROR') {
+          attempt = next;
+          break;
+        }
+      }
+    }
     if (!mounted) return;
+
+    final res = attempt.result;
+    final resolvedUrl = attempt.url;
     if (res.isSuccess && res.dataOrNull != null) {
       final data = res.dataOrNull!;
       if (data.token.isEmpty) {
@@ -106,7 +164,7 @@ class _SignupPageState extends State<SignupPage> {
       await widget.onSignedIn(
         token: data.token,
         profile: data.profile,
-        apiUrl: url,
+        apiUrl: resolvedUrl,
       );
       if (!mounted) return;
       setState(() => _busy = false);
@@ -117,137 +175,253 @@ class _SignupPageState extends State<SignupPage> {
       _busy = false;
       _error = switch (err?.code) {
         'CONFLICT' => 'Username sudah dipakai. Pilih nama lain.',
+        'UNAUTHORIZED' => 'Username atau kata sandi tidak sesuai.',
         'RATE_LIMITED' =>
-          'Terlalu banyak pendaftaran. Tunggu sejam lalu coba lagi.',
-        _ => err?.message ?? 'Pendaftaran gagal. Periksa alamat server.',
+          'Terlalu banyak percobaan. Tunggu sejam lalu coba lagi.',
+        _ => err?.message ?? diagnoseConnectionHint(resolvedUrl),
       };
     });
   }
 
-  Future<void> _doUseToken() async {
-    final url = _normalizedUrl(_urlController.text);
-    final token = _tokenController.text.trim();
-    if (url.isEmpty || token.isEmpty) {
-      setState(() => _error = 'Alamat server dan token wajib diisi.');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    await _applyUrl(url);
-    widget.apiClient.updateToken(token);
-    final me = await widget.apiClient.getMe();
-    if (!mounted) return;
-    if (me.isSuccess && me.dataOrNull != null) {
-      await widget.auth.saveSession(
-        token: token,
-        profile: me.dataOrNull!.profile,
-      );
-      await widget.onSignedIn(
-        token: token,
-        profile: me.dataOrNull!.profile,
-        apiUrl: url,
-      );
-      if (!mounted) return;
-      setState(() => _busy = false);
-      return;
-    }
-    widget.apiClient.updateToken(null);
-    final err = me.errorOrNull;
-    setState(() {
-      _busy = false;
-      _error = err?.message ?? 'Token tidak valid.';
-    });
+  void _comingSoon(String label) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('$label segera hadir.')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Daftar ke Wangsa')),
+      backgroundColor: _AuthDark.bg,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(
-              _useTokenMode ? 'Masuk dengan token' : 'Buat akun baru',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _useTokenMode
-                  ? 'Tempel token yang pernah diberikan server. Token menentukan profile milikmu.'
-                  : 'Satu username = satu profile + satu bot terisolasi. Setelah daftar, hubungkan LLM milikmu.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _urlController,
-              enabled: !_busy,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Alamat server',
-                hintText: 'http://localhost:9901',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_useTokenMode)
-              TextField(
-                controller: _tokenController,
-                enabled: !_busy,
-                decoration: const InputDecoration(
-                  labelText: 'Token',
-                  border: OutlineInputBorder(),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 8),
+              SvgPicture.asset(
+                'assets/logo.svg',
+                width: 56,
+                height: 56,
+                colorFilter: const ColorFilter.mode(
+                  Colors.white,
+                  BlendMode.srcIn,
                 ),
-              )
-            else
-              TextField(
-                controller: _nameController,
-                enabled: !_busy,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  hintText: 'mis. budi21',
-                  helperText: '3-32 huruf kecil, angka, - atau _',
-                  border: OutlineInputBorder(),
-                ),
-                onSubmitted: (_) => _doSignup(),
+                semanticsLabel: 'Wangsa',
               ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
               Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                _loginMode ? 'Selamat datang kembali' : 'Daftar ke Wangsa',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _loginMode
+                    ? 'Masuk dengan username dan kata sandi akunmu.'
+                    : 'Satu username = satu profile + satu bot terisolasi.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _AuthDark.hint, fontSize: 14),
+              ),
+              const SizedBox(height: 28),
+              _darkField(
+                controller: _nameController,
+                hint: 'Username',
+                obscure: false,
+              ),
+              const SizedBox(height: 12),
+              _darkField(
+                controller: _passwordController,
+                hint: 'Kata sandi',
+                obscure: _obscurePassword,
+                suffix: IconButton(
+                  tooltip: _obscurePassword
+                      ? 'Tampilkan kata sandi'
+                      : 'Sembunyikan kata sandi',
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: _AuthDark.hint,
+                    size: 20,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Color(0xFFFF453A), fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: _busy ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    shape: const StadiumBorder(),
+                  ),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
+                        )
+                      : Text(
+                          _loginMode ? 'Masuk' : 'Daftar',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: _AuthDark.border)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'ATAU',
+                      style: TextStyle(
+                        color: _AuthDark.hint,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: _AuthDark.border)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _socialButton(
+                icon: Icons.g_mobiledata_rounded,
+                label: 'Lanjut dengan Google',
+                background: Colors.transparent,
+                border: _AuthDark.border,
+                foreground: Colors.white,
+                onTap: () => _comingSoon('Login Google'),
+              ),
+              const SizedBox(height: 10),
+              _socialButton(
+                icon: Icons.apple_rounded,
+                label: 'Lanjut dengan Apple',
+                background: Colors.black,
+                border: _AuthDark.border,
+                foreground: Colors.white,
+                onTap: () => _comingSoon('Login Apple'),
+              ),
+              const SizedBox(height: 10),
+              _socialButton(
+                icon: Icons.phone_outlined,
+                label: 'Lanjut dengan nomor HP',
+                background: Colors.transparent,
+                border: _AuthDark.border,
+                foreground: Colors.white,
+                onTap: () => _comingSoon('Login nomor HP'),
+              ),
+              const SizedBox(height: 24),
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                        _loginMode = !_loginMode;
+                        _error = null;
+                      }),
+                child: Text(
+                  _loginMode
+                      ? 'Belum punya akun? Daftar'
+                      : 'Sudah punya akun? Masuk',
+                  style: const TextStyle(color: _AuthDark.hint),
+                ),
               ),
             ],
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _busy
-                  ? null
-                  : (_useTokenMode ? _doUseToken : _doSignup),
-              child: _busy
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_useTokenMode ? 'Masuk' : 'Daftar'),
-            ),
-            TextButton(
-              onPressed: _busy
-                  ? null
-                  : () => setState(() {
-                      _useTokenMode = !_useTokenMode;
-                      _error = null;
-                    }),
-              child: Text(
-                _useTokenMode
-                    ? 'Belum punya akun? Daftar'
-                    : 'Sudah punya token? Masuk',
-              ),
-            ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _darkField({
+    required TextEditingController controller,
+    required String hint,
+    required bool obscure,
+    Widget? suffix,
+    ValueChanged<String>? onSubmitted,
+  }) {
+    return TextField(
+      controller: controller,
+      enabled: !_busy,
+      obscureText: obscure,
+      autocorrect: false,
+      onSubmitted: onSubmitted,
+      style: const TextStyle(color: Colors.white, fontSize: 16),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: _AuthDark.hint),
+        filled: true,
+        fillColor: _AuthDark.card,
+        suffixIcon: suffix,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _AuthDark.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _AuthDark.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Colors.white54),
+        ),
+      ),
+    );
+  }
+
+  Widget _socialButton({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color border,
+    required Color foreground,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, color: foreground, size: 20),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: foreground,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: background,
+          side: BorderSide(color: border),
+          shape: const StadiumBorder(),
         ),
       ),
     );

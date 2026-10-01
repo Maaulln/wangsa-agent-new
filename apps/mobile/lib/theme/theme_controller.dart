@@ -40,7 +40,13 @@ class ThemeController extends ValueNotifier<ThemeMode> {
   static ThemeMode _decode(String? stored) => switch (stored) {
         'light' => ThemeMode.light,
         'dark' => ThemeMode.dark,
-        _ => ThemeMode.system,
+        // Bawaan gelap (bukan `system`): identitas visual Wangsa di
+        // ChatPage/SignupPage selalu hitam pekat solid, jadi aplikasi
+        // dibuka gelap dari awal supaya terasa satu produk yang sama,
+        // alih-alih terang di sebagian halaman kalau sistem HP-nya
+        // terang. Pengguna tetap bisa memilih terang manual di
+        // Pengaturan — ini hanya bawaan sebelum ada pilihan tersimpan.
+        _ => ThemeMode.dark,
       };
 
   static String _encode(ThemeMode mode) => switch (mode) {

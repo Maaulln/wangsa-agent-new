@@ -1182,7 +1182,8 @@ class TestWangsaMobileSignup:
         async def run():
             assert await adapter.connect() is True
             status, data = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "alicebaru"},
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "alicebaru", "password": "sandi-alice-1"},
             )
             assert status == 201, data
             assert data["success"] is True
@@ -1227,18 +1228,41 @@ class TestWangsaMobileSignup:
             assert await adapter.connect() is True
             for bad in ["", "AB", "a", "has space", "default", "ab"]:
                 status, data = await asyncio.to_thread(
-                    _post_json, base + "/api/v1/auth/signup", {"username": bad},
+                    _post_json, base + "/api/v1/auth/signup",
+                    {"username": bad, "password": "sandi-valid-1"},
                 )
                 assert status in (400, 409), (bad, data)
             status, data = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "bobbaru"},
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "bobbaru", "password": "sandi-bob-1"},
             )
             assert status == 201, data
             status2, data2 = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "bobbaru"},
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "bobbaru", "password": "sandi-bob-1"},
             )
             assert status2 == 409
             assert data2["error"]["code"] == "CONFLICT"
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+    def test_signup_rejects_bad_password(self, monkeypatch):
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            for bad in ["", "short1", "x" * 200]:
+                status, data = await asyncio.to_thread(
+                    _post_json, base + "/api/v1/auth/signup",
+                    {"username": "carolbaru", "password": bad},
+                )
+                assert status == 400, (bad, data)
             await adapter.disconnect()
 
         asyncio.run(run())
@@ -1251,7 +1275,8 @@ class TestWangsaMobileSignup:
             assert await adapter.connect() is True
             # Signup stays public even when a legacy token is configured.
             status, _ = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "terbuka"},
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "terbuka", "password": "sandi-terbuka-1"},
             )
             assert status == 201
             # But /me still needs a valid token.
@@ -1260,6 +1285,98 @@ class TestWangsaMobileSignup:
                 headers={"Authorization": "Bearer wrong"},
             )
             assert status2 == 401
+            await adapter.disconnect()
+
+        asyncio.run(run())
+
+
+class TestWangsaMobileLogin:
+    """Login with an already-registered username + password.
+
+    POST /api/v1/auth/login is public (no token needed), mints a fresh
+    bearer token on success, and 401s on any wrong-username/wrong-password
+    combination without leaking which one was wrong.
+    """
+
+    def test_login_with_correct_credentials_issues_token(self, monkeypatch):
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        from agent.secret_scope import set_multiplex_active
+
+        set_multiplex_active(True)
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "erinbaru", "password": "sandi-erin-1"},
+            )
+            assert status == 201, data
+            signup_token = data["data"]["token"]
+
+            status2, data2 = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/login",
+                {"username": "erinbaru", "password": "sandi-erin-1"},
+            )
+            assert status2 == 200, data2
+            assert data2["success"] is True
+            assert data2["data"]["profile"] == "erinbaru"
+            login_token = data2["data"]["token"]
+            assert isinstance(login_token, str) and len(login_token) >= 16
+            # Login mints a fresh token, distinct from signup's.
+            assert login_token != signup_token
+
+            # Both tokens work — login doesn't revoke the signup one.
+            status3, data3 = await asyncio.to_thread(
+                _get_json_allow_error, base + "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {login_token}"},
+            )
+            assert status3 == 200, data3
+            assert data3["data"]["profile"] == "erinbaru"
+            await adapter.disconnect()
+
+        try:
+            asyncio.run(run())
+        finally:
+            from agent.secret_scope import set_multiplex_active as _sma
+
+            _sma(False)
+
+    def test_login_rejects_wrong_password_and_unknown_username(self, monkeypatch):
+        from plugins.platforms.wangsa_mobile.adapter import _reset_signup_limiter
+
+        monkeypatch.delenv("WANGSA_MOBILE_BEARER_TOKEN", raising=False)
+        monkeypatch.delenv("WANGSA_MOBILE_USER_TOKENS", raising=False)
+        _reset_signup_limiter()
+        adapter, base = _make_live_adapter(monkeypatch)
+
+        async def run():
+            assert await adapter.connect() is True
+            status, data = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "fayebaru", "password": "sandi-faye-1"},
+            )
+            assert status == 201, data
+
+            # Wrong password for a real user.
+            status2, data2 = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/login",
+                {"username": "fayebaru", "password": "sandi-salah"},
+            )
+            assert status2 == 401, data2
+            assert data2["error"]["code"] == "UNAUTHORIZED"
+
+            # Unknown username entirely.
+            status3, data3 = await asyncio.to_thread(
+                _post_json, base + "/api/v1/auth/login",
+                {"username": "tidakada", "password": "apapun-8char"},
+            )
+            assert status3 == 401, data3
+            assert data3["error"]["code"] == "UNAUTHORIZED"
             await adapter.disconnect()
 
         asyncio.run(run())
@@ -1282,7 +1399,8 @@ class TestWangsaMobileBudgetAndRevoke:
         async def run():
             assert await adapter.connect() is True
             status, data = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "danabaru"}
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "danabaru", "password": "sandi-dana-1"}
             )
             assert status == 201, data
             token = data["data"]["token"]
@@ -1290,7 +1408,8 @@ class TestWangsaMobileBudgetAndRevoke:
             # Second user keeps the token map non-empty after revoke below
             # (otherwise the server falls back to open localhost-only mode).
             status, data = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "danabaru2"}
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "danabaru2", "password": "sandi-dana-2"}
             )
             assert status == 201, data
             other_headers = {"Authorization": f"Bearer {data['data']['token']}"}
@@ -1359,7 +1478,8 @@ class TestWangsaMobileBudgetAndRevoke:
         async def run():
             assert await adapter.connect() is True
             status, data = await asyncio.to_thread(
-                _post_json, base + "/api/v1/auth/signup", {"username": "hematbaru"}
+                _post_json, base + "/api/v1/auth/signup",
+                {"username": "hematbaru", "password": "sandi-hemat-1"}
             )
             assert status == 201, data
             token = data["data"]["token"]

@@ -56,11 +56,14 @@ Bind safety: with no bearer token configured, the server binds 127.0.0.1 only.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import inspect
 import json
 import logging
 import os
 import re
+import secrets
 import tempfile
 import threading
 import time
@@ -506,8 +509,6 @@ def _revoke_mobile_token(token: str) -> bool:
 
 def _issue_mobile_token(profile: str) -> str:
     """Mint, persist, and return a fresh bearer token for *profile*."""
-    import secrets
-
     profile = profile.strip().lower()
     with _mobile_tokens_lock:
         tokens = _load_mobile_token_store()
@@ -521,6 +522,100 @@ def _issue_mobile_token(profile: str) -> str:
         tokens[candidate] = profile
         _save_mobile_token_store(tokens)
         return candidate
+
+
+# --- Open signup/login passwords -------------------------------------------
+#
+# Signup used to be username-only (no password, token handed back on the
+# spot) — that was fine for a dev-only open registration flow but reads as
+# broken to anyone expecting an ordinary "sign up / log in" screen (no way
+# to log back in on a second device without still holding the old token).
+# This adds a real username+password pair, hashed with scrypt (same KDF
+# `apps/mobile_backend/store.py` already uses for its own local users) and
+# stored separately from the bearer-token map so a leaked token file alone
+# never reveals passwords.
+_MOBILE_PASSWORDS_FILENAME = "wangsa_mobile_passwords.json"
+_mobile_passwords_lock = threading.Lock()
+_MIN_SIGNUP_PASSWORD_LEN = 8
+_MAX_SIGNUP_PASSWORD_LEN = 128
+
+
+def _mobile_passwords_path() -> Path:
+    """Process-level password store path — same root as the token map."""
+    return _mobile_tokens_path().with_name(_MOBILE_PASSWORDS_FILENAME)
+
+
+def _hash_signup_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=32)
+    return f"{salt.hex()}:{digest.hex()}"
+
+
+def _check_signup_password(password: str, stored: str) -> bool:
+    try:
+        salt_hex, _ = stored.split(":", 1)
+    except ValueError:
+        return False
+    return hmac.compare_digest(_hash_signup_password(password, bytes.fromhex(salt_hex)), stored)
+
+
+def _load_mobile_password_store() -> Dict[str, str]:
+    """Read the persisted ``{profile: password_hash}`` map. {} on any failure."""
+    try:
+        path = _mobile_passwords_path()
+        if not path.is_file():
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        node = raw.get("passwords") if isinstance(raw, dict) else None
+        if not isinstance(node, dict):
+            return {}
+        return {
+            str(profile).strip().lower(): str(h)
+            for profile, h in node.items()
+            if isinstance(profile, str) and isinstance(h, str)
+        }
+    except Exception:
+        logger.debug("wangsa_mobile: failed to load password store", exc_info=True)
+        return {}
+
+
+def _save_mobile_password_store(passwords: Dict[str, str]) -> None:
+    """Atomically persist the password-hash map with 0600 permissions."""
+    path = _mobile_passwords_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"passwords": passwords}, indent=2), encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _set_signup_password(profile: str, password: str) -> None:
+    with _mobile_passwords_lock:
+        passwords = _load_mobile_password_store()
+        passwords[profile.strip().lower()] = _hash_signup_password(password)
+        _save_mobile_password_store(passwords)
+
+
+def _verify_signup_password(profile: str, password: str) -> bool:
+    with _mobile_passwords_lock:
+        passwords = _load_mobile_password_store()
+    stored = passwords.get(profile.strip().lower())
+    if stored is None:
+        # No such profile: still hash against a fixed dummy value so the
+        # unknown-user and wrong-password paths take comparable time.
+        _hash_signup_password(password, salt=b"\x00" * 16)
+        return False
+    return _check_signup_password(password, stored)
 
 
 def _user_token_map() -> Dict[str, str]:
@@ -952,6 +1047,8 @@ def _route_requires_auth(method: str, path: str) -> bool:
     """
     if path == "/api/v1/auth/signup":
         return False
+    if path == "/api/v1/auth/login":
+        return False
     if method == "POST" and path in {
         "/api/v1/audio/transcribe",
         "/api/v1/audio/speak",
@@ -1365,12 +1462,14 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         self._json(200, {"success": True, "data": {"profile": profile, "configured": configured}})
 
     def _handle_signup(self) -> None:
-        """Open registration: create a profile and issue its bearer token.
+        """Open registration: create a profile, set its password, issue a token.
 
-        Public route (no token needed). Body: ``{"username": "<name>"}``.
-        Rate-limited per IP (5/hour). Username 3-32 chars, lowercase,
-        ``_SIGNUP_NAME_RE``; reserved names and existing profiles rejected
-        with 409 CONFLICT so a taken name is distinguishable from bad input.
+        Public route (no token needed). Body: ``{"username": "<name>",
+        "password": "<password>"}``. Rate-limited per IP (5/hour). Username
+        3-32 chars, lowercase, ``_SIGNUP_NAME_RE``; reserved names and
+        existing profiles rejected with 409 CONFLICT so a taken name is
+        distinguishable from bad input. Password 8-128 chars, stored as a
+        scrypt hash (see ``_hash_signup_password``) — never the token map.
         """
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -1383,6 +1482,7 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             self._error(400, "VALIDATION_ERROR", "body must be a JSON object")
             return
         username = str(body.get("username") or body.get("name") or "").strip().lower()
+        password = str(body.get("password") or "")
         if not username:
             self._error(400, "VALIDATION_ERROR", "username is required")
             return
@@ -1391,6 +1491,13 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
                 400,
                 "VALIDATION_ERROR",
                 "username must be 3-32 lowercase letters, digits, - or _",
+            )
+            return
+        if len(password) < _MIN_SIGNUP_PASSWORD_LEN or len(password) > _MAX_SIGNUP_PASSWORD_LEN:
+            self._error(
+                400,
+                "VALIDATION_ERROR",
+                f"password must be {_MIN_SIGNUP_PASSWORD_LEN}-{_MAX_SIGNUP_PASSWORD_LEN} characters",
             )
             return
         if username in _SIGNUP_RESERVED:
@@ -1435,6 +1542,12 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             self._error(503, "PROFILE_UNAVAILABLE", str(e))
             return
         try:
+            _set_signup_password(username, password)
+        except Exception:
+            logger.warning("wangsa_mobile: could not set password for %r", username, exc_info=True)
+            self._error(500, "INTERNAL_ERROR", "could not set password")
+            return
+        try:
             token = _issue_mobile_token(username)
         except Exception:
             logger.warning("wangsa_mobile: could not issue token for %r", username, exc_info=True)
@@ -1442,6 +1555,68 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
             return
         self._json(
             201,
+            {"success": True, "data": {"profile": username, "token": token, "configured": False}},
+        )
+
+    def _handle_login(self) -> None:
+        """Log an existing signed-up user back in with username + password.
+
+        Public route (no token needed). Body: ``{"username": "<name>",
+        "password": "<password>"}``. Issues a fresh bearer token on success
+        — the old token (if any) stays valid too; use DELETE
+        ``/api/v1/auth/token`` to revoke a specific one. Rate-limited same
+        as signup to slow down credential stuffing.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            body = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self._error(400, "VALIDATION_ERROR", "invalid JSON body")
+            return
+        if not isinstance(body, dict):
+            self._error(400, "VALIDATION_ERROR", "body must be a JSON object")
+            return
+        username = str(body.get("username") or body.get("name") or "").strip().lower()
+        password = str(body.get("password") or "")
+        if not username or not password:
+            self._error(400, "VALIDATION_ERROR", "username and password are required")
+            return
+        client_ip = self.client_address[0] if self.client_address else "unknown"
+        if not _signup_limiter.allow(f"login:{client_ip}"):
+            self._error(429, "RATE_LIMITED", "too many attempts from this address, try again later")
+            return
+        try:
+            from wangsa_cli.profiles import profile_exists
+        except ImportError:
+            try:
+                from hermes_cli.profiles import profile_exists
+            except ImportError:
+                self._error(500, "INTERNAL_ERROR", "profile system unavailable")
+                return
+        try:
+            exists = profile_exists(username)
+        except Exception:
+            logger.debug("wangsa_mobile: profile_exists check failed", exc_info=True)
+            exists = False
+        password_ok = _verify_signup_password(username, password)
+        valid = exists and password_ok
+        if not valid:
+            self._error(401, "UNAUTHORIZED", "username atau kata sandi tidak sesuai")
+            return
+        try:
+            self.adapter._ensure_profile(username)
+        except _ProfileUnavailable as e:
+            self._error(503, "PROFILE_UNAVAILABLE", str(e))
+            return
+        try:
+            token = _issue_mobile_token(username)
+        except Exception:
+            logger.warning("wangsa_mobile: could not issue token for %r", username, exc_info=True)
+            self._error(500, "INTERNAL_ERROR", "could not issue token")
+            return
+        self._json(
+            200,
             {"success": True, "data": {"profile": username, "token": token, "configured": False}},
         )
 
@@ -1740,6 +1915,9 @@ class WangsaMobileRequestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/api/v1/auth/signup":
             self._handle_signup()
+            return
+        if path == "/api/v1/auth/login":
+            self._handle_login()
             return
         if path.startswith("/api/v1/auth/providers/"):
             provider_id = path[len("/api/v1/auth/providers/") :].strip("/")

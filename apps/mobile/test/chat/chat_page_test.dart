@@ -758,10 +758,14 @@ void main() {
       await tester.pumpWidget(buildAppDenganPemilih(bloc, voiceInput));
       await tester.pumpAndSettle();
 
-      // Pil menampilkan model aktif server, bukan nama agent.
+      // Pemilihan model kini dipindah ke drawer (bukan pil di composer).
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+
+      // Baris model di drawer menampilkan model aktif server, bukan nama agent.
       expect(find.text('model-a'), findsOneWidget);
 
-      await tester.tap(find.text('model-a'));
+      await tester.tap(find.text('Model & Provider'));
       await tester.pumpAndSettle();
 
       expect(find.text('model-b'), findsOneWidget);
@@ -769,7 +773,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(bloc.state.selectedModel, 'model-b');
-      expect(find.text('model-b'), findsOneWidget);
     });
 
     testWidgets('pilihan model tetap terbuka saat daftar belum tersedia', (
@@ -788,7 +791,11 @@ void main() {
       await tester.pumpWidget(buildAppDenganPemilih(bloc, voiceInput));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Asisten Akademik'));
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Asisten Akademik'), findsOneWidget);
+      await tester.tap(find.text('Model & Provider'));
       await tester.pumpAndSettle();
 
       expect(find.text('Pilih Provider & Model'), findsOneWidget);
@@ -910,8 +917,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.menu_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.text('Profil'), findsOneWidget);
-      await tester.tap(find.text('Profil'));
+      expect(find.byIcon(Icons.person_outline), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.person_outline));
       await tester.pumpAndSettle();
 
       expect(find.text('Wangsa belum punya sistem akun'), findsOneWidget);

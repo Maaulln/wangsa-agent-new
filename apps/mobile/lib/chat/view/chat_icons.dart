@@ -11,7 +11,7 @@ abstract final class ChatIcons {
   static const microphone = Icons.mic_none_rounded;
   static const send = Icons.arrow_upward_rounded;
   static const stop = Icons.stop_rounded;
-  static const search = Icons.search_rounded;
+  static const search = Icons.search;
   static const web = Icons.language_rounded;
   static const image = Icons.image_outlined;
   static const file = Icons.description_outlined;

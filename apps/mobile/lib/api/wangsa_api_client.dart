@@ -90,13 +90,34 @@ class WangsaApiClient {
 
   /// Pendaftaran terbuka: buat profile + terbitkan token (`POST /api/v1/auth/signup`).
   /// Tetap publik tanpa token lama — ini pintu masuk user baru.
-  Future<ApiResult<SignupResult>> signup(String username) {
+  Future<ApiResult<SignupResult>> signup(String username, String password) {
     final uri = Uri.parse('$baseUrl/api/v1/auth/signup');
     return _send(
       () => _httpClient.post(
         uri,
         headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username.trim().toLowerCase()}),
+        body: jsonEncode({
+          'username': username.trim().toLowerCase(),
+          'password': password,
+        }),
+      ),
+      SignupResult.fromJson,
+      requestTimeout,
+    );
+  }
+
+  /// Masuk dengan akun yang sudah pernah didaftarkan (`POST /api/v1/auth/login`).
+  /// Publik (belum ada token) — menerbitkan token bearer baru untuk profile itu.
+  Future<ApiResult<SignupResult>> login(String username, String password) {
+    final uri = Uri.parse('$baseUrl/api/v1/auth/login');
+    return _send(
+      () => _httpClient.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'username': username.trim().toLowerCase(),
+          'password': password,
+        }),
       ),
       SignupResult.fromJson,
       requestTimeout,

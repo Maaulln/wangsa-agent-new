@@ -187,6 +187,14 @@ class _AuthGateState extends State<AuthGate> {
             apiClient: _signupClient!,
             auth: widget.auth,
             initialApiUrl: _apiUrl,
+            // URL simpanan bisa basi (mis. IP Wi-Fi lama yang sudah tidak
+            // terjangkau lewat USB) — kandidat yang sama dipakai ChatBloc
+            // pasca-login supaya SignupPage bisa self-heal sebelum
+            // menyerah dengan galat generik. Lihat api_endpoints.dart.
+            apiCandidates: buildApiCandidates(
+              savedUrl: _apiUrl,
+              envUrl: const String.fromEnvironment('WANGSA_API_BASE_URL'),
+            ),
             onSignedIn:
                 ({
                   required String token,

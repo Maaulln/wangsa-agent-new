@@ -52,11 +52,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Buat akun baru'), findsOneWidget);
+      expect(find.text('Daftar ke Wangsa'), findsOneWidget);
       expect(find.text('Daftar'), findsOneWidget);
     });
 
-    testWidgets('signup memakai URL yang diisi dan chat lanjut ke server itu', (tester) async {
+    testWidgets('signup mengirim username+password lalu chat lanjut ke server default', (tester) async {
       final auth = MobileAuthController();
       addTearDown(auth.dispose);
       final seenHosts = <String>[];
@@ -90,21 +90,21 @@ void main() {
       await tester.pumpWidget(_buildGate(auth, mock));
       await tester.pumpAndSettle();
 
-      // Ganti URL server + isi username lalu daftar.
+      // Tidak ada lagi field alamat server — cuma username + kata sandi,
+      // langsung ke server default config.
       final fields = find.byType(TextField);
       expect(fields, findsNWidgets(2));
-      await tester.enterText(fields.at(0), 'http://192.168.1.7:9901');
-      await tester.enterText(fields.at(1), 'budi');
+      await tester.enterText(fields.at(0), 'budi');
+      await tester.enterText(fields.at(1), 'rahasia123');
       await tester.tap(find.text('Daftar'));
       await tester.pumpAndSettle();
 
-      // Signup terkirim ke host baru, dan sesi chat (getMe) menyusul ke
-      // host yang sama — bukan URL bawaan config.
-      expect(signupHost, '192.168.1.7');
+      // Signup + sesi chat (getMe) sama-sama ke host default config.
+      expect(signupHost, 'localhost');
       expect(auth.isSignedIn, isTrue);
       expect(auth.profile, 'budi');
       expect(seenHosts, isNotEmpty);
-      expect(seenHosts.every((h) => h == '192.168.1.7'), isTrue);
+      expect(seenHosts.every((h) => h == 'localhost'), isTrue);
       expect(find.text('Mulai percakapan'), findsOneWidget);
     });
 
@@ -139,7 +139,7 @@ void main() {
       await auth.clear();
       await tester.pumpAndSettle();
 
-      expect(find.text('Buat akun baru'), findsOneWidget);
+      expect(find.text('Daftar ke Wangsa'), findsOneWidget);
     });
   });
 }
