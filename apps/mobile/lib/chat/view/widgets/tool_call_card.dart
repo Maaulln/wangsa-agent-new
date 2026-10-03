@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 
 import '../../../api/models.dart';
 import '../chat_icons.dart';
@@ -55,7 +56,7 @@ class _ToolCallCardState extends State<ToolCallCard> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(WangsaRadius.sm),
         onTap: hasPreview ? () => setState(() => _expanded = !_expanded) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),

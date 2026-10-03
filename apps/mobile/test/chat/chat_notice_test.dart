@@ -6,7 +6,9 @@ import 'package:wangsa_mobile/theme/wangsa_theme.dart';
 
 void main() {
   group('ChatNotice.empty', () {
-    testWidgets('menampilkan logo berukuran 480x480 pada layar lebar/desktop', (tester) async {
+    testWidgets('menampilkan logo berukuran 480x480 pada layar lebar/desktop', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -17,9 +19,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: WangsaTheme.forBrightness(Brightness.light),
-          home: const Scaffold(
-            body: ChatNotice.empty(),
-          ),
+          home: const Scaffold(body: ChatNotice.empty()),
         ),
       );
       await tester.pumpAndSettle();
@@ -40,7 +40,9 @@ void main() {
       );
     });
 
-    testWidgets('menampilkan logo berwarna #FAFAFA pada dark mode', (tester) async {
+    testWidgets('menampilkan logo berwarna #FAFAFA pada dark mode', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -51,9 +53,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: WangsaTheme.forBrightness(Brightness.dark),
-          home: const Scaffold(
-            body: ChatNotice.empty(),
-          ),
+          home: const Scaffold(body: ChatNotice.empty()),
         ),
       );
       await tester.pumpAndSettle();
@@ -74,32 +74,33 @@ void main() {
       );
     });
 
-    testWidgets('skala logo menyesuaikan layar tanpa memicu overflow di layar sempit', (tester) async {
-      tester.view.physicalSize = const Size(360, 640);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+    testWidgets(
+      'skala logo menyesuaikan layar tanpa memicu overflow di layar sempit',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: WangsaTheme.forBrightness(Brightness.light),
-          home: const Scaffold(
-            body: ChatNotice.empty(),
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: WangsaTheme.forBrightness(Brightness.light),
+            home: const Scaffold(body: ChatNotice.empty()),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(tester.takeException(), isNull);
-      final svgFinder = find.byType(SvgPicture);
-      expect(svgFinder, findsOneWidget);
+        expect(tester.takeException(), isNull);
+        final svgFinder = find.byType(SvgPicture);
+        expect(svgFinder, findsOneWidget);
 
-      final svgWidget = tester.widget<SvgPicture>(svgFinder);
-      // Pada lebar 360 dengan padding 32 (kiri + kanan = 64), lebar maksimal 296
-      expect(svgWidget.width, lessThanOrEqualTo(420.0));
-      expect(svgWidget.height, lessThanOrEqualTo(420.0));
-    });
+        final svgWidget = tester.widget<SvgPicture>(svgFinder);
+        // Pada lebar 360 dengan padding 32 (kiri + kanan = 64), lebar maksimal 296
+        expect(svgWidget.width, lessThanOrEqualTo(420.0));
+        expect(svgWidget.height, lessThanOrEqualTo(420.0));
+      },
+    );
   });
 }

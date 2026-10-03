@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 
 import '../chat_icons.dart';
 
@@ -28,14 +29,14 @@ class _ReasoningDisclosureState extends State<ReasoningDisclosure> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(WangsaRadius.sm),
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(WangsaRadius.sm),
           onTap: () => setState(() => _expanded = !_expanded),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(WangsaRadius.sm),
               border: Border.all(
                 color: scheme.outlineVariant.withValues(alpha: 0.4),
               ),
@@ -45,11 +46,7 @@ class _ReasoningDisclosureState extends State<ReasoningDisclosure> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.psychology_outlined,
-                      size: 16,
-                      color: scheme.primary,
-                    ),
+                    Icon(ChatIcons.reasoning, size: 16, color: scheme.primary),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -74,7 +71,7 @@ class _ReasoningDisclosureState extends State<ReasoningDisclosure> {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: scheme.surface.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(WangsaRadius.xs),
                       border: Border(
                         left: BorderSide(
                           color: scheme.primary.withValues(alpha: 0.6),

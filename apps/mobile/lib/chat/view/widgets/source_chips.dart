@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../api/models.dart';
@@ -79,7 +80,7 @@ class SourceChips extends StatelessWidget {
                   link: true,
                   label: 'Buka sumber ${source.label}',
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(WangsaRadius.pill),
                     onTap: () async {
                       try {
                         final opened = await launchUrl(
@@ -108,7 +109,7 @@ class SourceChips extends StatelessWidget {
                         color: scheme.surfaceContainerHighest.withValues(
                           alpha: 0.45,
                         ),
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(WangsaRadius.pill),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,

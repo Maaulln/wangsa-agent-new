@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../api/models.dart';
@@ -53,21 +54,18 @@ class _ImageThumbnail extends StatelessWidget {
               ),
             ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(WangsaRadius.md),
         child: Container(
           width: 140,
           height: 140,
           color: scheme.surfaceContainerHighest,
           child: provider == null
-              ? Icon(
-                  Icons.broken_image_outlined,
-                  color: scheme.onSurfaceVariant,
-                )
+              ? Icon(ChatIcons.brokenImage, color: scheme.onSurfaceVariant)
               : Image(
                   image: provider,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Icon(
-                    Icons.broken_image_outlined,
+                    ChatIcons.brokenImage,
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
@@ -147,13 +145,10 @@ class _ImagePreviewScreen extends StatelessWidget {
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(WangsaRadius.pill),
                     ),
                     child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(ChatIcons.back, color: Colors.white),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -162,7 +157,9 @@ class _ImagePreviewScreen extends StatelessWidget {
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.black45,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(
+                            WangsaRadius.pill,
+                          ),
                         ),
                         child: IconButton(
                           icon: const Icon(
@@ -177,11 +174,13 @@ class _ImagePreviewScreen extends StatelessWidget {
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.black45,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(
+                            WangsaRadius.pill,
+                          ),
                         ),
                         child: IconButton(
                           icon: const Icon(
-                            Icons.close_rounded,
+                            ChatIcons.close,
                             color: Colors.white,
                           ),
                           tooltip: 'Tutup',
@@ -205,7 +204,7 @@ class _ImagePreviewScreen extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black54,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(WangsaRadius.sm),
                   ),
                   child: Text(
                     caption!,

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
@@ -52,13 +53,13 @@ class _DocumentFileCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(WangsaRadius.md),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            bytes == null ? Icons.error_outline : Icons.description_outlined,
+            bytes == null ? ChatIcons.error : ChatIcons.file,
             color: scheme.onSurfaceVariant,
           ),
           const SizedBox(width: 10),
@@ -219,7 +220,7 @@ class _AudioFileCardState extends State<_AudioFileCard> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(WangsaRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -236,10 +237,8 @@ class _AudioFileCardState extends State<_AudioFileCard> {
                   )
                 : Icon(
                     widget.file.bytes == null
-                        ? Icons.error_outline
-                        : (isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded),
+                        ? ChatIcons.error
+                        : (isPlaying ? ChatIcons.pause : ChatIcons.play),
                   ),
             iconSize: 32,
             color: scheme.primary,

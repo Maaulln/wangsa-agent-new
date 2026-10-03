@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'glass/wangsa_glass.dart';
+
 /// Token warna Wangsa, disalin apa adanya dari `DESIGN.md`.
 ///
 /// Nilainya ditulis eksplisit, bukan diturunkan lewat `ColorScheme.fromSeed`,
@@ -38,6 +40,37 @@ abstract final class WangsaColors {
   static const primaryDark = Color(0xFF0A84FF);
   static const primarySubtleDark = Color(0xFF1E1B4B);
   static const primaryMutedDark = Color(0xFFC7D2FE);
+
+  // Galat di tema gelap: merah terang (kontras >= 6:1 di atas #000/#1C1C1E)
+  // dan wadah galat kemerahan — sebelumnya wadah galat memakai indigo
+  // (primarySubtleDark) sehingga banner galat tampak seperti info.
+  static const dangerDark = Color(0xFFFF6B63);
+  static const dangerSubtleDark = Color(0xFF3B1214);
+}
+
+/// Skala radius sudut Wangsa — satu-satunya sumber nilai lengkung.
+///
+/// Aturan konsentris: elemen di dalam wadah ber-padding memakai
+/// `radius luar − padding` (mis. segmen di pil 24 dengan padding 4 → 20),
+/// supaya kedua lengkung sejajar dan tidak tampak "gemuk" di sudut.
+abstract final class WangsaRadius {
+  /// Thumbnail kecil, chip dalam teks.
+  static const xs = 8.0;
+
+  /// Baris daftar, input, tombol kecil.
+  static const sm = 12.0;
+
+  /// Kartu, banner, popover, gelembung pesan.
+  static const md = 16.0;
+
+  /// Elemen dalam pil (segmen, tombol di composer).
+  static const lg = 20.0;
+
+  /// Sheet, drawer, permukaan kaca besar.
+  static const xl = 24.0;
+
+  /// Bentuk kapsul penuh.
+  static const pill = 999.0;
 }
 
 /// Arah visual Wangsa adalah "soft minimalism with technical precision":
@@ -84,9 +117,9 @@ abstract final class WangsaTheme {
       surfaceContainerHighest: WangsaColors.surfaceMutedDark,
       onSurfaceVariant: WangsaColors.foregroundMutedDark,
       outline: WangsaColors.borderDark,
-      error: WangsaColors.danger,
-      onError: Colors.white,
-      errorContainer: WangsaColors.primarySubtleDark,
+      error: WangsaColors.dangerDark,
+      onError: WangsaColors.backgroundDark,
+      errorContainer: WangsaColors.dangerSubtleDark,
       onErrorContainer: WangsaColors.dangerSubtle,
     ),
     scaffoldBackground: WangsaColors.backgroundDark,
@@ -113,6 +146,9 @@ abstract final class WangsaTheme {
       brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: scaffoldBackground,
+      extensions: <ThemeExtension<dynamic>>[
+        brightness == Brightness.dark ? WangsaGlass.dark : WangsaGlass.light,
+      ],
       appBarTheme: AppBarTheme(
         backgroundColor: scaffoldBackground,
         foregroundColor: scheme.onSurface,
@@ -120,12 +156,19 @@ abstract final class WangsaTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
       ),
-      dividerTheme: DividerThemeData(color: scheme.outline, thickness: 1, space: 1),
+      dividerTheme: DividerThemeData(
+        color: scheme.outline,
+        thickness: 1,
+        space: 1,
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: scheme.surface,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         border: _inputBorder(scheme.outline),
         enabledBorder: _inputBorder(scheme.outline),
         focusedBorder: _inputBorder(scheme.primary),
@@ -136,21 +179,60 @@ abstract final class WangsaTheme {
         contentTextStyle: TextStyle(color: scheme.surface),
         behavior: SnackBarBehavior.floating,
       ),
-      // Skala jarak Wangsa adalah kelipatan 4. Radius 12 dipakai untuk
-      // permukaan yang membungkus konten, 8 untuk kendali kecil.
+      // Skala jarak Wangsa adalah kelipatan 4; radius mengikuti
+      // [WangsaRadius] — md untuk permukaan konten, sm untuk kendali.
       cardTheme: CardThemeData(
         color: scheme.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           side: BorderSide(color: scheme.outline),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(WangsaRadius.md),
+        ),
+      ),
+      drawerTheme: DrawerThemeData(
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(
+            right: Radius.circular(WangsaRadius.xl),
+          ),
+        ),
+        endShape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(
+            left: Radius.circular(WangsaRadius.xl),
+          ),
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(WangsaRadius.xl),
+          ),
+        ),
+      ),
+      listTileTheme: ListTileThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(WangsaRadius.sm),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(shape: const StadiumBorder()),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(shape: const StadiumBorder()),
+      ),
+      chipTheme: ChipThemeData(
+        shape: const StadiumBorder(),
+        side: BorderSide(color: scheme.outline),
+      ),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(WangsaRadius.xl),
         ),
       ),
     );
   }
 
   static OutlineInputBorder _inputBorder(Color color) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: color),
-      );
+    borderRadius: BorderRadius.circular(WangsaRadius.sm),
+    borderSide: BorderSide(color: color),
+  );
 }

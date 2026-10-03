@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+
+import '../chat_icons.dart';
 
 /// Komponen penampil keadaan kosong, galat, dan tidak ditemukan.
 ///
@@ -31,31 +34,31 @@ class ChatNotice extends StatelessWidget {
 
   const ChatNotice.empty({
     super.key,
-    this.icon = Icons.chat_bubble_outline,
+    this.icon = ChatIcons.history,
     this.title = 'Mulai percakapan',
     this.detail = 'Ketik pesan, atau tekan tombol mikrofon lalu bicara.',
-  })  : isError = false,
-        extra = null,
-        _useLogo = true;
+  }) : isError = false,
+       extra = null,
+       _useLogo = true;
 
   const ChatNotice.notFound({
     super.key,
-    this.icon = Icons.smart_toy_outlined,
+    this.icon = ChatIcons.bot,
     this.title = 'Agent tidak tersedia',
     this.detail =
         'Agent ini tidak ada, atau belum dipublikasikan. Periksa id Agent di layar pengaturan.',
     this.extra,
-  })  : isError = false,
-        _useLogo = false;
+  }) : isError = false,
+       _useLogo = false;
 
   const ChatNotice.failed({
     super.key,
-    this.icon = Icons.error_outline,
+    this.icon = ChatIcons.error,
     this.title = 'Gagal terhubung',
     required this.detail,
     this.extra,
-  })  : isError = true,
-        _useLogo = false;
+  }) : isError = true,
+       _useLogo = false;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +70,7 @@ class ChatNotice extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(WangsaRadius.md),
           border: Border.all(color: scheme.error.withValues(alpha: 0.2)),
         ),
         child: Column(
@@ -99,10 +102,7 @@ class ChatNotice extends StatelessWidget {
       // API gagal), tampilkan tata letak awal tanpa scrollview berlebih.
       if (extra == null) {
         return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: errorCard,
-          ),
+          child: Padding(padding: const EdgeInsets.all(24), child: errorCard),
         );
       }
 
@@ -111,11 +111,7 @@ class ChatNotice extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              errorCard,
-              const SizedBox(height: 16),
-              extra!,
-            ],
+            children: [errorCard, const SizedBox(height: 16), extra!],
           ),
         ),
       );
@@ -142,10 +138,7 @@ class ChatNotice extends StatelessWidget {
                     width: size,
                     height: size,
                     fit: BoxFit.contain,
-                    colorFilter: ColorFilter.mode(
-                      logoColor,
-                      BlendMode.srcIn,
-                    ),
+                    colorFilter: ColorFilter.mode(logoColor, BlendMode.srcIn),
                   );
                 },
               )
@@ -162,15 +155,10 @@ class ChatNotice extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           detail,
-          style: textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
+          style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
-        if (extra != null) ...[
-          const SizedBox(height: 24),
-          extra!,
-        ],
+        if (extra != null) ...[const SizedBox(height: 24), extra!],
       ],
     );
 
@@ -220,7 +208,7 @@ class FallbackConfigNotice extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(WangsaRadius.md),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
@@ -229,7 +217,7 @@ class FallbackConfigNotice extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.info_outline, size: 20, color: scheme.primary),
+              Icon(ChatIcons.info, size: 20, color: scheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -245,9 +233,7 @@ class FallbackConfigNotice extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             problem,
-            style: textTheme.bodySmall?.copyWith(
-              color: scheme.error,
-            ),
+            style: textTheme.bodySmall?.copyWith(color: scheme.error),
           ),
           const SizedBox(height: 6),
           Text(
@@ -285,19 +271,19 @@ class ChatErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(WangsaRadius.sm),
         border: Border.all(color: scheme.error.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, size: 16, color: scheme.onErrorContainer),
+          Icon(ChatIcons.error, size: 16, color: scheme.onErrorContainer),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onErrorContainer,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onErrorContainer),
             ),
           ),
         ],

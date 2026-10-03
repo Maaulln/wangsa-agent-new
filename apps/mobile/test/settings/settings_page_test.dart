@@ -3,12 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wangsa_mobile/config/app_config.dart';
 import 'package:wangsa_mobile/llm/llm_settings_controller.dart';
+import 'package:wangsa_mobile/profile/user_profile_controller.dart';
 import 'package:wangsa_mobile/settings/view/settings_page.dart';
 import 'package:wangsa_mobile/theme/theme_controller.dart';
 
 import '../support/fake_voice_input.dart';
 
-Future<Widget> _buildApp(AppConfig config, FakeVoiceInput voiceInput) async {
+Future<Widget> _buildApp(
+  AppConfig config,
+  FakeVoiceInput voiceInput, {
+  UserProfileController? userProfile,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final themeController = await ThemeController.load();
   return MaterialApp(
@@ -18,6 +23,7 @@ Future<Widget> _buildApp(AppConfig config, FakeVoiceInput voiceInput) async {
       voiceInput: voiceInput,
       themeController: themeController,
       llmSettings: LlmSettingsController.fake(),
+      userProfile: userProfile ?? UserProfileController.fake(),
     ),
   );
 }
@@ -32,7 +38,11 @@ void main() {
       final voiceInput = FakeVoiceInput();
 
       await tester.pumpWidget(await _buildApp(config, voiceInput));
-      await tester.drag(find.byType(ListView), const Offset(0, -800));
+      await tester.scrollUntilVisible(
+        find.byType(Switch),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       final switchWidget = tester.widget<Switch>(find.byType(Switch));
@@ -55,7 +65,11 @@ void main() {
       final voiceInput = FakeVoiceInput();
 
       await tester.pumpWidget(await _buildApp(config, voiceInput));
-      await tester.drag(find.byType(ListView), const Offset(0, -800));
+      await tester.scrollUntilVisible(
+        find.byType(Switch),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(Switch));
       await tester.pump();
@@ -75,12 +89,53 @@ void main() {
       await voiceInput.startWakeWordWatch();
 
       await tester.pumpWidget(await _buildApp(config, voiceInput));
-      await tester.drag(find.byType(ListView), const Offset(0, -800));
+      await tester.scrollUntilVisible(
+        find.byType(Switch),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(Switch));
       await tester.pump();
 
       expect(voiceInput.stopWakeWordWatchCalls, 1);
+    });
+  });
+
+  group('SettingsPage profil tersimpan otomatis', () {
+    const config = AppConfig(
+      apiBaseUrl: 'https://api.wangsa.test',
+      defaultAgentId: 'agent-1',
+    );
+
+    testWidgets('mengetik nama tersimpan setelah jeda, tanpa tombol simpan', (
+      tester,
+    ) async {
+      final profile = UserProfileController.fake();
+      await tester.pumpWidget(
+        await _buildApp(config, FakeVoiceInput(), userProfile: profile),
+      );
+
+      expect(find.text('Simpan profil'), findsNothing);
+      await tester.enterText(find.byType(TextField).first, 'Doni Saputra');
+      expect(profile.value.name, isEmpty); // belum lewat jeda
+
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(profile.value.name, 'Doni Saputra');
+    });
+
+    testWidgets('perubahan yang belum lewat jeda ikut tersimpan saat layar '
+        'ditutup', (tester) async {
+      final profile = UserProfileController.fake();
+      await tester.pumpWidget(
+        await _buildApp(config, FakeVoiceInput(), userProfile: profile),
+      );
+
+      await tester.enterText(find.byType(TextField).first, 'Sari');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      expect(profile.value.name, 'Sari');
     });
   });
 }

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wangsa_mobile/chat/view/chat_icons.dart';
 import 'package:wangsa_mobile/api/wangsa_api_client.dart';
 import 'package:wangsa_mobile/auth/mobile_auth_controller.dart';
 import 'package:wangsa_mobile/chat/bloc/chat_bloc.dart';
@@ -569,7 +570,7 @@ void main() {
       await tester.pumpWidget(_buildApp(bloc, voiceInput));
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.error_outline), findsWidgets);
+      expect(find.byIcon(ChatIcons.error), findsWidgets);
       expect(find.text('Gagal terhubung'), findsOneWidget);
       expect(find.text('Terjadi kesalahan server.'), findsOneWidget);
     });
@@ -759,13 +760,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Pemilihan model kini dipindah ke drawer (bukan pil di composer).
-      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.tap(find.byIcon(ChatIcons.menu));
       await tester.pumpAndSettle();
 
       // Baris model di drawer menampilkan model aktif server, bukan nama agent.
       expect(find.text('model-a'), findsOneWidget);
 
-      await tester.tap(find.text('Model & Provider'));
+      await tester.tap(find.text('Model'));
       await tester.pumpAndSettle();
 
       expect(find.text('model-b'), findsOneWidget);
@@ -791,11 +792,11 @@ void main() {
       await tester.pumpWidget(buildAppDenganPemilih(bloc, voiceInput));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.tap(find.byIcon(ChatIcons.menu));
       await tester.pumpAndSettle();
 
       expect(find.text('Asisten Akademik'), findsOneWidget);
-      await tester.tap(find.text('Model & Provider'));
+      await tester.tap(find.text('Model'));
       await tester.pumpAndSettle();
 
       expect(find.text('Pilih Provider & Model'), findsOneWidget);
@@ -880,7 +881,7 @@ void main() {
 
       await tester.pumpWidget(_buildApp(bloc, voiceInput));
       await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.tap(find.byIcon(ChatIcons.menu));
       await tester.pumpAndSettle();
 
       expect(find.text('Percakapan baru'), findsOneWidget);
@@ -898,57 +899,46 @@ void main() {
       );
     });
 
-    testWidgets('bilah bawah tetap: ketuk Profil membuka ProfilePage', (
-      tester,
-    ) async {
-      final voiceInput = FakeVoiceInput();
-      final bloc = ChatBloc(
-        apiClient: WangsaApiClient(
-          baseUrl: 'https://api.wangsa.test',
-          httpClient: MockClient(_withSetup((_) async => _agentOk())),
-        ),
-        agentId: 'agent-1',
-      )..add(const ChatOpened());
-      addTearDown(bloc.close);
+    testWidgets(
+      'bilah bawah tetap: satu tombol profil membuka profil + pengaturan',
+      (tester) async {
+        final voiceInput = FakeVoiceInput();
+        final bloc = ChatBloc(
+          apiClient: WangsaApiClient(
+            baseUrl: 'https://api.wangsa.test',
+            httpClient: MockClient(_withSetup((_) async => _agentOk())),
+          ),
+          agentId: 'agent-1',
+        )..add(const ChatOpened());
+        addTearDown(bloc.close);
 
-      await tester.pumpWidget(_buildApp(bloc, voiceInput));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(_buildApp(bloc, voiceInput));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.menu_rounded));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(ChatIcons.menu));
+        await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.person_outline), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.person_outline));
-      await tester.pumpAndSettle();
+        expect(find.byIcon(ChatIcons.profile), findsOneWidget);
+        await tester.tap(find.byIcon(ChatIcons.profile));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Wangsa belum punya sistem akun'), findsOneWidget);
-      expect(find.text('Asisten Akademik'), findsOneWidget);
-    });
-
-    testWidgets('bilah bawah tetap: ketuk ikon gear membuka SettingsPage', (
-      tester,
-    ) async {
-      final voiceInput = FakeVoiceInput();
-      final bloc = ChatBloc(
-        apiClient: WangsaApiClient(
-          baseUrl: 'https://api.wangsa.test',
-          httpClient: MockClient(_withSetup((_) async => _agentOk())),
-        ),
-        agentId: 'agent-1',
-      )..add(const ChatOpened());
-      addTearDown(bloc.close);
-
-      await tester.pumpWidget(_buildApp(bloc, voiceInput));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byIcon(Icons.menu_rounded));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byIcon(Icons.settings_outlined));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Id agent'), findsOneWidget);
-      expect(find.text('agent-1'), findsOneWidget);
-    });
+        // Profil dan pengaturan satu layar: tidak ada lagi tombol gir terpisah.
+        expect(find.byIcon(ChatIcons.settings), findsNothing);
+        expect(find.text('Nama panggilan'), findsOneWidget);
+        // Kartu Agent ada di bawah lipatan layar uji, jadi digulir dulu.
+        await tester.scrollUntilVisible(
+          find.text('Asisten Akademik'),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('Asisten Akademik'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Id agent'),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('agent-1'), findsOneWidget);
+      },
+    );
   });
 }

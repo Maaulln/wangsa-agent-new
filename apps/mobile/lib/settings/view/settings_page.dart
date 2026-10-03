@@ -7,12 +7,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../chat/view/chat_icons.dart';
 import '../../config/app_config.dart';
 import '../../llm/llm_settings_controller.dart';
+import '../../profile/user_profile_controller.dart';
 import '../../theme/theme_controller.dart';
+import '../../theme/wangsa_theme.dart';
 import '../../voice/voice_input.dart';
 
+/// Satu layar untuk profil dan pengaturan: profil (nama + preferensi,
+/// tersimpan otomatis) di atas, lalu pengaturan, lalu info tentang
+/// aplikasi. Dulu profil punya layar sendiri; Wangsa belum punya sistem
+/// akun, jadi "profil" hanya dua kolom lokal dan tidak layak dipisah.
+///
 /// Layar pengaturan sengaja kecil.
 ///
 /// Semua yang bisa diatur dari server tidak perlu muncul sebagai kolom
@@ -47,6 +57,12 @@ class SettingsPage extends StatefulWidget {
   /// Sesi auth untuk nama profile + logout. Null = sembunyikan seksi akun.
   final MobileAuthController? auth;
 
+  /// Profil lokal (nama panggilan + preferensi) yang dikirim ke Agent.
+  final UserProfileController userProfile;
+
+  /// Agent aktif untuk bagian "Tentang". Null = belum dimuat.
+  final PublicAgent? agent;
+
   const SettingsPage({
     super.key,
     required this.config,
@@ -54,6 +70,8 @@ class SettingsPage extends StatefulWidget {
     required this.voiceInput,
     required this.themeController,
     required this.llmSettings,
+    required this.userProfile,
+    this.agent,
     this.configProblem,
     this.onApiBaseUrlChanged,
     this.apiClient,
@@ -74,6 +92,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _loadingBudget = false;
   bool _wakeWordBusy = false;
   String? _wakeWordError;
+  late final TextEditingController _nameController;
+  late final TextEditingController _preferencesController;
+  final FocusNode _nameFocus = FocusNode();
+  Timer? _saveTimer;
+  PackageInfo? _packageInfo;
+  bool _packageInfoFailed = false;
 
   @override
   void didChangeDependencies() {
@@ -106,6 +130,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _client =
         widget.apiClient ?? WangsaApiClient(baseUrl: widget.config.apiBaseUrl);
     _currentApiUrl = widget.config.apiBaseUrl;
+    final profile = widget.userProfile.value;
+    _nameController = TextEditingController(text: profile.name);
+    _preferencesController = TextEditingController(text: profile.preferences);
+    _nameController.addListener(_scheduleProfileSave);
+    _preferencesController.addListener(_scheduleProfileSave);
+    unawaited(_loadPackageInfo());
     _backgroundListening = widget.voiceInput.wakeWordEnabled;
     // Sinkronkan sakelar dengan listener yang mulai otomatis saat bootstrap.
     _voiceSubscription = widget.voiceInput.events.listen((event) {
@@ -126,9 +156,45 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
+    // Perubahan terakhir yang belum sempat tersimpan (jeda 600 ms) tetap
+    // ditulis saat layar ditutup — pengguna tidak perlu menekan Simpan.
+    if (_saveTimer?.isActive ?? false) {
+      _saveTimer!.cancel();
+      unawaited(_saveProfile());
+    }
+    _nameController.dispose();
+    _preferencesController.dispose();
+    _nameFocus.dispose();
     _voiceSubscription?.cancel();
     if (_ownsClient) _client.close();
     super.dispose();
+  }
+
+  /// Simpan otomatis: tiap ketikan menunda penyimpanan 600 ms, jadi tidak
+  /// ada tombol Simpan dan tidak menulis ke disk di setiap huruf.
+  void _scheduleProfileSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 600), _saveProfile);
+  }
+
+  Future<void> _saveProfile() {
+    return widget.userProfile.save(
+      UserProfile(
+        name: _nameController.text.trim(),
+        preferences: _preferencesController.text.trim(),
+      ),
+    );
+  }
+
+  Future<void> _loadPackageInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _packageInfo = info);
+    } catch (_) {
+      // Sekadar-terbaik — kalau platform tidak bisa memberi info versi,
+      // tampil 'Tidak diketahui', bukan macet di 'Memuat...'.
+      if (mounted) setState(() => _packageInfoFailed = true);
+    }
   }
 
   Future<void> _toggleBackgroundListening(bool value) async {
@@ -252,7 +318,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       decoration: const InputDecoration(
                         labelText: 'URL Server Backend',
                         hintText: 'http://localhost:9901',
-                        prefixIcon: Icon(Icons.dns_outlined),
+                        prefixIcon: Icon(LucideIcons.server300),
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.url,
@@ -282,22 +348,19 @@ class _SettingsPageState extends State<SettingsPage> {
                       runSpacing: 4,
                       children: [
                         ActionChip(
-                          avatar: const Icon(Icons.usb, size: 16),
+                          avatar: const Icon(LucideIcons.usb300, size: 16),
                           label: const Text('localhost (USB)'),
                           onPressed: () =>
                               controller.text = 'http://localhost:9901',
                         ),
                         ActionChip(
-                          avatar: const Icon(
-                            Icons.desktop_windows_outlined,
-                            size: 16,
-                          ),
+                          avatar: const Icon(LucideIcons.monitor300, size: 16),
                           label: const Text('10.0.2.2 (Emulator)'),
                           onPressed: () =>
                               controller.text = 'http://10.0.2.2:9901',
                         ),
                         ActionChip(
-                          avatar: const Icon(Icons.radar_rounded, size: 16),
+                          avatar: const Icon(LucideIcons.radar300, size: 16),
                           label: const Text('Deteksi otomatis'),
                           onPressed: testing
                               ? null
@@ -344,7 +407,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.wifi_find_rounded, size: 18),
+                                : const Icon(LucideIcons.wifi300, size: 18),
                             label: Text(
                               testing ? 'Menghubungi…' : 'Tes koneksi',
                             ),
@@ -436,194 +499,156 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final auth = widget.auth;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Pengaturan')),
+      appBar: AppBar(
+        leadingWidth: 64,
+        leading: const _CircleBackButton(),
+        title: const Text(
+          'Pengaturan',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: [
-          _Field(label: 'Id agent', value: widget.agentId, monospace: true),
-          _ApiUrlTile(url: _currentApiUrl, onTap: _showEditApiDialog),
-          _Field(label: 'Kata pemicu', value: widget.config.wakeWord),
-          _Field(
-            label: 'Sumber konfigurasi',
-            value: widget.configProblem == null
-                ? 'berkas konfigurasi di server'
-                : 'nilai cadangan bawaan aplikasi',
-          ),
-          if (widget.configProblem != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                widget.configProblem!,
-                style: TextStyle(color: scheme.error),
-              ),
-            ),
-          const Divider(height: 32),
-          Text(
-            'Provider & Model AI',
-            style: Theme.of(context).textTheme.labelMedium,
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Koneksikan provider AI Anda (GitHub Copilot, Anthropic, OpenAI, Gemini, dll.) '
-            'seperti alur hermes setup agar Agent bisa terhubung.',
-            style: TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            elevation: 0,
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: scheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-            ),
-            child: ListTile(
-              leading: Icon(Icons.hub_rounded, color: scheme.primary),
-              title: const Text(
-                'Setup Provider & Login AI',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: const Text(
-                'Konfigurasi API Key & autentikasi provider',
-                style: TextStyle(fontSize: 12),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ProviderSetupPage(apiClient: _client),
-                  ),
-                );
-              },
+          ValueListenableBuilder<UserProfile>(
+            valueListenable: widget.userProfile,
+            builder: (context, profile, _) => _ProfileHeader(
+              // Nama panggilan kosong -> pakai nama akun, supaya header
+              // tidak menampilkan "Pengguna" padahal akunnya bernama.
+              name: profile.name.trim().isNotEmpty
+                  ? profile.name
+                  : (auth?.profile ?? ''),
+              subtitle: profile.name.trim().isNotEmpty ? auth?.profile : null,
+              onEdit: () => _nameFocus.requestFocus(),
             ),
           ),
-          const SizedBox(height: 12),
-          _BudgetCard(budget: _budget, loading: _loadingBudget),
-          if (widget.auth != null) ...[
-            const Divider(height: 32),
-            Text('Akun', style: Theme.of(context).textTheme.labelMedium),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: scheme.outlineVariant.withValues(alpha: 0.5),
-                ),
+          const SizedBox(height: 16),
+          _SettingsGroup(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            children: [
+              _ProfileField(
+                label: auth?.profile != null
+                    ? 'Nama panggilan (opsional)'
+                    : 'Nama panggilan',
+                hint: auth?.profile != null
+                    ? 'Kosong = ${auth!.profile}'
+                    : 'Misal: Doni',
+                controller: _nameController,
+                focusNode: _nameFocus,
+                textInputAction: TextInputAction.next,
               ),
-              child: ListTile(
-                leading: Icon(
-                  Icons.person_outline_rounded,
-                  color: scheme.primary,
-                ),
-                title: Text(
-                  widget.auth!.profile ?? 'Pengguna',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text(
-                  'Satu akun = satu profile terisolasi',
-                  style: TextStyle(fontSize: 12),
-                ),
+              const SizedBox(height: 16),
+              _ProfileField(
+                label: 'Preferensi (opsional)',
+                hint: 'Misal: santai, bahasa Indonesia, jawaban singkat',
+                controller: _preferencesController,
+                minLines: 2,
+                maxLines: 4,
               ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text('Keluar'),
-              onPressed: () => _logout(context),
-            ),
-          ],
-          const Divider(height: 32),
-          Text('Tampilan', style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 8),
+            ],
+          ),
+          const _FootNote(
+            'Tersimpan otomatis di HP ini dan dikirim ke Agent supaya '
+            'balasannya sesuai dengan Anda.',
+          ),
+          const _SectionLabel('Provider & model AI'),
+          _SettingsGroup(
+            children: [
+              _SettingsRow(
+                icon: LucideIcons.network300,
+                title: 'Setup provider & login AI',
+                subtitle:
+                    'GitHub Copilot, Anthropic, OpenAI, Gemini, dan lainnya',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ProviderSetupPage(apiClient: _client),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          const _SectionLabel('Pemakaian'),
+          _BudgetSection(budget: _budget, loading: _loadingBudget),
+          const _SectionLabel('Tampilan'),
           // Sebelum ini aplikasi hanya mengikuti mode gelap/terang sistem
           // tanpa cara mengubahnya — identitas visual Wangsa di web
           // memakai palet terang, jadi HP dengan sistem bermode gelap
           // membuat aplikasi ini terlihat tidak senada tanpa diminta.
           // Lihat theme/theme_controller.dart.
-          ValueListenableBuilder<ThemeMode>(
-            valueListenable: widget.themeController,
-            builder: (context, mode, _) => SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  label: Text('Sistem'),
-                  icon: Icon(Icons.brightness_auto_outlined),
+          _SettingsGroup(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: ValueListenableBuilder<ThemeMode>(
+                  valueListenable: widget.themeController,
+                  builder: (context, mode, _) => _ThemeSwitch(
+                    mode: mode,
+                    onChanged: (next) =>
+                        unawaited(widget.themeController.setMode(next)),
+                  ),
                 ),
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  label: Text('Terang'),
-                  icon: Icon(Icons.light_mode_outlined),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  label: Text('Gelap'),
-                  icon: Icon(Icons.dark_mode_outlined),
-                ),
-              ],
-              selected: {mode},
-              onSelectionChanged: (selection) =>
-                  unawaited(widget.themeController.setMode(selection.first)),
-            ),
+              ),
+            ],
           ),
-          const Divider(height: 32),
-          Text(
-            'Panggilan suara',
-            style: Theme.of(context).textTheme.labelMedium,
-          ),
-          const SizedBox(height: 4),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            secondary: Icon(
-              _backgroundListening
-                  ? Icons.hearing_rounded
-                  : Icons.hearing_disabled_rounded,
-              color: _backgroundListening
-                  ? scheme.primary
-                  : scheme.onSurfaceVariant,
-            ),
-            title: Text(
-              _backgroundListening
-                  ? 'Kata pemicu aktif'
-                  : 'Panggil dengan “${widget.config.wakeWord}”',
-            ),
-            subtitle: Text(
-              !_wakeWordAvailable
-                  ? 'Wakeword tidak tersedia pada pemasangan ini.'
-                  : _backgroundListening
-                  ? 'Wangsa mendengarkan di latar belakang, lalu jeda saat mikrofon dipakai untuk dikte.'
-                  : 'Aktifkan untuk memanggil Wangsa tanpa membuka aplikasi.',
-            ),
-            value: _wakeWordAvailable && _backgroundListening,
-            onChanged: _wakeWordAvailable && !_wakeWordBusy
-                ? _toggleBackgroundListening
-                : null,
+          const _SectionLabel('Panggilan suara'),
+          _SettingsGroup(
+            children: [
+              _SettingsRow(
+                icon: _backgroundListening
+                    ? LucideIcons.ear300
+                    : LucideIcons.earOff300,
+                iconColor: _backgroundListening ? scheme.primary : null,
+                title: _backgroundListening
+                    ? 'Kata pemicu aktif'
+                    : 'Panggil dengan “${widget.config.wakeWord}”',
+                subtitle: !_wakeWordAvailable
+                    ? 'Wakeword tidak tersedia pada pemasangan ini.'
+                    : _backgroundListening
+                    ? 'Wangsa mendengarkan di latar belakang, lalu jeda saat mikrofon dipakai untuk dikte.'
+                    : 'Aktifkan untuk memanggil Wangsa tanpa membuka aplikasi.',
+                onTap: _wakeWordAvailable && !_wakeWordBusy
+                    ? () => _toggleBackgroundListening(!_backgroundListening)
+                    : null,
+                showChevron: false,
+                trailing: Switch.adaptive(
+                  value: _wakeWordAvailable && _backgroundListening,
+                  onChanged: _wakeWordAvailable && !_wakeWordBusy
+                      ? _toggleBackgroundListening
+                      : null,
+                ),
+              ),
+            ],
           ),
           if (_wakeWordBusy)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: LinearProgressIndicator(),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(WangsaRadius.pill),
+                child: const LinearProgressIndicator(minHeight: 4),
+              ),
             ),
           if (_wakeWordError != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(top: 12),
               child: Material(
                 color: scheme.errorContainer,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(WangsaRadius.md),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
-                        Icons.mic_off_outlined,
+                        LucideIcons.micOff300,
+                        size: 20,
                         color: scheme.onErrorContainer,
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           _wakeWordError!,
@@ -642,15 +667,537 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           if (_wakeWordAvailable)
+            _FootNote(
+              'Wangsa mendengarkan lewat mikrofon saat notifikasi layanan aktif. '
+              'Jika Android menghentikannya, izinkan aktivitas latar belakang '
+              'untuk Wangsa di pengaturan baterai.',
+            ),
+          const _SectionLabel('Koneksi'),
+          _SettingsGroup(
+            children: [
+              _SettingsRow(
+                icon: LucideIcons.server300,
+                title: 'Alamat API backend',
+                subtitle: _currentApiUrl,
+                monoSubtitle: true,
+                trailing: Icon(
+                  ChatIcons.edit,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+                showChevron: false,
+                onTap: _showEditApiDialog,
+              ),
+              _SettingsRow(
+                icon: LucideIcons.hash300,
+                title: 'Id agent',
+                subtitle: widget.agentId,
+                monoSubtitle: true,
+              ),
+              _SettingsRow(
+                icon: LucideIcons.audioLines300,
+                title: 'Kata pemicu',
+                subtitle: widget.config.wakeWord,
+              ),
+              _SettingsRow(
+                icon: LucideIcons.cog300,
+                title: 'Sumber konfigurasi',
+                subtitle: widget.configProblem == null
+                    ? 'berkas konfigurasi di server'
+                    : 'nilai cadangan bawaan aplikasi',
+              ),
+            ],
+          ),
+          if (widget.configProblem != null)
             Padding(
-              padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
               child: Text(
-                'Wangsa mendengarkan lewat mikrofon saat notifikasi layanan aktif. '
-                'Jika Android menghentikannya, izinkan aktivitas latar belakang '
-                'untuk Wangsa di pengaturan baterai.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                widget.configProblem!,
+                style: TextStyle(color: scheme.error, fontSize: 13),
+              ),
+            ),
+          const _SectionLabel('Tentang'),
+          _SettingsGroup(
+            children: [
+              _SettingsRow(
+                icon: LucideIcons.bot300,
+                title: 'Agent aktif',
+                subtitle: widget.agent?.name ?? 'Belum ada Agent yang dimuat.',
+              ),
+              if (widget.agent != null)
+                _SettingsRow(
+                  icon: LucideIcons.target300,
+                  title: 'Tujuan',
+                  subtitle: widget.agent!.purpose,
+                ),
+              _SettingsRow(
+                icon: LucideIcons.info300,
+                title: 'Versi aplikasi',
+                subtitle: _packageInfo != null
+                    ? '${_packageInfo!.version}+${_packageInfo!.buildNumber}'
+                    : (_packageInfoFailed ? 'Tidak diketahui' : 'Memuat...'),
+              ),
+            ],
+          ),
+          if (auth != null) ...[
+            const SizedBox(height: 24),
+            _SettingsGroup(
+              children: [
+                _SettingsRow(
+                  icon: ChatIcons.signOut,
+                  title: 'Keluar',
+                  destructive: true,
+                  onTap: () => _logout(context),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Tombol kembali bulat di AppBar, senada dengan tombol bulat di layar chat.
+class _CircleBackButton extends StatelessWidget {
+  const _CircleBackButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Tooltip(
+        message: 'Kembali',
+        child: InkResponse(
+          radius: 24,
+          onTap: () => Navigator.of(context).maybePop(),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              shape: BoxShape.circle,
+              border: Border.all(color: scheme.outline),
+            ),
+            child: Icon(ChatIcons.back, size: 20, color: scheme.onSurface),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 24, 4, 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _FootNote extends StatelessWidget {
+  final String text;
+
+  const _FootNote(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// Kartu berlengkung yang membungkus beberapa baris dengan garis pemisah.
+/// Memakai [Material] (bukan Container berwarna) supaya efek sentuh baris
+/// di dalamnya tidak tertutup latar kartu.
+class _SettingsGroup extends StatelessWidget {
+  final List<Widget> children;
+
+  /// Bila diisi, isi grup dibungkus padding dan tanpa garis pemisah
+  /// (dipakai untuk kartu formulir, bukan daftar baris).
+  final EdgeInsetsGeometry? padding;
+
+  const _SettingsGroup({required this.children, this.padding});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(WangsaRadius.lg),
+        side: BorderSide(color: scheme.outline),
+      ),
+      child: padding != null
+          ? Padding(
+              padding: padding!,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0)
+                    Divider(height: 1, indent: 54, color: scheme.outline),
+                  children[i],
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+/// Avatar inisial + nama di puncak layar. Tombol pensil memindahkan fokus
+/// ke kolom nama (belum ada foto profil, jadi hanya nama yang diubah).
+class _ProfileHeader extends StatelessWidget {
+  final String name;
+  final String? subtitle;
+  final VoidCallback onEdit;
+
+  const _ProfileHeader({
+    required this.name,
+    required this.onEdit,
+    this.subtitle,
+  });
+
+  String get _initials {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '';
+    final first = parts.first.characters.first;
+    final second = parts.length > 1 ? parts[1].characters.first : '';
+    return (first + second).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final initials = _initials;
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 88,
+          height: 88,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: initials.isEmpty
+                        ? Icon(
+                            ChatIcons.profile,
+                            size: 36,
+                            color: scheme.onPrimaryContainer,
+                          )
+                        : Text(
+                            initials,
+                            style: TextStyle(
+                              color: scheme.onPrimaryContainer,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w300,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Tooltip(
+                  message: 'Ubah nama',
+                  child: InkResponse(
+                    onTap: onEdit,
+                    radius: 22,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: scheme.outline),
+                      ),
+                      child: Icon(
+                        ChatIcons.edit,
+                        size: 15,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          name.trim().isEmpty ? 'Pengguna' : name.trim(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+        ),
+        if (subtitle != null && subtitle!.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitle!,
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ProfileField extends StatelessWidget {
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final TextInputAction? textInputAction;
+  final int minLines;
+  final int maxLines;
+
+  const _ProfileField({
+    required this.label,
+    required this.hint,
+    required this.controller,
+    this.focusNode,
+    this.textInputAction,
+    this.minLines = 1,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Satu baris = pil penuh; multi-baris memakai radius xl supaya sudut
+    // tidak menggembung saat kolom membesar.
+    final radius = maxLines == 1 ? WangsaRadius.pill : WangsaRadius.xl;
+    OutlineInputBorder border(Color color) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(radius),
+      borderSide: BorderSide(color: color),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            label,
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14),
+          ),
+        ),
+        TextField(
+          controller: controller,
+          focusNode: focusNode,
+          textInputAction: textInputAction,
+          minLines: minLines,
+          maxLines: maxLines,
+          style: const TextStyle(fontSize: 16),
+          decoration: InputDecoration(
+            hintText: hint,
+            filled: true,
+            fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 14,
+            ),
+            border: border(scheme.outline),
+            enabledBorder: border(scheme.outline),
+            focusedBorder: border(scheme.onSurface.withValues(alpha: 0.5)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final String title;
+  final String? subtitle;
+  final bool monoSubtitle;
+  final Widget? trailing;
+  final bool showChevron;
+  final bool destructive;
+  final VoidCallback? onTap;
+
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    this.iconColor,
+    this.subtitle,
+    this.monoSubtitle = false,
+    this.trailing,
+    this.showChevron = true,
+    this.destructive = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = destructive ? scheme.error : scheme.onSurface;
+    final end =
+        trailing ??
+        (onTap != null && showChevron && !destructive
+            ? Icon(
+                ChatIcons.chevronRight,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              )
+            : null);
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 22, color: iconColor ?? color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 13,
+                          height: 1.3,
+                          fontFamily: monoSubtitle ? 'monospace' : null,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (end != null) ...[const SizedBox(width: 12), end],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pilihan tema berbentuk pil, senada dengan sakelar Chat/Work di layar
+/// chat. Radius segmen = radius pil dikurangi padding (konsentris).
+class _ThemeSwitch extends StatelessWidget {
+  final ThemeMode mode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  const _ThemeSwitch({required this.mode, required this.onChanged});
+
+  static const _options = [
+    (ThemeMode.system, 'Sistem', LucideIcons.sunMoon300),
+    (ThemeMode.light, 'Terang', LucideIcons.sun300),
+    (ThemeMode.dark, 'Gelap', LucideIcons.moon300),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(WangsaRadius.pill),
+      ),
+      child: Row(
+        children: [
+          for (final (value, label, icon) in _options)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: mode == value,
+                label: label,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(WangsaRadius.pill),
+                  onTap: () => onChanged(value),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: mode == value
+                          ? scheme.onSurface.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(WangsaRadius.pill),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 16,
+                          color: mode == value
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: mode == value
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: mode == value
+                                ? scheme.onSurface
+                                : scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
         ],
@@ -659,270 +1206,137 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-/// Kartu ringkasan budget spend profile: progres harian + bulanan bila
-/// ada cap, status peringatan, atau pesan tercapai. Read-only — ubah cap
-/// lewat dashboard / config.yaml (budgets.daily_usd/monthly_usd).
-class _BudgetCard extends StatelessWidget {
+/// Ringkasan budget spend profile: progres harian + bulanan bila ada cap,
+/// status peringatan, atau pesan tercapai. Read-only — ubah cap lewat
+/// dashboard / config.yaml (budgets.daily_usd/monthly_usd).
+class _BudgetSection extends StatelessWidget {
   final BudgetInfo? budget;
   final bool loading;
 
-  const _BudgetCard({required this.budget, required this.loading});
+  const _BudgetSection({required this.budget, required this.loading});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final b = budget;
     if (loading && b == null) {
-      return const Card(
-        child: ListTile(
-          leading: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
+      return const _SettingsGroup(
+        children: [
+          _SettingsRow(
+            icon: LucideIcons.gauge300,
+            title: 'Memuat pemakaian…',
+            trailing: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           ),
-          title: Text('Memuat pemakaian…', style: TextStyle(fontSize: 13)),
-        ),
+        ],
       );
     }
     if (b == null || !b.hasCap) {
-      return const Card(
-        child: ListTile(
-          leading: Icon(Icons.data_usage_outlined),
-          title: Text(
-            'Pemakaian',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      return const _SettingsGroup(
+        children: [
+          _SettingsRow(
+            icon: LucideIcons.gauge300,
+            title: 'Pemakaian',
+            subtitle: 'Tanpa batas (unlimited)',
           ),
-          subtitle: Text(
-            'Tanpa batas (unlimited)',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
+        ],
       );
     }
-    return Card(
-      elevation: 0,
-      color:
-          (b.isBreached
-                  ? scheme.errorContainer
-                  : scheme.surfaceContainerHighest)
-              .withValues(alpha: 0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  b.isBreached
-                      ? Icons.block_rounded
-                      : Icons.data_usage_outlined,
-                  color: b.isBreached ? scheme.error : scheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  b.isBreached ? 'Budget tercapai' : 'Pemakaian',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-            if (b.dailyUsd != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                'Harian \$${b.spentDay.toStringAsFixed(2)} / \$${b.dailyUsd!.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              LinearProgressIndicator(value: b.dayPct),
-            ],
-            if (b.monthlyUsd != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                'Bulanan \$${b.spentMonth.toStringAsFixed(2)} / \$${b.monthlyUsd!.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              LinearProgressIndicator(value: b.monthPct),
-            ],
-            if (b.alert && !b.isBreached)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('Mendekati batas.', style: TextStyle(fontSize: 12)),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Status BYOK peninggalan: backend saat ini mengabaikan kunci ini
-/// (lihat `WangsaApiClient.sendMessage`), jadi layar ini tidak lagi
-/// menawarkan formulir isi kunci — hanya tombol bersih-bersih untuk
-/// menghapus kunci yang masih tersimpan di brankas HP ini.
-class _LlmSection extends StatefulWidget {
-  final LlmSettingsController controller;
-
-  const _LlmSection({required this.controller});
-
-  @override
-  State<_LlmSection> createState() => _LlmSectionState();
-}
-
-class _LlmSectionState extends State<_LlmSection> {
-  Future<void> _reset() async {
-    await widget.controller.useDefault();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: widget.controller,
-      builder: (context, override, _) {
-        if (override != null) {
-          return Column(
+    final accent = b.isBreached ? scheme.error : scheme.primary;
+    return _SettingsGroup(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Field(
-                label: 'Tersimpan (tidak dipakai)',
-                value: 'Kustom: ${override.model}',
-                monospace: true,
+              Row(
+                children: [
+                  Icon(
+                    b.isBreached ? LucideIcons.ban300 : LucideIcons.gauge300,
+                    size: 22,
+                    color: accent,
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    b.isBreached ? 'Budget tercapai' : 'Pemakaian',
+                    style: TextStyle(
+                      color: b.isBreached ? scheme.error : scheme.onSurface,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
               ),
-              TextButton.icon(
-                onPressed: _reset,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Hapus kunci tersimpan'),
-              ),
+              if (b.dailyUsd != null)
+                _UsageBar(
+                  label:
+                      'Harian \$${b.spentDay.toStringAsFixed(2)} / \$${b.dailyUsd!.toStringAsFixed(2)}',
+                  value: b.dayPct,
+                  color: accent,
+                ),
+              if (b.monthlyUsd != null)
+                _UsageBar(
+                  label:
+                      'Bulanan \$${b.spentMonth.toStringAsFixed(2)} / \$${b.monthlyUsd!.toStringAsFixed(2)}',
+                  value: b.monthPct,
+                  color: accent,
+                ),
+              if (b.alert && !b.isBreached)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    'Mendekati batas.',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
             ],
-          );
-        }
-        return const _Field(
-          label: 'Aktif',
-          value: 'Model server (dipilih di layar chat)',
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _Field extends StatelessWidget {
+class _UsageBar extends StatelessWidget {
   final String label;
-  final String value;
-  final bool monospace;
+  final double value;
+  final Color color;
 
-  const _Field({
+  const _UsageBar({
     required this.label,
     required this.value,
-    this.monospace = false,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(top: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 4),
           Text(
-            value,
-            style: monospace ? const TextStyle(fontFamily: 'monospace') : null,
+            label,
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ApiUrlTile extends StatelessWidget {
-  final String url;
-  final VoidCallback onTap;
-
-  const _ApiUrlTile({required this.url, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Material(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Icon(Icons.dns_outlined, color: scheme.primary, size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Alamat API Backend',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'Sentuh untuk ubah',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: scheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        url,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: 'Ubah Alamat API',
-                  onPressed: onTap,
-                ),
-              ],
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(WangsaRadius.pill),
+            child: LinearProgressIndicator(
+              value: value,
+              minHeight: 6,
+              color: color,
+              backgroundColor: scheme.surfaceContainerHighest,
             ),
           ),
-        ),
+        ],
       ),
     );
   }

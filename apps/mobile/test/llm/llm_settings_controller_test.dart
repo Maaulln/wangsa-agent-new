@@ -22,7 +22,11 @@ void main() {
       expect(error, isNull);
       expect(
         controller.value,
-        const LlmOverride(baseURL: 'https://api.openai.com/v1', apiKey: 'sk-uji', model: 'gpt-4o-mini'),
+        const LlmOverride(
+          baseURL: 'https://api.openai.com/v1',
+          apiKey: 'sk-uji',
+          model: 'gpt-4o-mini',
+        ),
       );
       expect(controller.isCustom, isTrue);
     });
@@ -30,15 +34,29 @@ void main() {
     test('saveCustom menolak kolom kosong dan skema bukan http(s)', () async {
       final controller = LlmSettingsController.fake();
 
-      expect(await controller.saveCustom(baseURL: '', apiKey: 'k', model: 'm'), isNotNull);
-      expect(await controller.saveCustom(baseURL: 'ftp://x.test', apiKey: 'k', model: 'm'), isNotNull);
+      expect(
+        await controller.saveCustom(baseURL: '', apiKey: 'k', model: 'm'),
+        isNotNull,
+      );
+      expect(
+        await controller.saveCustom(
+          baseURL: 'ftp://x.test',
+          apiKey: 'k',
+          model: 'm',
+        ),
+        isNotNull,
+      );
       expect(controller.value, isNull);
     });
 
     test('useDefault menghapus kunci dan kembali null', () async {
       final vault = _ExposedVault();
       final controller = LlmSettingsController.fake(vault: vault);
-      await controller.saveCustom(baseURL: 'https://api.openai.com/v1', apiKey: 'sk-uji', model: 'm');
+      await controller.saveCustom(
+        baseURL: 'https://api.openai.com/v1',
+        apiKey: 'sk-uji',
+        model: 'm',
+      );
       expect(vault.store, isNotEmpty);
 
       await controller.useDefault();

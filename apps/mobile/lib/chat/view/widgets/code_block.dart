@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/wangsa_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -77,7 +78,7 @@ class _CodeBlockCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(WangsaRadius.sm),
           border: Border.all(color: scheme.outline.withValues(alpha: 0.4)),
         ),
         clipBehavior: Clip.antiAlias,

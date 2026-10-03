@@ -6,19 +6,25 @@ import 'package:http/testing.dart';
 import 'package:wangsa_mobile/config/app_config.dart';
 import 'package:wangsa_mobile/config/config_loader.dart';
 
-const fallback = AppConfig(apiBaseUrl: 'http://localhost:3001', defaultAgentId: 'cadangan');
+const fallback = AppConfig(
+  apiBaseUrl: 'http://localhost:3001',
+  defaultAgentId: 'cadangan',
+);
 
 ConfigLoader loaderYangMenjawab(http.Response Function() jawab) => ConfigLoader(
-      configUrl: Uri.parse('https://wangsa.test/config.json'),
-      fallback: fallback,
-      httpClient: MockClient((_) async => jawab()),
-    );
+  configUrl: Uri.parse('https://wangsa.test/config.json'),
+  fallback: fallback,
+  httpClient: MockClient((_) async => jawab()),
+);
 
 void main() {
   test('memakai konfigurasi dari server bila sah', () async {
     final loader = loaderYangMenjawab(
       () => http.Response(
-        jsonEncode({'apiBaseUrl': 'https://api.wangsa.test', 'defaultAgentId': 'agent-1'}),
+        jsonEncode({
+          'apiBaseUrl': 'https://api.wangsa.test',
+          'defaultAgentId': 'agent-1',
+        }),
         200,
       ),
     );
@@ -44,16 +50,19 @@ void main() {
     expect(result.problem, isNotNull);
   });
 
-  test('jatuh ke cadangan bila isinya tidak sah, dengan alasan yang tercatat', () async {
-    final loader = loaderYangMenjawab(
-      () => http.Response(jsonEncode({'defaultAgentId': 'agent-1'}), 200),
-    );
+  test(
+    'jatuh ke cadangan bila isinya tidak sah, dengan alasan yang tercatat',
+    () async {
+      final loader = loaderYangMenjawab(
+        () => http.Response(jsonEncode({'defaultAgentId': 'agent-1'}), 200),
+      );
 
-    final result = await loader.load();
+      final result = await loader.load();
 
-    expect(result.usedFallback, isTrue);
-    expect(result.problem, contains('apiBaseUrl'));
-  });
+      expect(result.usedFallback, isTrue);
+      expect(result.problem, contains('apiBaseUrl'));
+    },
+  );
 
   test('jatuh ke cadangan bila status bukan 200', () async {
     final loader = loaderYangMenjawab(() => http.Response('nope', 404));

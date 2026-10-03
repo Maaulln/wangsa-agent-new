@@ -24,6 +24,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   /// menguji profil) tetap kompilasi tanpa perlu menyediakannya.
   final UserProfileController? userProfile;
 
+  /// Nama akun (profile server), dipakai sebagai nama pengguna saat
+  /// nama panggilan di [userProfile] kosong — pengguna tidak perlu
+  /// mengisi nama lagi kalau akunnya sudah punya nama.
+  final String? userNameFallback;
+
   /// Penanda urutan pengiriman yang sedang aktif. Setiap kali pesan baru
   /// dikirim atau pengiriman dibatalkan, nomor ini naik. Balasan server
   /// yang tiba dengan nomor lama (mis. balasan yang datang setelah
@@ -67,6 +72,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required this.apiClient,
     required this.agentId,
     this.userProfile,
+    this.userNameFallback,
     this.candidateUrls = const [],
     this.probeTimeout = const Duration(seconds: 3),
     this.clientFactory,
@@ -373,6 +379,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       sessionId: _sessionId,
       userName: profile != null && profile.name.trim().isNotEmpty
           ? profile.name
+          : (userNameFallback?.trim().isNotEmpty ?? false)
+          ? userNameFallback!.trim()
           : null,
       userBio: profile != null && profile.preferences.trim().isNotEmpty
           ? profile.preferences

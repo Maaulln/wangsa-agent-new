@@ -57,14 +57,17 @@ void main() {
       expect(config.wakeWordAccessKey, 'kunci-picovoice');
     });
 
-    test('AccessKey wake word null bila tidak disebut, bukan bawaan apa pun', () {
-      final config = AppConfig.fromJson({
-        'apiBaseUrl': 'https://api.wangsa.test',
-        'defaultAgentId': 'a',
-      });
+    test(
+      'AccessKey wake word null bila tidak disebut, bukan bawaan apa pun',
+      () {
+        final config = AppConfig.fromJson({
+          'apiBaseUrl': 'https://api.wangsa.test',
+          'defaultAgentId': 'a',
+        });
 
-      expect(config.wakeWordAccessKey, isNull);
-    });
+        expect(config.wakeWordAccessKey, isNull);
+      },
+    );
 
     test('AccessKey wake word kosong diperlakukan sama seperti tidak ada', () {
       final config = AppConfig.fromJson({

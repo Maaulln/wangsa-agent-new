@@ -134,6 +134,7 @@ class _AuthGateState extends State<AuthGate> {
       apiClient: client,
       agentId: widget.config.defaultAgentId,
       userProfile: widget.userProfile,
+      userNameFallback: widget.auth.profile,
       candidateUrls: buildApiCandidates(
         savedUrl: url,
         envUrl: const String.fromEnvironment('WANGSA_API_BASE_URL'),

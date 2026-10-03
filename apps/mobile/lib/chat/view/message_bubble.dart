@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../theme/wangsa_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:share_plus/share_plus.dart';
@@ -71,10 +72,10 @@ class _UserBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: scheme.primary,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomLeft: Radius.circular(18),
-            bottomRight: Radius.circular(5),
+            topLeft: Radius.circular(WangsaRadius.lg),
+            topRight: Radius.circular(WangsaRadius.lg),
+            bottomLeft: Radius.circular(WangsaRadius.lg),
+            bottomRight: Radius.circular(6),
           ),
           boxShadow: [
             BoxShadow(

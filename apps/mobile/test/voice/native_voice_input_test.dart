@@ -128,83 +128,96 @@ NativeVoiceInput _buildVoice({
   required SpeechEngine speechEngine,
   required WakeWordEngineFactory createWakeWordEngine,
   TtsEngine? ttsEngine,
-}) =>
-    NativeVoiceInput(
-      accessKey: accessKey,
-      speechEngine: speechEngine,
-      createWakeWordEngine: createWakeWordEngine,
-      ttsEngine: ttsEngine ?? _FakeTtsEngine(),
-      foregroundService: _FakeForegroundServiceController(),
-    );
+}) => NativeVoiceInput(
+  accessKey: accessKey,
+  speechEngine: speechEngine,
+  createWakeWordEngine: createWakeWordEngine,
+  ttsEngine: ttsEngine ?? _FakeTtsEngine(),
+  foregroundService: _FakeForegroundServiceController(),
+);
 
 void main() {
   group('NativeVoiceInput tanpa AccessKey wake word', () {
-    test('startWakeWordWatch tidak menyentuh apa pun bila AccessKey kosong', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final voice = _buildVoice(
-        accessKey: null,
-        speechEngine: _FakeSpeechEngine(),
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'startWakeWordWatch tidak menyentuh apa pun bila AccessKey kosong',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final voice = _buildVoice(
+          accessKey: null,
+          speechEngine: _FakeSpeechEngine(),
+          createWakeWordEngine: factory.call,
+        );
 
-      await voice.startWakeWordWatch();
+        await voice.startWakeWordWatch();
 
-      expect(factory.created, isEmpty);
-      expect(voice.status, VoiceStatus.off);
-    });
+        expect(factory.created, isEmpty);
+        expect(voice.status, VoiceStatus.off);
+      },
+    );
 
-    test('openWakeWord dianggap terkonfigurasi walau AccessKey kosong', () async {
-      // Berbeda dengan lawan palsu di atas, factory nyata tidak bisa
-      // dimuat di `flutter test` (plugin ONNX tidak ada). Justru itu
-      // buktinya: kalau `_wakeWordConfigured` menolak openWakeWord,
-      // startWakeWordWatch kembali diam-diam tanpa mencoba membuat
-      // engine, dan tidak ada VoiceFailure sama sekali.
-      final voice = _buildVoice(
-        accessKey: null,
-        speechEngine: _FakeSpeechEngine(),
-        createWakeWordEngine: createOpenWakeWordEngine,
-      );
-      final failures = <VoiceEvent>[];
-      final sub = voice.events.where((e) => e is VoiceFailure).listen(failures.add);
-      addTearDown(sub.cancel);
+    test(
+      'openWakeWord dianggap terkonfigurasi walau AccessKey kosong',
+      () async {
+        // Berbeda dengan lawan palsu di atas, factory nyata tidak bisa
+        // dimuat di `flutter test` (plugin ONNX tidak ada). Justru itu
+        // buktinya: kalau `_wakeWordConfigured` menolak openWakeWord,
+        // startWakeWordWatch kembali diam-diam tanpa mencoba membuat
+        // engine, dan tidak ada VoiceFailure sama sekali.
+        final voice = _buildVoice(
+          accessKey: null,
+          speechEngine: _FakeSpeechEngine(),
+          createWakeWordEngine: createOpenWakeWordEngine,
+        );
+        final failures = <VoiceEvent>[];
+        final sub = voice.events
+            .where((e) => e is VoiceFailure)
+            .listen(failures.add);
+        addTearDown(sub.cancel);
 
-      await voice.startWakeWordWatch();
-      await _flush();
+        await voice.startWakeWordWatch();
+        await _flush();
 
-      expect(failures, isNotEmpty, reason: 'engine seharusnya dicoba dibuat');
-      expect(voice.status, VoiceStatus.off);
-    });
+        expect(failures, isNotEmpty, reason: 'engine seharusnya dicoba dibuat');
+        expect(voice.status, VoiceStatus.off);
+      },
+    );
 
-    test('tombol mikrofon tetap berfungsi walau wake word tidak dikonfigurasi', () async {
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: null,
-        speechEngine: speech,
-        createWakeWordEngine: _FakeWakeWordEngineFactory().call,
-      );
+    test(
+      'tombol mikrofon tetap berfungsi walau wake word tidak dikonfigurasi',
+      () async {
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: null,
+          speechEngine: speech,
+          createWakeWordEngine: _FakeWakeWordEngineFactory().call,
+        );
 
-      await voice.startListening();
+        await voice.startListening();
 
-      expect(speech.listenCalls, 1);
-      expect(voice.status, VoiceStatus.listening);
-    });
+        expect(speech.listenCalls, 1);
+        expect(voice.status, VoiceStatus.listening);
+      },
+    );
   });
 
   group('NativeVoiceInput dengan AccessKey wake word', () {
-    test('startWakeWordWatch segera setelah konstruksi (meniru auto-start bootstrap) berhasil menyala', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final voiceInput = NativeVoiceInput(
-        accessKey: 'kunci-uji',
-        createWakeWordEngine: factory.call,
-        speechEngine: _FakeSpeechEngine(),
-        foregroundService: _FakeForegroundServiceController(),
-      );
+    test(
+      'startWakeWordWatch segera setelah konstruksi (meniru auto-start bootstrap) berhasil menyala',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final voiceInput = NativeVoiceInput(
+          accessKey: 'kunci-uji',
+          createWakeWordEngine: factory.call,
+          speechEngine: _FakeSpeechEngine(),
+          foregroundService: _FakeForegroundServiceController(),
+        );
 
-      await voiceInput.startWakeWordWatch();
+        await voiceInput.startWakeWordWatch();
 
-      expect(voiceInput.status, VoiceStatus.idle);
-      expect(factory.created, hasLength(1));
-    });
+        expect(voiceInput.status, VoiceStatus.idle);
+        expect(factory.created, hasLength(1));
+      },
+    );
 
     test('dua startWakeWordWatch bersamaan hanya membuat satu mesin', () async {
       final factory = _FakeWakeWordEngineFactory();
@@ -225,192 +238,242 @@ void main() {
       expect(voice.status, VoiceStatus.idle);
     });
 
-    test('stopWakeWordWatch selagi mesin masih dibuat tidak meninggalkan mesin yang terus menyala', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: _FakeSpeechEngine(),
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'stopWakeWordWatch selagi mesin masih dibuat tidak meninggalkan mesin yang terus menyala',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: _FakeSpeechEngine(),
+          createWakeWordEngine: factory.call,
+        );
 
-      final starting = voice.startWakeWordWatch();
-      await voice.stopWakeWordWatch();
-      await starting;
+        final starting = voice.startWakeWordWatch();
+        await voice.stopWakeWordWatch();
+        await starting;
 
-      // Mesin yang sempat terbentuk harus ikut dihentikan, bukan lolos dan
-      // terus memegang mikrofon.
-      expect(factory.created, hasLength(1));
-      expect(factory.created.single.stopped, isTrue);
-      expect(factory.created.single.deleted, isTrue);
-    });
+        // Mesin yang sempat terbentuk harus ikut dihentikan, bukan lolos dan
+        // terus memegang mikrofon.
+        expect(factory.created, hasLength(1));
+        expect(factory.created.single.stopped, isTrue);
+        expect(factory.created.single.deleted, isTrue);
+      },
+    );
 
-    test('startListening menghentikan pengawasan kata pemicu lebih dulu', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'startListening menghentikan pengawasan kata pemicu lebih dulu',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      await voice.startWakeWordWatch();
-      expect(factory.created.single.started, isTrue);
+        await voice.startWakeWordWatch();
+        expect(factory.created.single.started, isTrue);
 
-      await voice.startListening();
+        await voice.startListening();
 
-      expect(factory.created.single.stopped, isTrue);
-      expect(factory.created.single.deleted, isTrue);
-      expect(speech.listenCalls, 1);
-      expect(voice.status, VoiceStatus.listening);
-    });
+        expect(factory.created.single.stopped, isTrue);
+        expect(factory.created.single.deleted, isTrue);
+        expect(speech.listenCalls, 1);
+        expect(voice.status, VoiceStatus.listening);
+      },
+    );
 
-    test('kata pemicu terdeteksi memicu WakeWordDetected lalu mulai mendengarkan', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'kata pemicu terdeteksi memicu WakeWordDetected lalu mulai mendengarkan',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
 
-      expect(events, contains(isA<WakeWordDetected>()));
-      expect(speech.listenCalls, 1);
-    });
+        expect(events, contains(isA<WakeWordDetected>()));
+        expect(speech.listenCalls, 1);
+      },
+    );
 
-    test('ucapan akhir memicu FinalTranscript dengan teks yang benar', () async {
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: _FakeWakeWordEngineFactory().call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'ucapan akhir memicu FinalTranscript dengan teks yang benar',
+      () async {
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: _FakeWakeWordEngineFactory().call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startListening();
-      speech.onFinal!('halo wangsa apa kabar');
-      await _flush();
+        await voice.startListening();
+        speech.onFinal!('halo wangsa apa kabar');
+        await _flush();
 
-      expect(events, contains(isA<FinalTranscript>().having((e) => e.text, 'text', 'halo wangsa apa kabar')));
-      expect(voice.status, VoiceStatus.processing);
-    });
+        expect(
+          events,
+          contains(
+            isA<FinalTranscript>().having(
+              (e) => e.text,
+              'text',
+              'halo wangsa apa kabar',
+            ),
+          ),
+        );
+        expect(voice.status, VoiceStatus.processing);
+      },
+    );
 
-    test('ucapan sementara memicu PartialTranscript tanpa mengubah status', () async {
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: _FakeWakeWordEngineFactory().call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'ucapan sementara memicu PartialTranscript tanpa mengubah status',
+      () async {
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: _FakeWakeWordEngineFactory().call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startListening();
-      speech.onPartial!('halo');
-      await _flush();
+        await voice.startListening();
+        speech.onPartial!('halo');
+        await _flush();
 
-      expect(events, contains(isA<PartialTranscript>().having((e) => e.text, 'text', 'halo')));
-      expect(voice.status, VoiceStatus.listening);
-    });
+        expect(
+          events,
+          contains(
+            isA<PartialTranscript>().having((e) => e.text, 'text', 'halo'),
+          ),
+        );
+        expect(voice.status, VoiceStatus.listening);
+      },
+    );
 
-    test('galat mesin dikte dipetakan ke VoiceFailure, bukan pesan mentah dari plugin', () async {
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: _FakeWakeWordEngineFactory().call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'galat mesin dikte dipetakan ke VoiceFailure, bukan pesan mentah dari plugin',
+      () async {
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: _FakeWakeWordEngineFactory().call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startListening();
-      speech.onError!('galat native');
-      await _flush();
+        await voice.startListening();
+        speech.onError!('galat native');
+        await _flush();
 
-      expect(events, contains(isA<VoiceFailure>().having((e) => e.message, 'message', 'galat native')));
-    });
+        expect(
+          events,
+          contains(
+            isA<VoiceFailure>().having(
+              (e) => e.message,
+              'message',
+              'galat native',
+            ),
+          ),
+        );
+      },
+    );
 
-    test('stop membatalkan sesi dikte dan menyalakan kembali pengawasan kata pemicu', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'stop membatalkan sesi dikte dan menyalakan kembali pengawasan kata pemicu',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      await voice.startWakeWordWatch();
-      await voice.startListening();
-      await voice.stop();
+        await voice.startWakeWordWatch();
+        await voice.startListening();
+        await voice.stop();
 
-      expect(speech.canceled, isTrue);
-      // Mesin kata pemicu pertama sudah dihapus saat startListening(),
-      // jadi menyalakan kembali berarti membuat satu mesin baru.
-      expect(factory.created, hasLength(2));
-      expect(factory.created.last.started, isTrue);
-      expect(voice.status, VoiceStatus.idle);
-    });
+        expect(speech.canceled, isTrue);
+        // Mesin kata pemicu pertama sudah dihapus saat startListening(),
+        // jadi menyalakan kembali berarti membuat satu mesin baru.
+        expect(factory.created, hasLength(2));
+        expect(factory.created.last.started, isTrue);
+        expect(voice.status, VoiceStatus.idle);
+      },
+    );
 
-    test('ucapan akhir tidak langsung menyalakan kata pemicu: percakapan suara berlanjut', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'ucapan akhir tidak langsung menyalakan kata pemicu: percakapan suara berlanjut',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onFinal!('halo wangsa apa kabar');
-      await _flush();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onFinal!('halo wangsa apa kabar');
+        await _flush();
 
-      // Mikrofon dipegang percakapan sampai Agent membalas dan pengguna
-      // selesai menjawab, jadi tidak ada mesin kata pemicu kedua.
-      expect(factory.created, hasLength(1));
-      expect(voice.status, VoiceStatus.processing);
-    });
+        // Mikrofon dipegang percakapan sampai Agent membalas dan pengguna
+        // selesai menjawab, jadi tidak ada mesin kata pemicu kedua.
+        expect(factory.created, hasLength(1));
+        expect(voice.status, VoiceStatus.processing);
+      },
+    );
 
-    test('speakReply membacakan balasan lalu membuka mikrofon lagi HANYA setelah TTS selesai', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final tts = _FakeTtsEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-        ttsEngine: tts,
-      );
+    test(
+      'speakReply membacakan balasan lalu membuka mikrofon lagi HANYA setelah TTS selesai',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final tts = _FakeTtsEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+          ttsEngine: tts,
+        );
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onFinal!('apa kabar');
-      await _flush();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onFinal!('apa kabar');
+        await _flush();
 
-      // Ditahan baru di sini: startListening() memanggil stop() (ketuk mic
-      // memotong suara Agent), yang melepas tahanan yang dipasang lebih awal.
-      tts.hold = Completer<void>();
-      final speaking = voice.speakReply('Baik, terima kasih.');
-      await _flush();
-      expect(tts.spoken, ['Baik, terima kasih.']);
-      // Selagi Agent bicara mikrofon belum boleh dibuka, kalau tidak suara
-      // Agent sendiri yang terekam.
-      expect(speech.listenCalls, 1);
+        // Ditahan baru di sini: startListening() memanggil stop() (ketuk mic
+        // memotong suara Agent), yang melepas tahanan yang dipasang lebih awal.
+        tts.hold = Completer<void>();
+        final speaking = voice.speakReply('Baik, terima kasih.');
+        await _flush();
+        expect(tts.spoken, ['Baik, terima kasih.']);
+        // Selagi Agent bicara mikrofon belum boleh dibuka, kalau tidak suara
+        // Agent sendiri yang terekam.
+        expect(speech.listenCalls, 1);
 
-      tts.hold!.complete();
-      await speaking;
+        tts.hold!.complete();
+        await speaking;
 
-      expect(speech.listenCalls, 2);
-      expect(voice.status, VoiceStatus.listening);
-    });
+        expect(speech.listenCalls, 2);
+        expect(voice.status, VoiceStatus.listening);
+      },
+    );
 
     test('speakReply membersihkan Markdown sebelum dibacakan', () async {
       final speech = _FakeSpeechEngine();
@@ -446,224 +509,254 @@ void main() {
       expect(speech.listenCalls, 0);
     });
 
-    test('tidak ada ucapan di sesi lanjutan mengakhiri percakapan diam-diam dan menyalakan kata pemicu', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'tidak ada ucapan di sesi lanjutan mengakhiri percakapan diam-diam dan menyalakan kata pemicu',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onFinal!('apa kabar');
-      await voice.speakReply('Baik.');
-      events.clear();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onFinal!('apa kabar');
+        await voice.speakReply('Baik.');
+        events.clear();
 
-      speech.onError!('error_speech_timeout');
-      await _flush();
+        speech.onError!('error_speech_timeout');
+        await _flush();
 
-      // Diam bukan kegagalan: layar cukup menutup lapisan suara (lewat
-      // FinalTranscript kosong yang sudah ia tangani), tanpa pesan galat.
-      expect(events.whereType<VoiceFailure>(), isEmpty);
-      expect(events.whereType<FinalTranscript>().single.text, '');
-      expect(factory.created, hasLength(2));
-      expect(factory.created.last.started, isTrue);
-      expect(voice.status, VoiceStatus.idle);
-    });
+        // Diam bukan kegagalan: layar cukup menutup lapisan suara (lewat
+        // FinalTranscript kosong yang sudah ia tangani), tanpa pesan galat.
+        expect(events.whereType<VoiceFailure>(), isEmpty);
+        expect(events.whereType<FinalTranscript>().single.text, '');
+        expect(factory.created, hasLength(2));
+        expect(factory.created.last.started, isTrue);
+        expect(voice.status, VoiceStatus.idle);
+      },
+    );
 
-    test('galat sungguhan tetap dilaporkan sebagai VoiceFailure dan menyalakan kembali kata pemicu', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'galat sungguhan tetap dilaporkan sebagai VoiceFailure dan menyalakan kembali kata pemicu',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onError!('error_audio');
-      await _flush();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onError!('error_audio');
+        await _flush();
 
-      expect(events.whereType<VoiceFailure>().single.message, 'error_audio');
-      expect(factory.created, hasLength(2));
-    });
+        expect(events.whereType<VoiceFailure>().single.message, 'error_audio');
+        expect(factory.created, hasLength(2));
+      },
+    );
 
-    test('galat lalu ucapan akhir kosong dalam satu sesi hanya menyalakan satu mesin baru', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'galat lalu ucapan akhir kosong dalam satu sesi hanya menyalakan satu mesin baru',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onError!('error_no_match');
-      speech.onFinal!('');
-      await _flush();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onError!('error_no_match');
+        speech.onFinal!('');
+        await _flush();
 
-      expect(factory.created, hasLength(2));
-    });
+        expect(factory.created, hasLength(2));
+      },
+    );
 
-    test('stop selagi Agent bicara memotong TTS, tidak membuka mikrofon lagi, dan menyalakan kata pemicu', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final tts = _FakeTtsEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-        ttsEngine: tts,
-      );
+    test(
+      'stop selagi Agent bicara memotong TTS, tidak membuka mikrofon lagi, dan menyalakan kata pemicu',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final tts = _FakeTtsEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+          ttsEngine: tts,
+        );
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onFinal!('apa kabar');
-      await _flush();
-      tts.hold = Completer<void>();
-      tts.stopCalls = 0;
-      final speaking = voice.speakReply('Balasan yang panjang sekali.');
-      await _flush();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onFinal!('apa kabar');
+        await _flush();
+        tts.hold = Completer<void>();
+        tts.stopCalls = 0;
+        final speaking = voice.speakReply('Balasan yang panjang sekali.');
+        await _flush();
 
-      await voice.stop();
-      await speaking;
+        await voice.stop();
+        await speaking;
 
-      expect(tts.stopCalls, greaterThan(0));
-      expect(speech.listenCalls, 1);
-      expect(factory.created, hasLength(2));
-      expect(voice.status, VoiceStatus.idle);
-    });
+        expect(tts.stopCalls, greaterThan(0));
+        expect(speech.listenCalls, 1);
+        expect(factory.created, hasLength(2));
+        expect(voice.status, VoiceStatus.idle);
+      },
+    );
 
-    test('mengetuk mikrofon selagi Agent bicara memotong suaranya tanpa membuka dikte dua kali', () async {
-      final speech = _FakeSpeechEngine();
-      final tts = _FakeTtsEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: _FakeWakeWordEngineFactory().call,
-        ttsEngine: tts,
-      );
+    test(
+      'mengetuk mikrofon selagi Agent bicara memotong suaranya tanpa membuka dikte dua kali',
+      () async {
+        final speech = _FakeSpeechEngine();
+        final tts = _FakeTtsEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: _FakeWakeWordEngineFactory().call,
+          ttsEngine: tts,
+        );
 
-      await voice.startListening();
-      speech.onFinal!('apa kabar');
-      await _flush();
-      tts.hold = Completer<void>();
-      final speaking = voice.speakReply('Balasan yang panjang sekali.');
-      await _flush();
-      expect(speech.listenCalls, 1);
+        await voice.startListening();
+        speech.onFinal!('apa kabar');
+        await _flush();
+        tts.hold = Completer<void>();
+        final speaking = voice.speakReply('Balasan yang panjang sekali.');
+        await _flush();
+        expect(speech.listenCalls, 1);
 
-      // Pengguna mengetuk tombol mikrofon selagi suara Agent terdengar.
-      await voice.startListening();
-      await speaking;
+        // Pengguna mengetuk tombol mikrofon selagi suara Agent terdengar.
+        await voice.startListening();
+        await speaking;
 
-      // Satu dari ketukan, bukan satu lagi dari speakReply yang terbangun.
-      expect(speech.listenCalls, 2);
-    });
+        // Satu dari ketukan, bukan satu lagi dari speakReply yang terbangun.
+        expect(speech.listenCalls, 2);
+      },
+    );
 
-    test('endConversation setelah balasan gagal menyalakan kembali kata pemicu', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'endConversation setelah balasan gagal menyalakan kembali kata pemicu',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      await voice.startWakeWordWatch();
-      factory.onDetectedCallbacks.single();
-      await _flush();
-      speech.onFinal!('apa kabar');
-      await _flush();
-      await voice.endConversation();
+        await voice.startWakeWordWatch();
+        factory.onDetectedCallbacks.single();
+        await _flush();
+        speech.onFinal!('apa kabar');
+        await _flush();
+        await voice.endConversation();
 
-      expect(factory.created, hasLength(2));
-      expect(voice.status, VoiceStatus.idle);
-    });
+        expect(factory.created, hasLength(2));
+        expect(voice.status, VoiceStatus.idle);
+      },
+    );
 
-    test('endConversation tanpa percakapan suara tidak menyalakan apa pun', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: _FakeSpeechEngine(),
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'endConversation tanpa percakapan suara tidak menyalakan apa pun',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: _FakeSpeechEngine(),
+          createWakeWordEngine: factory.call,
+        );
 
-      // Mis. balasan untuk pesan yang diketik selesai: tidak boleh
-      // menyalakan kata pemicu yang sengaja dimatikan pengguna.
-      await voice.endConversation();
+        // Mis. balasan untuk pesan yang diketik selesai: tidak boleh
+        // menyalakan kata pemicu yang sengaja dimatikan pengguna.
+        await voice.endConversation();
 
-      expect(factory.created, isEmpty);
-    });
+        expect(factory.created, isEmpty);
+      },
+    );
 
-    test('ucapan akhir tidak menyalakan pengawasan kata pemicu bila sebelum dikte memang tidak aktif', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'ucapan akhir tidak menyalakan pengawasan kata pemicu bila sebelum dikte memang tidak aktif',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      // Tombol mikrofon ditekan tanpa pengawasan kata pemicu (mis. sakelar
-      // "Dengar di latar belakang" dimatikan pengguna).
-      await voice.startListening();
-      speech.onFinal!('halo');
-      await _flush();
+        // Tombol mikrofon ditekan tanpa pengawasan kata pemicu (mis. sakelar
+        // "Dengar di latar belakang" dimatikan pengguna).
+        await voice.startListening();
+        speech.onFinal!('halo');
+        await _flush();
 
-      expect(factory.created, isEmpty);
-      expect(voice.status, VoiceStatus.processing);
-    });
+        expect(factory.created, isEmpty);
+        expect(voice.status, VoiceStatus.processing);
+      },
+    );
 
-    test('kegagalan membuat mesin kata pemicu dilaporkan sebagai VoiceFailure', () async {
-      final factory = _FakeWakeWordEngineFactory()..throwOnCreate = true;
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: _FakeSpeechEngine(),
-        createWakeWordEngine: factory.call,
-      );
-      final events = <VoiceEvent>[];
-      voice.events.listen(events.add);
+    test(
+      'kegagalan membuat mesin kata pemicu dilaporkan sebagai VoiceFailure',
+      () async {
+        final factory = _FakeWakeWordEngineFactory()..throwOnCreate = true;
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: _FakeSpeechEngine(),
+          createWakeWordEngine: factory.call,
+        );
+        final events = <VoiceEvent>[];
+        voice.events.listen(events.add);
 
-      await voice.startWakeWordWatch();
-      await _flush();
+        await voice.startWakeWordWatch();
+        await _flush();
 
-      expect(events, contains(isA<VoiceFailure>()));
-      expect(voice.status, VoiceStatus.off);
-    });
+        expect(events, contains(isA<VoiceFailure>()));
+        expect(voice.status, VoiceStatus.off);
+      },
+    );
 
-    test('dispose menghentikan kedua mesin dan menutup aliran events', () async {
-      final factory = _FakeWakeWordEngineFactory();
-      final speech = _FakeSpeechEngine();
-      final voice = _buildVoice(
-        accessKey: 'kunci-uji',
-        speechEngine: speech,
-        createWakeWordEngine: factory.call,
-      );
+    test(
+      'dispose menghentikan kedua mesin dan menutup aliran events',
+      () async {
+        final factory = _FakeWakeWordEngineFactory();
+        final speech = _FakeSpeechEngine();
+        final voice = _buildVoice(
+          accessKey: 'kunci-uji',
+          speechEngine: speech,
+          createWakeWordEngine: factory.call,
+        );
 
-      // Berlangganan sebelum dispose(): stream broadcast tidak menjamin
-      // pelanggan yang baru datang setelah ditutup ikut menerima `onDone`.
-      final doneCompleter = Completer<void>();
-      voice.events.listen((_) {}, onDone: doneCompleter.complete);
+        // Berlangganan sebelum dispose(): stream broadcast tidak menjamin
+        // pelanggan yang baru datang setelah ditutup ikut menerima `onDone`.
+        final doneCompleter = Completer<void>();
+        voice.events.listen((_) {}, onDone: doneCompleter.complete);
 
-      await voice.startWakeWordWatch();
-      await voice.dispose();
+        await voice.startWakeWordWatch();
+        await voice.dispose();
 
-      expect(factory.created.single.stopped, isTrue);
-      expect(factory.created.single.deleted, isTrue);
-      expect(speech.canceled, isTrue);
-      await doneCompleter.future.timeout(const Duration(seconds: 1));
-    });
+        expect(factory.created.single.stopped, isTrue);
+        expect(factory.created.single.deleted, isTrue);
+        expect(speech.canceled, isTrue);
+        await doneCompleter.future.timeout(const Duration(seconds: 1));
+      },
+    );
   });
 }

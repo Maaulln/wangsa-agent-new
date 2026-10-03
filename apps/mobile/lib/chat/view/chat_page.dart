@@ -12,9 +12,10 @@ import '../../api/models.dart';
 import '../../config/app_config.dart';
 import '../../llm/llm_settings_controller.dart';
 import '../../profile/user_profile_controller.dart';
-import '../../profile/view/profile_page.dart';
 import '../../settings/view/settings_page.dart';
+import '../../theme/glass/wangsa_glass.dart';
 import '../../theme/theme_controller.dart';
+import '../../theme/wangsa_theme.dart';
 import '../../voice/voice_input.dart';
 import '../bloc/chat_bloc.dart';
 import 'agent_builder_page.dart';
@@ -30,14 +31,16 @@ import 'widgets/voice_orb.dart';
 /// terang/gelap sistem seperti biasa; hanya kartu chat ini yang selalu
 /// gelap solid, sesuai keputusan pengguna saat sesi ini.
 abstract final class _ChatDark {
-  static const bg = Color(0xFF000000);
   static const pill = Color(0xFF1C1C1E);
-  static const pillActive = Color(0xFF3A3A3C);
-  static const iconCircle = Color(0xFF2A2A2A);
-  static const composer = Color(0xFF1C1C1E);
-  static const hint = Color(0xFF8E8E93);
-  static const accent = Color(0xFF0A84FF);
-  static const border = Color(0xFF2C2C2E);
+  // #AEAEB2 (bukan #8E8E93): kontras >= 5:1 di atas kaca.
+  static const hint = Color(0xFFAEAEB2);
+  // Putih di atas #0A6CFF = 4,56:1 (di atas #0A84FF hanya 3,65:1).
+  static const accent = Color(0xFF0A6CFF);
+  // Sedikit terangkat dari hitam pekat supaya lengkung sudut drawer
+  // terlihat di atas latar kaca gelap.
+  static const drawer = Color(0xFF000000);
+  static const rowSelected = Color(0x14FFFFFF);
+  static const groupBorder = Color(0x0FFFFFFF);
 }
 
 /// Satu gambar yang menunggu dikirim — sudah dibaca ke memori supaya
@@ -272,7 +275,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(WangsaRadius.xl),
+        ),
       ),
       builder: (sheetContext) => BlocProvider.value(
         value: bloc,
@@ -336,7 +341,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                     const Divider(height: 8),
                     ListTile(
-                      leading: const Icon(Icons.camera_alt_outlined),
+                      leading: const Icon(ChatIcons.camera),
                       title: const Text('Ambil Foto Kamera'),
                       onTap: () {
                         Navigator.of(sheetContext).pop();
@@ -344,7 +349,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       },
                     ),
                     ListTile(
-                      leading: const Icon(Icons.photo_library_outlined),
+                      leading: const Icon(ChatIcons.gallery),
                       title: const Text('Pilih dari Galeri Foto'),
                       onTap: () {
                         Navigator.of(sheetContext).pop();
@@ -449,7 +454,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       isScrollControlled: true,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(WangsaRadius.xl),
+        ),
       ),
       builder: (sheetContext) => BlocProvider.value(
         value: bloc,
@@ -546,21 +553,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _scrollToLatest(animate: !state.isSending);
       },
       builder: (context, state) {
-        return Scaffold(
-          key: _scaffoldKey,
-          backgroundColor: _ChatDark.bg,
-          drawer: _drawer(context, state),
-          body: SafeArea(
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    _header(context, state),
-                    Expanded(child: _content(context, state)),
-                  ],
+        // Layar chat selalu gelap (keputusan desain, lihat _ChatDark). Tema
+        // gelap dipaksa di sini supaya teks balasan/markdown yang memakai
+        // ColorScheme ikut terbaca walau pengguna memilih mode Terang —
+        // sebelumnya teks #18181B jatuh di atas latar hitam.
+        return Theme(
+          data: WangsaTheme.forBrightness(Brightness.dark),
+          child: Builder(
+            builder: (context) => Scaffold(
+              key: _scaffoldKey,
+              backgroundColor: WangsaGlass.dark.backdropBase,
+              drawer: _drawer(context, state),
+              body: GlassBackdrop(
+                child: SafeArea(
+                  child: Stack(
+                    children: [
+                      Column(
+                        children: [
+                          _header(context, state),
+                          Expanded(child: _content(context, state)),
+                        ],
+                      ),
+                      if (_voiceOverlayOpen) _voiceOverlay(context),
+                    ],
+                  ),
                 ),
-                if (_voiceOverlayOpen) _voiceOverlay(context),
-              ],
+              ),
             ),
           ),
         );
@@ -586,7 +604,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _chatWorkSwitch(context),
           const Spacer(),
           _circleIconButton(
-            icon: Icons.loop_rounded,
+            icon: ChatIcons.newChat,
             tooltip: 'Percakapan baru',
             onPressed: state.status == ChatStatus.ready
                 ? () => _startNewConversation(context)
@@ -612,29 +630,31 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       message: tooltip,
       child: InkResponse(
         onTap: onPressed,
-        radius: 24,
+        radius: 28,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                color: _ChatDark.iconCircle,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: onPressed == null
-                    ? _ChatDark.hint.withValues(alpha: 0.5)
-                    : Colors.white,
+            GlassSurface(
+              level: GlassLevel.card,
+              borderRadius: BorderRadius.circular(WangsaRadius.pill),
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: onPressed == null
+                        ? _ChatDark.hint.withValues(alpha: 0.5)
+                        : Colors.white,
+                  ),
+                ),
               ),
             ),
             if (showBadge)
               Positioned(
-                right: -1,
-                top: -1,
+                right: 2,
+                top: 2,
                 child: Container(
                   width: 12,
                   height: 12,
@@ -654,12 +674,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// ruang kerja sendiri — ketuk hanya menampilkan pemberitahuan,
   /// selalu kembali ke "Chat" yang aktif.
   Widget _chatWorkSwitch(BuildContext context) {
-    return Container(
+    return GlassSurface(
+      level: GlassLevel.card,
+      borderRadius: BorderRadius.circular(WangsaRadius.pill),
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: _ChatDark.pill,
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -671,7 +689,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               ScaffoldMessenger.of(context)
                 ..hideCurrentSnackBar()
                 ..showSnackBar(
-                  const SnackBar(content: Text('Ruang kerja Work segera hadir.')),
+                  const SnackBar(
+                    content: Text('Ruang kerja Work segera hadir.'),
+                  ),
                 );
             },
           ),
@@ -687,12 +707,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(WangsaRadius.lg),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? _ChatDark.pillActive : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          color: selected
+              ? Colors.white.withValues(alpha: 0.18)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(WangsaRadius.lg),
         ),
         child: Text(
           label,
@@ -753,7 +775,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final hasMore = state.sessions.length > recentSessions.length;
 
     return Drawer(
-      backgroundColor: _ChatDark.bg,
+      backgroundColor: _ChatDark.drawer,
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         child: Stack(
           children: [
@@ -767,22 +790,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 ),
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 8, 12),
+                    padding: const EdgeInsets.fromLTRB(
+                      _drawerHorizontalPadding,
+                      4,
+                      4,
+                      12,
+                    ),
                     child: Row(
                       children: [
                         const Text(
                           'Wangsa',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
                           ),
                         ),
                         const Spacer(),
                         IconButton(
                           tooltip: 'Cari percakapan',
-                          icon: const Icon(Icons.search_rounded),
-                          color: Colors.white,
+                          icon: const Icon(ChatIcons.search, size: 20),
+                          color: _ChatDark.hint,
                           onPressed: () {
                             Navigator.of(context).pop();
                             _openSessionSearch(context, state);
@@ -804,7 +833,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   ),
                   _drawerRow(
                     context,
-                    Icons.auto_awesome_outlined,
+                    ChatIcons.agent,
                     'Bangun Agent',
                     onTap: () {
                       Navigator.of(context).pop();
@@ -817,8 +846,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   ),
                   _modelDrawerRow(context, state),
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Divider(height: 1, color: _ChatDark.border),
+                    padding: EdgeInsets.fromLTRB(
+                      _drawerHorizontalPadding,
+                      12,
+                      _drawerHorizontalPadding,
+                      8,
+                    ),
+                    child: Divider(height: 1, color: _ChatDark.groupBorder),
                   ),
                   if (state.isLoadingSessions) ...[
                     const Center(
@@ -837,23 +871,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     for (final session in recentSessions)
                       _sessionRow(context, state, session),
                     if (hasMore)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            _openAllSessions(context, state, sessionGroups);
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 6),
-                            child: Text(
-                              'Lihat semua...',
-                              style: TextStyle(
-                                color: _ChatDark.hint,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(WangsaRadius.sm),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          _openAllSessions(context, state, sessionGroups);
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: _drawerHorizontalPadding,
+                            vertical: 10,
+                          ),
+                          child: Text(
+                            'Lihat semua',
+                            style: TextStyle(
+                              color: _ChatDark.hint,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -874,8 +908,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        _ChatDark.bg.withValues(alpha: 0),
-                        _ChatDark.bg,
+                        _ChatDark.drawer.withValues(alpha: 0),
+                        _ChatDark.drawer,
                       ],
                     ),
                   ),
@@ -888,7 +922,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               bottom: 0,
               height: bottomBarHeight,
               child: ColoredBox(
-                color: _ChatDark.bg,
+                color: _ChatDark.drawer,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                   child: Row(
@@ -908,7 +942,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                               foregroundColor: Colors.white,
                               shape: const StadiumBorder(),
                             ),
-                            icon: const Icon(Icons.edit_square, size: 18),
+                            icon: const Icon(ChatIcons.newChat, size: 18),
                             label: const Text(
                               'Chat',
                               style: TextStyle(fontWeight: FontWeight.w600),
@@ -917,37 +951,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      // Satu pintu untuk profil + pengaturan: aplikasi belum punya
+                      // sistem akun, jadi keduanya digabung di SettingsPage.
                       _circleIconButton(
-                        icon: ChatIcons.settings,
-                        tooltip: 'Pengaturan',
+                        icon: ChatIcons.profile,
+                        tooltip: 'Profil & pengaturan',
                         onPressed: () {
                           Navigator.of(context).pop();
                           _openSettings(context);
                         },
-                      ),
-                      const SizedBox(width: 8),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(22),
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ProfilePage(
-                                agent: state.agent,
-                                userProfile: widget.userProfile,
-                              ),
-                            ),
-                          );
-                        },
-                        child: const CircleAvatar(
-                          radius: 20,
-                          backgroundColor: _ChatDark.iconCircle,
-                          child: Icon(
-                            Icons.person_outline,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        ),
                       ),
                     ],
                   ),
@@ -966,7 +978,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _openSessionSearch(BuildContext context, ChatState state) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: _ChatDark.bg,
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
         var query = '';
@@ -976,12 +988,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 ? state.sessions
                 : state.sessions
                       .where(
-                        (s) => s.title.toLowerCase().contains(
-                          query.toLowerCase(),
-                        ),
+                        (s) =>
+                            s.title.toLowerCase().contains(query.toLowerCase()),
                       )
                       .toList();
-            return SafeArea(
+            return GlassSheetSurface(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: Column(
@@ -995,20 +1006,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         hintText: 'Cari percakapan',
                         hintStyle: TextStyle(color: _ChatDark.hint),
                         prefixIcon: Icon(
-                          Icons.search_rounded,
+                          ChatIcons.search,
                           color: _ChatDark.hint,
                         ),
                         filled: true,
                         fillColor: _ChatDark.pill,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.all(
-                            Radius.circular(12),
+                            Radius.circular(WangsaRadius.sm),
                           ),
                           borderSide: BorderSide.none,
                         ),
                       ),
-                      onChanged: (value) =>
-                          setSheetState(() => query = value),
+                      onChanged: (value) => setSheetState(() => query = value),
                     ),
                     const SizedBox(height: 12),
                     ConstrainedBox(
@@ -1051,14 +1061,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: _ChatDark.bg,
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) => DraggableScrollableSheet(
         initialChildSize: 0.75,
         minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
-        builder: (sheetContext, scrollController) => SafeArea(
+        builder: (sheetContext, scrollController) => GlassSheetSurface(
           child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
@@ -1080,51 +1090,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// pengguna: composer disederhanakan jadi 1 baris ala referensi
   /// Figma, jadi pemilihan model dipindah ke sini).
   Widget _modelDrawerRow(BuildContext context, ChatState state) {
-    final label = state.effectiveModel ?? state.agent?.name ?? 'Wangsa';
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
+    return _drawerRow(
+      context,
+      ChatIcons.model,
+      'Model',
+      value: state.effectiveModel ?? state.agent?.name ?? 'Wangsa',
       onTap: () {
         Navigator.of(context).pop();
         _showModelPicker(context, state);
       },
-      child: SizedBox(
-        height: _drawerRowHeight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: _drawerHorizontalPadding,
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.memory_outlined, size: 22, color: Colors.white),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Text(
-                  'Model & Provider',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _ChatDark.hint, fontSize: 13),
-                ),
-              ),
-              const SizedBox(width: 2),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: _ChatDark.hint,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1135,60 +1109,35 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ) {
     final isSelected = state.sessionId == session.sessionId;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(WangsaRadius.sm),
       onTap: () {
         Navigator.of(context).pop();
         context.read<ChatBloc>().add(SessionSelected(session.sessionId));
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        margin: const EdgeInsets.symmetric(vertical: 2),
+        height: 44,
+        padding: const EdgeInsets.only(
+          left: _drawerHorizontalPadding,
+          right: 4,
+        ),
         decoration: BoxDecoration(
-          color: isSelected ? _ChatDark.pillActive : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected ? _ChatDark.rowSelected : Colors.transparent,
+          borderRadius: BorderRadius.circular(WangsaRadius.sm),
         ),
         child: Row(
           children: [
-            Icon(
-              ChatIcons.history,
-              size: 18,
-              color: isSelected ? _ChatDark.accent : _ChatDark.hint,
-            ),
-            const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    session.title.isNotEmpty ? session.title : 'Percakapan',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                  if (session.lastMessage.isNotEmpty)
-                    Text(
-                      session.lastMessage,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _ChatDark.hint.withValues(alpha: 0.85),
-                      ),
-                    ),
-                ],
+              child: Text(
+                session.title.isNotEmpty ? session.title : 'Percakapan',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _drawerLabelStyle,
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.delete_outline, size: 18),
+              icon: const Icon(ChatIcons.delete, size: 16),
               tooltip: 'Hapus sesi',
-              color: _ChatDark.hint,
+              color: _ChatDark.hint.withValues(alpha: 0.6),
               visualDensity: VisualDensity.compact,
               onPressed: () {
                 context.read<ChatBloc>().add(SessionDeleted(session.sessionId));
@@ -1242,6 +1191,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           voiceInput: widget.voiceInput,
           themeController: widget.themeController,
           llmSettings: widget.llmSettings,
+          userProfile: widget.userProfile,
+          agent: context.read<ChatBloc>().state.agent,
           apiClient: context.read<ChatBloc>().apiClient,
           auth: widget.auth,
           onApiBaseUrlChanged: (newUrl) {
@@ -1303,13 +1254,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     return const LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black,
-                        Colors.black,
-                        Colors.transparent,
-                      ],
-                      stops: [0.0, 0.06, 0.78, 0.95],
+                      // Hanya fade sisi atas. Sisi bawah dibiarkan penuh agar
+                      // pesan yang bergulir di belakang composer kaca tetap
+                      // ada untuk di-blur (sebelumnya memudar sampai nol).
+                      colors: [Colors.transparent, Colors.black],
+                      stops: [0.0, 0.05],
                     ).createShader(bounds);
                   },
                   blendMode: BlendMode.dstIn,
@@ -1398,7 +1347,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: scheme.errorContainer.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(WangsaRadius.md),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1418,7 +1367,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 10),
                       FilledButton.icon(
-                        icon: const Icon(Icons.logout_rounded, size: 18),
+                        icon: const Icon(ChatIcons.signOut, size: 18),
                         label: const Text('Keluar'),
                         onPressed: () => _signOut(context),
                       ),
@@ -1432,7 +1381,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: scheme.errorContainer.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(WangsaRadius.md),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1452,7 +1401,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 10),
                       FilledButton.icon(
-                        icon: const Icon(Icons.data_usage_outlined, size: 18),
+                        icon: const Icon(ChatIcons.usage, size: 18),
                         label: const Text('Lihat pemakaian'),
                         onPressed: () => _openSettings(context),
                       ),
@@ -1470,7 +1419,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   ),
                   decoration: BoxDecoration(
                     color: scheme.tertiaryContainer.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(WangsaRadius.md),
                   ),
                   child: Text(
                     'Pemakaian mendekati batas: ${_budgetLine(state)}',
@@ -1484,7 +1433,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: scheme.primaryContainer.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(WangsaRadius.md),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1507,7 +1456,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 10),
                       FilledButton.icon(
-                        icon: const Icon(Icons.key_rounded, size: 18),
+                        icon: const Icon(ChatIcons.key, size: 18),
                         label: state.isCheckingSetup
                             ? const Text('Memeriksa…')
                             : const Text('Setup Provider'),
@@ -1547,7 +1496,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   ),
                   decoration: BoxDecoration(
                     color: scheme.surface.withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(WangsaRadius.md),
                   ),
                   child: Row(
                     children: [
@@ -1592,7 +1541,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
           decoration: BoxDecoration(
             color: scheme.surfaceContainerHighest.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(WangsaRadius.md),
             border: Border.all(
               color: scheme.outlineVariant.withValues(alpha: 0.5),
             ),
@@ -1605,7 +1554,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(WangsaRadius.md),
             child: ListView.separated(
               shrinkWrap: true,
               padding: EdgeInsets.zero,
@@ -1659,12 +1608,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Widget _messageComposer(BuildContext context, ChatState state) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      child: Container(
+      child: GlassSurface(
+        level: GlassLevel.bar,
+        borderRadius: BorderRadius.circular(28),
         padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
-        decoration: BoxDecoration(
-          color: _ChatDark.composer,
-          borderRadius: BorderRadius.circular(28),
-        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1709,11 +1656,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 if (!state.isSending)
                   IconButton(
                     onPressed: () => unawaited(_toggleListening()),
-                    tooltip: _isListening ? 'Berhenti mendengar' : 'Dikte suara',
+                    tooltip: _isListening
+                        ? 'Berhenti mendengar'
+                        : 'Dikte suara',
                     icon: Icon(
-                      _isListening
-                          ? ChatIcons.stop
-                          : Icons.mic_none_rounded,
+                      _isListening ? ChatIcons.stop : ChatIcons.microphone,
                     ),
                     color: Colors.white,
                   ),
@@ -1739,7 +1686,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       );
                     }
                     return _composerCircleButton(
-                      icon: Icons.graphic_eq_rounded,
+                      icon: ChatIcons.voice,
                       tooltip: 'Bicara',
                       onPressed: () => unawaited(_toggleListening()),
                     );
@@ -1819,7 +1766,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             return Stack(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(WangsaRadius.sm),
                   child: Image.memory(
                     img.bytes,
                     width: 64,
@@ -1830,7 +1777,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       height: 64,
                       color: _ChatDark.pill,
                       child: const Icon(
-                        Icons.broken_image_outlined,
+                        ChatIcons.brokenImage,
                         color: _ChatDark.hint,
                       ),
                     ),
@@ -1848,7 +1795,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
-                        Icons.close_rounded,
+                        ChatIcons.close,
                         size: 14,
                         color: Colors.white,
                       ),
@@ -1865,17 +1812,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   static const _drawerRowHeight = 48.0;
   static const _drawerHorizontalPadding = 16.0;
+  static const _drawerLabelStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+  );
 
+  /// Baris fitur sidebar: ikon garis tipis + label, rata, tanpa kartu.
   Widget _drawerRow(
     BuildContext context,
     IconData icon,
     String label, {
+    String? value,
     VoidCallback? onTap,
   }) {
     final enabled = onTap != null;
-    final color = enabled ? Colors.white : _ChatDark.hint.withValues(alpha: 0.5);
+    final color = enabled
+        ? Colors.white
+        : _ChatDark.hint.withValues(alpha: 0.5);
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(WangsaRadius.sm),
       onTap: onTap,
       child: SizedBox(
         height: _drawerRowHeight,
@@ -1890,13 +1846,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _drawerLabelStyle.copyWith(color: color),
                 ),
               ),
+              // Nilai (mis. nama model) dibatasi lebarnya supaya label
+              // selalu mendapat ruang lebih dulu; nama panjang disingkat.
+              if (value != null)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 96),
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _ChatDark.hint, fontSize: 13),
+                  ),
+                ),
             ],
           ),
         ),
@@ -1915,9 +1881,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       child: Text(
         label,
         style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
+          color: _ChatDark.hint,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.2,
         ),
       ),
     );
@@ -1940,12 +1907,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Widget _voiceOverlay(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Positioned.fill(
       child: GestureDetector(
         onTap: () => unawaited(_cancelVoiceOverlay()),
-        child: Container(
-          color: scheme.scrim.withValues(alpha: 0.82),
+        child: GlassScrim(
           alignment: Alignment.bottomCenter,
           child: GestureDetector(
             onTap: () {},
@@ -2151,7 +2116,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
-                    icon: const Icon(Icons.settings_suggest_rounded, size: 18),
+                    icon: const Icon(ChatIcons.tune, size: 18),
                     label: const Text(
                       "Setup Provider",
                       style: TextStyle(fontSize: 12),
@@ -2170,7 +2135,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                     },
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(ChatIcons.close),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -2185,7 +2150,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                   prefixIcon: const Icon(ChatIcons.search),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
+                          icon: const Icon(ChatIcons.close),
                           onPressed: () => _searchController.clear(),
                         )
                       : null,
@@ -2198,7 +2163,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                     vertical: 10,
                   ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(WangsaRadius.sm),
                     borderSide: BorderSide.none,
                   ),
                 ),
@@ -2251,7 +2216,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.cloud_off_outlined, size: 36),
+                            const Icon(ChatIcons.offline, size: 36),
                             const SizedBox(height: 12),
                             Text(
                               state.modelsError!,
@@ -2280,7 +2245,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.tune_rounded,
+                                  ChatIcons.tune,
                                   size: 32,
                                   color: scheme.primary,
                                 ),
@@ -2311,7 +2276,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.vpn_key_outlined,
+                                  ChatIcons.key,
                                   size: 40,
                                   color: scheme.primary,
                                 ),
@@ -2326,10 +2291,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                                 ),
                                 const SizedBox(height: 16),
                                 FilledButton.icon(
-                                  icon: const Icon(
-                                    Icons.login_rounded,
-                                    size: 16,
-                                  ),
+                                  icon: const Icon(ChatIcons.signIn, size: 16),
                                   label: Text("Hubungkan $_selectedProviderId"),
                                   onPressed: () {
                                     Navigator.of(context).push(
@@ -2373,10 +2335,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                                   )
                                 : null,
                             trailing: isDefaultSelected
-                                ? Icon(
-                                    Icons.check_rounded,
-                                    color: scheme.primary,
-                                  )
+                                ? Icon(ChatIcons.check, color: scheme.primary)
                                 : null,
                             onTap: () => widget.onSelected(null, null),
                           );
@@ -2407,7 +2366,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                             ),
                           ),
                           trailing: isSelected
-                              ? Icon(Icons.check_rounded, color: scheme.primary)
+                              ? Icon(ChatIcons.check, color: scheme.primary)
                               : null,
                           onTap: () =>
                               widget.onSelected(item.model, item.providerId),

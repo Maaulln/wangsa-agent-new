@@ -8,60 +8,58 @@ import 'package:wangsa_mobile/api/wangsa_api_client.dart';
 import 'package:wangsa_mobile/chat/bloc/chat_bloc.dart';
 
 http.Response _agentOk() => http.Response(
-      jsonEncode({
-        'success': true,
-        'data': {'id': 'agent-1', 'name': 'Asisten', 'purpose': 'Membantu'},
-      }),
-      200,
-      headers: {'content-type': 'application/json'},
-    );
+  jsonEncode({
+    'success': true,
+    'data': {'id': 'agent-1', 'name': 'Asisten', 'purpose': 'Membantu'},
+  }),
+  200,
+  headers: {'content-type': 'application/json'},
+);
 
 http.Response _meOk() => http.Response(
-      jsonEncode({
-        'success': true,
-        'data': {'profile': 'test', 'configured': true},
-      }),
-      200,
-      headers: {'content-type': 'application/json'},
-    );
+  jsonEncode({
+    'success': true,
+    'data': {'profile': 'test', 'configured': true},
+  }),
+  200,
+  headers: {'content-type': 'application/json'},
+);
 
 http.Response _modelsEmpty() => http.Response(
-      jsonEncode({
-        'success': true,
-        'data': {'provider': '', 'current': '', 'models': [], 'providers': []},
-      }),
-      200,
-      headers: {'content-type': 'application/json'},
-    );
+  jsonEncode({
+    'success': true,
+    'data': {'provider': '', 'current': '', 'models': [], 'providers': []},
+  }),
+  200,
+  headers: {'content-type': 'application/json'},
+);
 
 /// Klien utama menembak host basi (selalu lempar → RUNTIME_ERROR),
 /// kandidat probing menjawab sesuai [liveHosts].
 WangsaApiClient _probingClient(String baseUrl, Set<String> liveHosts) =>
-    ChatBlocProbeHarness.clientFor(
-      baseUrl: baseUrl,
-      liveHosts: liveHosts,
-    );
+    ChatBlocProbeHarness.clientFor(baseUrl: baseUrl, liveHosts: liveHosts);
 
 /// Helper kecil agar konstruksi MockClient per-URL seragam antara test.
 abstract class ChatBlocProbeHarness {
   static WangsaApiClient clientFor({
     required String baseUrl,
     required Set<String> liveHosts,
-  }) =>
-      WangsaApiClient(
-        baseUrl: baseUrl,
-        httpClient: MockClient((request) async {
-          if (!liveHosts.contains(request.url.host)) {
-            throw Exception('host mati: ${request.url.host}');
-          }
-          final path = request.url.path;
-          if (path.endsWith('/api/v1/auth/me')) return _meOk();
-          if (path.endsWith('/models')) return _modelsEmpty();
-          return _agentOk();
-        }),
-      );
+  }) => WangsaApiClient(
+    baseUrl: baseUrl,
+    httpClient: MockClient((request) async {
+      if (!liveHosts.contains(request.url.host)) {
+        throw Exception('host mati: ${request.url.host}');
+      }
+      final path = request.url.path;
+      if (path.endsWith('/api/v1/auth/me')) return _meOk();
+      if (path.endsWith('/models')) return _modelsEmpty();
+      return _agentOk();
+    }),
+  );
 
-  static WangsaApiClient Function(String url) factoryFor(Set<String> liveHosts) =>
+  static WangsaApiClient Function(String url) factoryFor(
+    Set<String> liveHosts,
+  ) =>
       (url) => clientFor(baseUrl: url, liveHosts: liveHosts);
 }
 
@@ -105,10 +103,7 @@ void main() {
       build: () => ChatBloc(
         apiClient: _probingClient('http://localhost:9901', {}),
         agentId: 'agent-1',
-        candidateUrls: const [
-          'http://localhost:9901',
-          'http://10.0.2.2:9901',
-        ],
+        candidateUrls: const ['http://localhost:9901', 'http://10.0.2.2:9901'],
         probeTimeout: const Duration(seconds: 2),
         clientFactory: ChatBlocProbeHarness.factoryFor({}),
       ),
@@ -117,7 +112,11 @@ void main() {
         isA<ChatState>().having((s) => s.status, 'status', ChatStatus.loading),
         isA<ChatState>()
             .having((s) => s.status, 'status', ChatStatus.failed)
-            .having((s) => s.errorMessage, 'ada petunjuk', contains('adb reverse')),
+            .having(
+              (s) => s.errorMessage,
+              'ada petunjuk',
+              contains('adb reverse'),
+            ),
       ],
     );
 
@@ -145,7 +144,9 @@ void main() {
         lanCalls = 0;
         lanResolved.clear();
         return ChatBloc(
-          apiClient: _probingClient('http://10.9.23.171:9901', {'192.168.9.50'}),
+          apiClient: _probingClient('http://10.9.23.171:9901', {
+            '192.168.9.50',
+          }),
           agentId: 'agent-1',
           candidateUrls: const [
             'http://10.9.23.171:9901',
@@ -226,7 +227,11 @@ void main() {
         isA<ChatState>().having((s) => s.status, 'status', ChatStatus.loading),
         isA<ChatState>()
             .having((s) => s.status, 'status', ChatStatus.failed)
-            .having((s) => s.errorMessage, 'ada petunjuk', contains('adb reverse')),
+            .having(
+              (s) => s.errorMessage,
+              'ada petunjuk',
+              contains('adb reverse'),
+            ),
       ],
       verify: (_) => expect(lanCalls, 1),
     );

@@ -384,6 +384,37 @@ void main() {
       expect(terkirim['userBio'], 'santai, bahasa Indonesia');
     });
 
+    test(
+      'nama panggilan kosong memakai nama akun; yang terisi menang',
+      () async {
+        Future<Map<String, dynamic>> kirim(UserProfile profil) async {
+          late Map<String, dynamic> terkirim;
+          final bloc = ChatBloc(
+            apiClient: clientYangMenjawab((request) {
+              if (request.method == 'POST') {
+                terkirim = jsonDecode(request.body) as Map<String, dynamic>;
+                return balasanOk('ok');
+              }
+              return agentOk();
+            }),
+            agentId: 'agent-1',
+            userProfile: UserProfileController.fake(initial: profil),
+            userNameFallback: 'maulchat2',
+          );
+          addTearDown(bloc.close);
+          bloc.add(const MessageSubmitted('Halo'));
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return terkirim;
+        }
+
+        expect((await kirim(const UserProfile()))['userName'], 'maulchat2');
+        expect(
+          (await kirim(const UserProfile(name: 'Doni')))['userName'],
+          'Doni',
+        );
+      },
+    );
+
     test('tanpa pilihan, model aktif server yang dikirim', () async {
       late Map<String, dynamic> terkirim;
       final bloc = ChatBloc(

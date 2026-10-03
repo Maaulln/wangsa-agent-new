@@ -19,7 +19,9 @@ void main() {
   }
 
   group('WakeWordLabPage', () {
-    testWidgets('membuka lab menghentikan watch milik chat dan tampil idle', (tester) async {
+    testWidgets('membuka lab menghentikan watch milik chat dan tampil idle', (
+      tester,
+    ) async {
       useTallSurface(tester);
       final voiceInput = FakeVoiceInput();
       addTearDown(voiceInput.dispose);
@@ -36,7 +38,9 @@ void main() {
       expect(find.byKey(const Key('lab-log-view')), findsOneWidget);
     });
 
-    testWidgets('tombol +1 percobaan menaikkan penyebut counter natural', (tester) async {
+    testWidgets('tombol +1 percobaan menaikkan penyebut counter natural', (
+      tester,
+    ) async {
       useTallSurface(tester);
       final voiceInput = FakeVoiceInput();
       addTearDown(voiceInput.dispose);
@@ -49,7 +53,9 @@ void main() {
 
       expect(find.text('0/0'), findsNWidgets(2));
 
-      await tester.tap(find.widgetWithText(OutlinedButton, '+1 percobaan').first);
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, '+1 percobaan').first,
+      );
       await tester.pump();
 
       expect(find.text('0/1'), findsOneWidget);
