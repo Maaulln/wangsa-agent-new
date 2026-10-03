@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -23,9 +24,11 @@ import yaml
 from cryptography.fernet import Fernet, InvalidToken
 
 from .provider_catalog import keyless_providers, mobile_providers
+from .planner import plan_request
 
 PROVIDERS = frozenset(mobile_providers())
 TERMINAL = frozenset({"completed", "failed", "cancelled"})
+BLUEPRINT_ACTIONS = frozenset({"agent_execute", "terminal", "browser", "workflow"})
 _USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$")
 _SECRET = re.compile(
@@ -46,6 +49,36 @@ def _now() -> str:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _blueprint(title: str, prompt: str) -> dict:
+    result = plan_request(prompt)
+    if result["outcome"] != "blueprint_ready":
+        raise StoreError(422, "NEEDS_INFO", result["questions"][0])
+    draft = result["blueprint"]
+    draft["title"] = title
+    return draft
+
+
+def validate_blueprint(value: dict) -> None:
+    if not isinstance(value, dict) or value.get("version") != 1:
+        raise StoreError(422, "INVALID_BLUEPRINT", "Blueprint version tidak didukung.")
+    if not isinstance(value.get("goal"), str) or not value["goal"].strip():
+        raise StoreError(422, "INVALID_BLUEPRINT", "Blueprint wajib punya goal.")
+    steps = value.get("steps")
+    if not isinstance(steps, list) or not steps or len(steps) > 100:
+        raise StoreError(422, "INVALID_BLUEPRINT", "Blueprint wajib punya 1–100 langkah.")
+    ids = []
+    for step in steps:
+        if not isinstance(step, dict) or not isinstance(step.get("id"), str) or not isinstance(step.get("action"), str):
+            raise StoreError(422, "INVALID_BLUEPRINT", "Format langkah blueprint tidak valid.")
+        if step["action"] not in BLUEPRINT_ACTIONS:
+            raise StoreError(422, "INVALID_BLUEPRINT", "Step action blueprint tidak diizinkan.")
+        ids.append(step["id"])
+    if len(ids) != len(set(ids)):
+        raise StoreError(422, "INVALID_BLUEPRINT", "ID langkah blueprint harus unik.")
+    if value.get("execution_mode") not in {"tool", "subagent", "workflow"}:
+        raise StoreError(422, "INVALID_BLUEPRINT", "Mode eksekusi blueprint tidak valid.")
 
 
 def _password_hash(password: str, salt: bytes | None = None) -> str:
@@ -146,11 +179,27 @@ class Store:
                     tenant_id TEXT NOT NULL REFERENCES users(id), key TEXT NOT NULL,
                     request_hash TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES jobs(id),
                     PRIMARY KEY(tenant_id, key));
+                CREATE TABLE IF NOT EXISTS blueprints (
+                    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES users(id),
+                    job_id TEXT NOT NULL REFERENCES jobs(id), revision INTEGER NOT NULL,
+                    content TEXT NOT NULL, content_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL, UNIQUE(job_id, revision));
+                CREATE TABLE IF NOT EXISTS approvals (
+                    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES users(id),
+                    job_id TEXT NOT NULL REFERENCES jobs(id), blueprint_id TEXT NOT NULL REFERENCES blueprints(id),
+                    blueprint_hash TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+                    approved_at TEXT NOT NULL, UNIQUE(tenant_id, idempotency_key));
                 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
             if "browser_secrets" not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN browser_secrets TEXT NOT NULL DEFAULT ''")
+            if "blueprint" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN blueprint TEXT NOT NULL DEFAULT ''")
+            if "blueprint_hash" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN blueprint_hash TEXT NOT NULL DEFAULT ''")
+            if "approval_required" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 0")
         with self._db(write=True) as db:
             verifier = db.execute(
                 "SELECT value FROM metadata WHERE key='encryption_verifier'"
@@ -350,8 +399,13 @@ class Store:
                 "created_at",
                 "updated_at",
                 "skill_id",
+                "blueprint",
+                "blueprint_hash",
+                "approval_required",
             )
         }
+        job["blueprint"] = json.loads(job["blueprint"]) if job["blueprint"] else None
+        job["approval_required"] = bool(job["approval_required"])
         job["events"] = [
             dict(event)
             for event in db.execute(
@@ -414,6 +468,7 @@ class Store:
         idempotency_key: str,
         skill_id: str | None = None,
         browser_secrets: dict[str, str] | None = None,
+        approval_required: bool = False,
     ) -> dict:
         title, prompt = title.strip(), prompt.strip()
         if not prompt or len(prompt) > 16000 or len(title) > 120:
@@ -436,7 +491,14 @@ class Store:
         digest = hmac.new(
             self._idempotency_hmac_key, canonical_secrets.encode(), hashlib.sha256
         ).hexdigest()
-        request_hash = _hash(json.dumps(["create", title, prompt, skill_id, digest]))
+        request_hash = _hash(json.dumps(["create", title, prompt, skill_id, digest, approval_required]))
+        planned = plan_request(prompt)
+        needs_info = planned["outcome"] == "needs_info"
+        draft = planned["blueprint"] if not needs_info else None
+        draft_json = json.dumps(draft, ensure_ascii=False, sort_keys=True, separators=(",", ":")) if draft else ""
+        draft_hash = _hash(draft_json) if draft else ""
+        if draft:
+            validate_blueprint(json.loads(draft_json))
         with self._db(write=True) as db:
             replay = self._replay(db, tenant_id, idempotency_key, request_hash)
             if replay:
@@ -468,7 +530,7 @@ class Store:
                     tenant_id,
                     title,
                     prompt,
-                    "queued",
+                    "needs_input" if needs_info else ("awaiting_approval" if approval_required else "queued"),
                     now,
                     now,
                     provider["provider"],
@@ -481,11 +543,42 @@ class Store:
                     else "",
                 ),
             )
+            db.execute("UPDATE jobs SET blueprint=?,blueprint_hash=?,approval_required=? WHERE id=?", (draft_json, draft_hash, int(approval_required), job_id))
+            if draft:
+                db.execute("INSERT INTO blueprints VALUES(?,?,?,?,?,?,?)", (uuid.uuid4().hex, tenant_id, job_id, 1, draft_json, draft_hash, now))
+            if needs_info:
+                db.execute("UPDATE jobs SET question=? WHERE id=?", (planned["questions"][0], job_id))
             db.execute(
                 "INSERT INTO idempotency VALUES(?,?,?,?)",
                 (tenant_id, idempotency_key, request_hash, job_id),
             )
-            self._event(db, job_id, "Pekerjaan masuk antrean.")
+            self._event(db, job_id, "Anamnesis membutuhkan informasi tambahan." if needs_info else ("Blueprint dibuat; menunggu persetujuan." if approval_required else "Pekerjaan masuk antrean."))
+            return self._public_job(db, self._owned_job(db, tenant_id, job_id))
+
+    def approve_job(self, tenant_id: str, job_id: str, blueprint_hash: str, idempotency_key: str) -> dict:
+        with self._db(write=True) as db:
+            row = self._owned_job(db, tenant_id, job_id)
+            request_hash = _hash(json.dumps(["approve", job_id, blueprint_hash]))
+            replay = self._replay(db, tenant_id, idempotency_key, request_hash)
+            if replay:
+                return self._public_job(db, self._owned_job(db, tenant_id, replay))
+            if row["status"] != "awaiting_approval":
+                raise StoreError(409, "INVALID_STATE", "Blueprint tidak menunggu persetujuan.")
+            if not hmac.compare_digest(row["blueprint_hash"], blueprint_hash):
+                raise StoreError(409, "BLUEPRINT_CHANGED", "Blueprint berubah; minta blueprint terbaru.")
+            blueprint = db.execute(
+                "SELECT id FROM blueprints WHERE job_id=? AND content_hash=? ORDER BY revision DESC LIMIT 1",
+                (job_id, blueprint_hash),
+            ).fetchone()
+            if blueprint is None:
+                raise StoreError(409, "BLUEPRINT_CHANGED", "Blueprint tidak ditemukan.")
+            db.execute("UPDATE jobs SET status='queued',updated_at=? WHERE id=?", (_now(), job_id))
+            db.execute("INSERT INTO idempotency VALUES(?,?,?,?)", (tenant_id, idempotency_key, request_hash, job_id))
+            db.execute(
+                "INSERT INTO approvals VALUES(?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, tenant_id, job_id, blueprint["id"], blueprint_hash, idempotency_key, _now()),
+            )
+            self._event(db, job_id, "Blueprint disetujui; pekerjaan masuk antrean.")
             return self._public_job(db, self._owned_job(db, tenant_id, job_id))
 
     def list_jobs(self, tenant_id: str) -> list[dict]:
@@ -501,6 +594,26 @@ class Store:
     def get_job(self, tenant_id: str, job_id: str) -> dict:
         with self._db() as db:
             return self._public_job(db, self._owned_job(db, tenant_id, job_id))
+
+    def get_blueprint(self, tenant_id: str, job_id: str) -> dict:
+        with self._db() as db:
+            self._owned_job(db, tenant_id, job_id)
+            rows = db.execute(
+                "SELECT id,revision,content,content_hash,created_at FROM blueprints WHERE tenant_id=? AND job_id=? ORDER BY revision",
+                (tenant_id, job_id),
+            ).fetchall()
+            if not rows:
+                raise StoreError(404, "NOT_FOUND", "Blueprint belum tersedia.")
+            approvals = db.execute(
+                "SELECT blueprint_id,blueprint_hash,approved_at FROM approvals WHERE tenant_id=? AND job_id=? ORDER BY approved_at",
+                (tenant_id, job_id),
+            ).fetchall()
+            current = rows[-1]
+            return {
+                "current": {"id": current["id"], "revision": current["revision"], "content": json.loads(current["content"]), "hash": current["content_hash"], "created_at": current["created_at"]},
+                "revisions": [{"id": row["id"], "revision": row["revision"], "hash": row["content_hash"], "created_at": row["created_at"]} for row in rows],
+                "approvals": [dict(row) for row in approvals],
+            }
 
     def cancel_job(self, tenant_id: str, job_id: str) -> dict:
         with self._db(write=True) as db:
@@ -540,15 +653,36 @@ class Store:
                     "Batas klarifikasi tercapai. Buat pekerjaan baru.",
                 )
             history.append({"role": "user", "content": message})
-            db.execute(
-                "UPDATE jobs SET status='queued',question='',history=?,updated_at=? WHERE id=?",
-                (json.dumps(history), _now(), job_id),
-            )
+            planned = plan_request(row["prompt"] + "\nAdditional information: " + message)
+            if planned["outcome"] == "needs_info":
+                db.execute(
+                    "UPDATE jobs SET status='needs_input',question=?,history=?,updated_at=? WHERE id=?",
+                    (planned["questions"][0], json.dumps(history), _now(), job_id),
+                )
+                event = "Jawaban diterima; anamnesis masih membutuhkan informasi tambahan."
+            else:
+                draft_json = json.dumps(planned["blueprint"], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                draft_hash = _hash(draft_json)
+                validate_blueprint(json.loads(draft_json))
+                now = _now()
+                requires_approval = not row["blueprint"]
+                next_revision = db.execute(
+                    "SELECT COALESCE(MAX(revision), 0) + 1 FROM blueprints WHERE job_id=?", (job_id,)
+                ).fetchone()[0]
+                db.execute(
+                    "UPDATE jobs SET status=?,question='',history=?,blueprint=?,blueprint_hash=?,approval_required=?,updated_at=? WHERE id=?",
+                    ("awaiting_approval" if requires_approval else "queued", json.dumps(history), draft_json, draft_hash, int(requires_approval), now, job_id),
+                )
+                db.execute(
+                    "INSERT INTO blueprints VALUES(?,?,?,?,?,?,?)",
+                    (uuid.uuid4().hex, tenant_id, job_id, next_revision, draft_json, draft_hash, now),
+                )
+                event = "Jawaban diterima; blueprint baru menunggu persetujuan." if requires_approval else "Jawaban diterima; pekerjaan kembali ke antrean."
             db.execute(
                 "INSERT INTO idempotency VALUES(?,?,?,?)",
                 (tenant_id, idempotency_key, request_hash, job_id),
             )
-            self._event(db, job_id, "Jawaban diterima; pekerjaan kembali ke antrean.")
+            self._event(db, job_id, event)
             return self._public_job(db, self._owned_job(db, tenant_id, job_id))
 
     def claim_next(self, excluded_tenants: tuple[str, ...] = ()) -> dict | None:
@@ -582,6 +716,13 @@ class Store:
             row = self._owned_job(db, job["tenant_id"], job["id"])
             if row["status"] != "running":
                 raise StoreError(409, "INVALID_STATE", "Pekerjaan tidak lagi berjalan.")
+            if row["approval_required"]:
+                approval = db.execute(
+                    "SELECT a.blueprint_hash,b.content FROM approvals a JOIN blueprints b ON b.id=a.blueprint_id WHERE a.job_id=? AND a.blueprint_hash=?",
+                    (row["id"], row["blueprint_hash"]),
+                ).fetchone()
+                if approval is None or approval["content"] != row["blueprint"]:
+                    raise StoreError(409, "INVALID_APPROVAL", "Blueprint approved berubah; eksekusi dibatalkan.")
             skill = db.execute(
                 "SELECT name,description,content FROM skills WHERE id=? AND tenant_id=? AND status='active'",
                 (row["input_skill_id"], row["tenant_id"]),
@@ -593,10 +734,16 @@ class Store:
                 "provider": {
                     "provider": row["provider"],
                     "model": row["model"],
-                    "api_key": self.cipher.decrypt(row["secret"].encode()).decode(),
+                    "api_key": (
+                        os.environ.get("HERMES_CUSTOM_LOCALHOST_20128_API_KEY", "")
+                        if row["provider"] == "hermes-worker"
+                        else self.cipher.decrypt(row["secret"].encode()).decode()
+                    ),
                 },
                 "history": json.loads(row["history"]),
                 "skill": dict(skill) if skill else None,
+                "blueprint": json.loads(row["blueprint"]),
+                "approved_blueprint_hash": row["blueprint_hash"],
                 "browser_secrets": json.loads(
                     self.cipher.decrypt(row["browser_secrets"].encode()).decode()
                 ) if row["browser_secrets"] else {},

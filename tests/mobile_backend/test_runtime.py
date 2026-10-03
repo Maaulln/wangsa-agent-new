@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import sys
@@ -26,6 +27,8 @@ def payload():
         "prompt": "Buat laporan.",
         "history": [{"role": "user", "content": "Buat laporan."}],
         "skill": None,
+        "blueprint": {"goal": "Buat laporan.", "steps": [{"id": "step-1", "action": "agent_execute"}]},
+        "approved_blueprint_hash": hashlib.sha256(json.dumps({"goal": "Buat laporan.", "steps": [{"id": "step-1", "action": "agent_execute"}]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
     }
 
 
@@ -118,6 +121,34 @@ def test_provider_error_markers_are_safe_and_actionable(
     assert "HTTP 403" not in str(err.value)
     assert "hy3-free is not supported" not in str(err.value)
     assert "free tier can only be used from within OpenCode" not in str(err.value)
+
+
+def test_validate_payload_rejects_unapproved_blueprint():
+    request = payload()
+    request["approved_blueprint_hash"] = "0" * 64
+    with pytest.raises(ValueError, match="hash mismatch"):
+        validate_payload(request)
+
+
+def test_runtime_prompt_lists_approved_steps_and_forbids_extra_steps(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(tmp_path)
+    prompts = []
+    systems = []
+
+    class Agent:
+        def __init__(self, **_kwargs): pass
+        def run_conversation(self, prompt, **kwargs):
+            prompts.append(prompt)
+            systems.append(kwargs["system_message"])
+            return {"final_response": json.dumps({"outcome": "completed", "report": "ok"}), "messages": []}
+        def close(self): pass
+
+    request = payload()
+    execute(request, agent_factory=Agent, workspace=tmp_path / "workspace")
+    assert "Execute only this approved automation blueprint" in systems[0]
+    assert '"action": "agent_execute"' in systems[0]
+    assert "Do not add steps" in systems[0]
 
 
 def test_invalid_results_and_credentials_are_rejected():

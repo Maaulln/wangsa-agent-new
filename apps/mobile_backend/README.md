@@ -141,13 +141,21 @@ Authenticated routes require `Authorization: Bearer <token>`.
 | `GET /provider/catalog` | List supported providers and whether an API key is required |
 | `POST /provider/models` | Discover model IDs; transient API key is never saved |
 | `GET/POST /jobs` | List/create persistent jobs; creation accepts optional `browser_secrets` (`netid`, `password`) separately from the prompt |
-| `GET /jobs/{id}` | Status, result, question, ordered events |
-| `POST /jobs/{id}/reply` | Resume with `{message}` and idempotency key |
+| `GET /jobs/{id}` | Status, result, blueprint summary, question, ordered events |
+| `GET /jobs/{id}/blueprint` | Current blueprint, immutable revisions, approval records |
+| `POST /jobs/{id}/reply` | Resume with `{message}` |
+| `POST /jobs/{id}/approve` | Approve current blueprint with `{blueprint_hash}` and `Idempotency-Key` |
 | `POST /jobs/{id}/cancel` | Request cancellation |
 | `GET /skills` | List private drafts and active procedures |
 | `POST /skills/{id}/activate` | Activate a reviewed procedure |
 
-Statuses: `queued`, `running`, `needs_input`, `completed`, `failed`, `cancelled`.
+Statuses: `queued`, `running`, `needs_input`, `awaiting_approval`, `completed`, `failed`, `cancelled`.
+
+An approval request must include the exact `blueprint_hash` returned by the job or
+blueprint endpoint. Approval is idempotent per tenant and key. A changed blueprint
+hash is rejected; approved blueprint content is checked again immediately before
+runtime payload creation. Clarification replies create immutable blueprint revisions
+and require approval when the job had no previously approved blueprint.
 Lists currently return the latest 100 entries. This single-host implementation
 is intended for a controlled pilot; a distributed worker queue and paginated
 history are needed before horizontal scaling.

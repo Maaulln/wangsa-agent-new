@@ -230,6 +230,16 @@ class ProductApi {
       await _request('POST', '/jobs/${Uri.encodeComponent(id)}/cancel'),
     ),
   );
+  Future<ProductBlueprint> blueprint(String id) async => ProductBlueprint.fromJson(
+    Map<String, dynamic>.from(await _request('GET', '/jobs/${Uri.encodeComponent(id)}/blueprint'))['current'] as Map<String, dynamic>,
+  );
+  Future<ProductJob> approve(String id, String hash, String key) async => ProductJob.fromJson(
+    Map<String, dynamic>.from(await _request(
+      'POST', '/jobs/${Uri.encodeComponent(id)}/approve',
+      body: {'blueprint_hash': hash}, idempotencyKey: key,
+    )),
+  );
+
   Future<List<ProductSkill>> skills() async => [
     for (final item in await _request('GET', '/skills') as List)
       ProductSkill.fromJson(Map<String, dynamic>.from(item)),

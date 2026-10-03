@@ -30,6 +30,7 @@ class _ProductJobPageState extends State<ProductJobPage>
   bool _fetching = false;
   bool _refreshQueued = false;
   bool _busy = false;
+  ProductBlueprint? _blueprint;
   Timer? _timer;
   final _reply = TextEditingController();
   Map<String, dynamic>? _pendingReply;
@@ -85,9 +86,16 @@ class _ProductJobPageState extends State<ProductJobPage>
       final job = await widget.session.run(
         () => widget.session.api.job(widget.jobId),
       );
+      ProductBlueprint? blueprint;
+      if (job.status == 'awaiting_approval' || job.status == 'queued') {
+        blueprint = await widget.session.run(
+          () => widget.session.api.blueprint(widget.jobId),
+        );
+      }
       if (mounted) {
         setState(() {
           _job = job;
+          _blueprint = blueprint;
           _error = null;
         });
       }
@@ -131,6 +139,20 @@ class _ProductJobPageState extends State<ProductJobPage>
         await widget.session.clearPendingReply(widget.jobId);
         _pendingReply = null;
       }
+      if (mounted) setState(() => _error = productErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _approve() async {
+    final blueprint = _blueprint;
+    if (_busy || blueprint == null || blueprint.hash.isEmpty) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final job = await widget.session.run(() => widget.session.api.approve(widget.jobId, blueprint.hash, newRequestKey()));
+      if (mounted) setState(() => _job = job);
+    } catch (error) {
       if (mounted) setState(() => _error = productErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -232,6 +254,28 @@ class _ProductJobPageState extends State<ProductJobPage>
               JobStatus(job),
               const SizedBox(height: 24),
               SelectableText(job.prompt),
+              if (_blueprint != null) ...[
+                const SizedBox(height: 24),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Blueprint v${_blueprint!.revision}', style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 8),
+                        Text(_blueprint!.content['summary'] as String? ?? 'Rencana eksekusi'),
+                        const SizedBox(height: 8),
+                        SelectableText('Hash: ${_blueprint!.hash}', style: Theme.of(context).textTheme.bodySmall),
+                        if (job.status == 'awaiting_approval') ...[
+                          const SizedBox(height: 12),
+                          FilledButton.icon(onPressed: _busy ? null : _approve, icon: const Icon(Icons.check), label: const Text('Setujui dan jalankan')),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               if (job.question?.isNotEmpty == true) ...[
                 const SizedBox(height: 28),
                 Text(

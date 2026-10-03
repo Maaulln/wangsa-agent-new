@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from apps.mobile_backend.api import PREFIX, create_app
 from apps.mobile_backend.config import Settings
 from apps.mobile_backend.store import Store, StoreError
+from apps.mobile_backend.planner import plan_request
 
 
 @pytest.fixture
@@ -276,6 +277,98 @@ def test_auth_restore_revoke_and_secret_storage(app):
     )
     assert client.get(PREFIX + "/auth/me", headers=headers(user)).status_code == 401
     assert client.get(PREFIX + "/auth/me", headers=headers(login)).status_code == 200
+
+
+def test_approved_job_payload_contains_approved_blueprint_not_only_prompt(app):
+    client = TestClient(app)
+    user = account(client, "planner")
+    provider(client, user)
+    response = job(client, user, "blueprint-job-key", approval_required=True)
+    assert response.status_code == 202
+    created = response.json()["data"]
+    assert created["status"] == "awaiting_approval"
+    approved = client.post(
+        PREFIX + f"/jobs/{created['id']}/approve",
+        headers={**headers(user), "Idempotency-Key": "blueprint-approval-1"},
+        json={"blueprint_hash": created["blueprint_hash"]},
+    )
+    assert approved.status_code == 200
+    claimed = app.state.store.claim_next()
+    payload = app.state.store.payload_for(claimed)
+    assert payload["blueprint"]["goal"] == created["blueprint"]["goal"]
+    assert payload["approved_blueprint_hash"] == created["blueprint_hash"]
+    assert created["blueprint"]["version"] == 1
+    assert created["blueprint"]["required_access"] == []
+    assert created["blueprint"]["steps"][0]["side_effect"] is True
+
+
+def test_planner_requests_missing_anamnesis_for_vague_request():
+    result = plan_request("Bantu dong")
+    assert result["outcome"] == "needs_info"
+    assert result["questions"]
+    assert result["blueprint"] is None
+
+
+def test_planner_returns_schema_valid_blueprint_for_actionable_request():
+    result = plan_request("Kirim laporan penjualan ke Telegram setiap Jumat")
+    assert result["outcome"] == "blueprint_ready"
+    assert result["questions"] == []
+    assert result["blueprint"]["version"] == 1
+    assert result["blueprint"]["steps"]
+
+
+def test_blueprint_rejects_unknown_step_action():
+    from apps.mobile_backend.store import validate_blueprint
+    blueprint = {
+        "version": 1,
+        "goal": "Test",
+        "steps": [{"id": "step-1", "action": "run_shell_as_root"}],
+        "execution_mode": "subagent",
+    }
+    with pytest.raises(StoreError, match="action blueprint"):
+        validate_blueprint(blueprint)
+
+
+def test_vague_job_enters_anamnesis_then_reply_creates_blueprint(app):
+    client = TestClient(app)
+    user = account(client, "anamnesis")
+    provider(client, user)
+    created = job(client, user, "anamnesis-create-key", prompt="Bantu dong").json()["data"]
+    assert created["status"] == "needs_input"
+    assert created["question"]
+    resumed = client.post(
+        PREFIX + f"/jobs/{created['id']}/reply",
+        headers={**headers(user), "Idempotency-Key": "anamnesis-reply-key"},
+        json={"message": "Kirim laporan penjualan ke Telegram setiap Jumat"},
+    )
+    assert resumed.status_code == 202
+    assert resumed.json()["data"]["status"] == "awaiting_approval"
+    assert resumed.json()["data"]["blueprint"]
+    blueprint = client.get(
+        PREFIX + f"/jobs/{created['id']}/blueprint", headers=headers(user)
+    )
+    assert blueprint.status_code == 200
+    assert blueprint.json()["data"]["current"]["hash"]
+    assert blueprint.json()["data"]["current"]["content"]["version"] == 1
+
+
+def test_approval_is_idempotent_and_hash_conflicts_are_rejected(app):
+    client = TestClient(app)
+    user = account(client, "approval-idempotent")
+    provider(client, user)
+    created = job(client, user, "approval-create-key", approval_required=True).json()["data"]
+    endpoint = PREFIX + f"/jobs/{created['id']}/approve"
+    first = client.post(endpoint, headers={**headers(user), "Idempotency-Key": "approval-key-1"}, json={"blueprint_hash": created["blueprint_hash"]})
+    assert first.status_code == 200
+    replay = client.post(endpoint, headers={**headers(user), "Idempotency-Key": "approval-key-1"}, json={"blueprint_hash": created["blueprint_hash"]})
+    assert replay.status_code == 200
+    assert replay.json()["data"]["id"] == created["id"]
+    conflict = client.post(endpoint, headers={**headers(user), "Idempotency-Key": "approval-key-1"}, json={"blueprint_hash": "0" * 64})
+    assert conflict.status_code == 409
+    db = sqlite3.connect(app.state.store.path)
+    assert db.execute("SELECT COUNT(*) FROM blueprints WHERE job_id=?", (created["id"],)).fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM approvals WHERE job_id=?", (created["id"],)).fetchone()[0] == 1
+    db.close()
 
 
 def test_idempotency_prevents_duplicate_jobs_and_conflicts(app):

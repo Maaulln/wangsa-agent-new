@@ -49,6 +49,11 @@ class JobInput(_Body):
     prompt: str = Field(min_length=1, max_length=16000)
     skill_id: str | None = Field(default=None, max_length=64)
     browser_secrets: dict[str, str] = Field(default_factory=dict)
+    approval_required: bool = False
+
+
+class ApprovalInput(_Body):
+    blueprint_hash: str = Field(min_length=64, max_length=64)
 
 
 class ReplyInput(_Body):
@@ -298,12 +303,23 @@ def create_app(settings, runtime=None) -> FastAPI:
             "data": store.create_job(
                 current["id"], body.title, body.prompt, key, body.skill_id,
                 body.browser_secrets,
+                body.approval_required,
             )
         }
+
+    @app.post(f"{PREFIX}/jobs/{{job_id}}/approve")
+    def approve_job(
+        job_id: str, body: ApprovalInput, current=Depends(user), key=Depends(idempotency)
+    ):
+        return {"data": store.approve_job(current["id"], job_id, body.blueprint_hash, key)}
 
     @app.get(f"{PREFIX}/jobs/{{job_id}}")
     def get_job(job_id: str, current=Depends(user)):
         return {"data": store.get_job(current["id"], job_id)}
+
+    @app.get(f"{PREFIX}/jobs/{{job_id}}/blueprint")
+    def get_blueprint(job_id: str, current=Depends(user)):
+        return {"data": store.get_blueprint(current["id"], job_id)}
 
     @app.post(f"{PREFIX}/jobs/{{job_id}}/cancel")
     async def cancel_job(job_id: str, current=Depends(user)):

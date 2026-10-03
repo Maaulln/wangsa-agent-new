@@ -7,6 +7,7 @@ environment and tenant config are established before importing Wangsa.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -27,6 +28,7 @@ PROVIDERS = {
     for provider, (_, base_url, api_mode) in mobile_providers().items()
 }
 TOOLSETS = ("file", "terminal", "web", "mobile_browser", "mobile_browser_secrets", "memory")
+BLUEPRINT_ACTIONS = frozenset({"agent_execute", "terminal", "browser", "workflow"})
 
 
 class MobileProviderPolicyError(Exception):
@@ -110,6 +112,18 @@ def validate_payload(payload: Any) -> dict[str, Any]:
             raise ValueError("Invalid procedure")
         if len(skill["content"]) > 100000:
             raise ValueError("Procedure is too large")
+    blueprint = payload.get("blueprint")
+    approved_hash = payload.get("approved_blueprint_hash")
+    if not isinstance(blueprint, dict) or not isinstance(approved_hash, str):
+        raise ValueError("An approved blueprint is required")
+    canonical = json.dumps(blueprint, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if hashlib.sha256(canonical.encode()).hexdigest() != approved_hash:
+        raise ValueError("Approved blueprint hash mismatch")
+    steps = blueprint.get("steps")
+    if not isinstance(steps, list) or not steps or len(steps) > 100:
+        raise ValueError("Invalid approved blueprint steps")
+    if any(not isinstance(step, dict) or step.get("action") not in BLUEPRINT_ACTIONS for step in steps):
+        raise ValueError("Invalid approved blueprint action")
     browser_secrets = payload.get("browser_secrets", {})
     if (
         not isinstance(browser_secrets, dict)
@@ -258,6 +272,12 @@ def execute(
     base_url, api_mode = PROVIDERS[provider["provider"]]
     runtime_provider = provider["provider"]
     runtime_api_key = provider["api_key"]
+    # Hermes local proxy speaks OpenAI-compatible chat completions but is not a
+    # public provider plugin inside the runtime image. Use the built-in custom
+    # adapter while retaining the operator-owned endpoint and credential.
+    if provider["provider"] == "hermes-worker":
+        runtime_provider = "openai"
+        api_mode = "chat_completions"
     # OpenCode free-tier models require Wangsa's first-party keyless runtime
     # resolver. It selects the Zen endpoint/API mode and placeholder credential
     # that makes agent_init install the canonical empty-Authorization and
@@ -328,6 +348,10 @@ def execute(
                 user_id=payload["tenant_id"],
             )
             history = list(payload.get("history") or [])
+            blueprint_instruction = (
+                "Execute only this approved automation blueprint. Do not add steps or external side effects outside it.\n"
+                + json.dumps(payload["blueprint"], ensure_ascii=False, sort_keys=True)
+            )
             prompt = payload["prompt"]
             # The durable queue includes the newly submitted user message. Pass it
             # as the new turn, not also as historical context (which duplicates it).
@@ -342,7 +366,7 @@ def execute(
                 )
             response = agent.run_conversation(
                 prompt,
-                system_message=SYSTEM_MESSAGE,
+                system_message=SYSTEM_MESSAGE + "\n\n" + blueprint_instruction,
                 conversation_history=history or None,
                 task_id=payload["job_id"],
             )

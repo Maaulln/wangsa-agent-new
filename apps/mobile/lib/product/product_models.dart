@@ -61,6 +61,18 @@ class JobEvent {
   );
 }
 
+class ProductBlueprint {
+  final Map<String, dynamic> content;
+  final String hash;
+  final int revision;
+  const ProductBlueprint({required this.content, required this.hash, this.revision = 1});
+  factory ProductBlueprint.fromJson(Map<String, dynamic> json) => ProductBlueprint(
+    content: Map<String, dynamic>.from(json['content'] as Map? ?? const {}),
+    hash: json['hash'] as String? ?? '',
+    revision: (json['revision'] as num?)?.toInt() ?? 1,
+  );
+}
+
 class ProductJob {
   final String id;
   final String title;
@@ -87,12 +99,13 @@ class ProductJob {
     this.events = const [],
   });
   bool get isActive =>
-      const ['queued', 'running', 'needs_input'].contains(status);
+      const ['queued', 'running', 'needs_input', 'awaiting_approval'].contains(status);
   String get statusLabel =>
       const {
         'queued': 'Dalam antrean',
         'running': 'Sedang dikerjakan',
         'needs_input': 'Perlu jawabanmu',
+        'awaiting_approval': 'Menunggu persetujuan',
         'completed': 'Selesai',
         'failed': 'Belum berhasil',
         'cancelled': 'Dibatalkan',

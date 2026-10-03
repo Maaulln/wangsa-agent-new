@@ -59,6 +59,7 @@ class JobStatus extends StatelessWidget {
       'completed' => Icons.check_circle_outline,
       'failed' => Icons.error_outline,
       'needs_input' => Icons.chat_bubble_outline,
+      'awaiting_approval' => Icons.fact_check_outlined,
       'cancelled' => Icons.cancel_outlined,
       'running' => Icons.work_outline,
       _ => Icons.schedule,

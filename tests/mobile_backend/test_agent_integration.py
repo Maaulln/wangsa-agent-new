@@ -1,5 +1,6 @@
 """Real AIAgent/SessionDB/provider-wire path with a local deterministic model."""
 
+import hashlib
 import json
 import threading
 import uuid
@@ -115,6 +116,7 @@ def test_real_agent_resume_keeps_prompt_and_does_not_duplicate_user_turn(
         "openai",
         (f"http://127.0.0.1:{server.server_port}/v1", "chat_completions"),
     )
+    blueprint = {"goal": "Buat laporan singkat.", "steps": [{"id": "step-1", "action": "agent_execute"}]}
     request = {
         "job_id": uuid.uuid4().hex,
         "tenant_id": uuid.uuid4().hex,
@@ -125,7 +127,9 @@ def test_real_agent_resume_keeps_prompt_and_does_not_duplicate_user_turn(
             "api_key": "local-fixture-key",
         },
         "history": [{"role": "user", "content": "Buat laporan singkat."}],
-    }
+        "blueprint": blueprint,
+        "approved_blueprint_hash": hashlib.sha256(json.dumps(blueprint, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        }
     try:
         first = runtime_entry.execute(request, workspace=tmp_path / "workspace")
         assert first["outcome"] == "needs_input"
@@ -175,7 +179,9 @@ def test_real_agent_resume_keeps_prompt_and_does_not_duplicate_user_turn(
                 "api_key": "",
             },
             "history": [{"role": "user", "content": "Tes OpenCode Free."}],
-        }
+            "blueprint": {"goal": "Tes OpenCode Free.", "steps": [{"id": "step-1", "action": "agent_execute"}]},
+                    "approved_blueprint_hash": hashlib.sha256(json.dumps({"goal": "Tes OpenCode Free.", "steps": [{"id": "step-1", "action": "agent_execute"}]}, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            }
         runtime_entry.execute(free_request, workspace=tmp_path / "workspace")
         assert len(free_requests) == 1
         free_wire = free_requests[0]

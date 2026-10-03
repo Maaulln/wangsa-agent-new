@@ -50,6 +50,12 @@ def mobile_providers() -> dict[str, tuple[str, str, str]]:
     result.setdefault(
         "openai-api", ("OpenAI API", "https://api.openai.com/v1", "chat_completions")
     )
+    # Operator-owned Hermes proxy. The control plane injects its credential
+    # from HERMES_CUSTOM_LOCALHOST_20128_API_KEY; tenants never supply it.
+    result.setdefault(
+        "hermes-worker",
+        ("Hermes Worker (local proxy)", "http://host.docker.internal:20128/v1", "chat_completions"),
+    )
     return result
 
 
@@ -58,7 +64,7 @@ def keyless_providers() -> frozenset[str]:
     from wangsa_cli.provider_catalog import provider_catalog_by_slug
 
     descriptors = provider_catalog_by_slug()
-    return frozenset(
+    return frozenset({"hermes-worker"}) | frozenset(
         provider
         for provider in mobile_providers()
         if (descriptor := descriptors.get(provider)) is not None and descriptor.keyless
