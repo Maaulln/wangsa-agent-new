@@ -50,6 +50,29 @@ def job(client, user, key="request-key-1", **body):
     )
 
 
+def test_external_session_exchange_provisions_local_product_session(app, monkeypatch):
+    client = TestClient(app)
+    user = account(client, "alice")
+    token = user["token"]
+
+    class Response:
+        def read(self):
+            return json.dumps({"data": {"profile": "alice"}}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr("apps.mobile_backend.api.urllib.request.urlopen", lambda *args, **kwargs: Response())
+    exchanged = client.post(PREFIX + "/auth/exchange", headers=headers(user))
+    assert exchanged.status_code == 200, exchanged.text
+    local = exchanged.json()["data"]
+    assert local["user"]["username"] == "alice"
+    assert client.get(PREFIX + "/auth/me", headers=headers(local)).status_code == 200
+
+
 def test_two_accounts_cannot_access_each_others_jobs_or_provider(app):
     client = TestClient(app)
     alice, bob = account(client, "alice"), account(client, "bob")

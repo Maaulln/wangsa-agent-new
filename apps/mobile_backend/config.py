@@ -16,6 +16,7 @@ class Settings:
     encryption_key: str
     host: str = "127.0.0.1"
     port: int = 9902
+    legacy_auth_url: str = "http://127.0.0.1:9901/api/v1/auth/me"
     runtime_image: str = "wangsa-mobile-runtime:local"
     max_workers: int = 2
     job_timeout_seconds: int = 900

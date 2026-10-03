@@ -12,6 +12,7 @@ import '../../api/models.dart';
 import '../../config/app_config.dart';
 import '../../llm/llm_settings_controller.dart';
 import '../../profile/user_profile_controller.dart';
+import '../../api/api_endpoints.dart';
 import '../../settings/view/settings_page.dart';
 import '../../theme/glass/wangsa_glass.dart';
 import '../../theme/theme_controller.dart';
@@ -19,6 +20,7 @@ import '../../theme/wangsa_theme.dart';
 import '../../voice/voice_input.dart';
 import '../bloc/chat_bloc.dart';
 import 'agent_builder_page.dart';
+import '../../product/product_app.dart';
 import 'chat_icons.dart';
 import 'message_bubble.dart';
 import 'widgets/chat_notice.dart';
@@ -670,9 +672,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  /// Segmen pil "Chat" / "Work" di tengah header. "Work" belum punya
-  /// ruang kerja sendiri — ketuk hanya menampilkan pemberitahuan,
-  /// selalu kembali ke "Chat" yang aktif.
+  /// Segmen pil "Chat" / "Work" di tengah header.
   Widget _chatWorkSwitch(BuildContext context) {
     return GlassSurface(
       level: GlassLevel.card,
@@ -685,15 +685,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _switchSegment(
             label: 'Work',
             selected: false,
-            onTap: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  const SnackBar(
-                    content: Text('Ruang kerja Work segera hadir.'),
-                  ),
-                );
-            },
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ProductApp(
+                  apiBaseUrl: productApiBaseUrl(widget.config.apiBaseUrl),
+                  initialToken: widget.auth?.token,
+                ),
+              ),
+            ),
           ),
         ],
       ),

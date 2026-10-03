@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+import json
+import urllib.request
 from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 
@@ -226,6 +228,22 @@ def create_app(settings, runtime=None) -> FastAPI:
     @app.post(f"{PREFIX}/auth/login")
     def login(body: Credentials):
         return {"data": store.login(body.username, body.password)}
+
+    @app.post(f"{PREFIX}/auth/exchange")
+    def exchange(token=Depends(bearer)):
+        request = urllib.request.Request(
+            settings.legacy_auth_url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=3) as response:
+                payload = json.loads(response.read())
+            username = payload.get("data", {}).get("profile")
+        except Exception:
+            raise StoreError(401, "UNAUTHORIZED", "Sesi Chat tidak valid.") from None
+        if not isinstance(username, str) or not username:
+            raise StoreError(401, "UNAUTHORIZED", "Sesi Chat tidak valid.")
+        return {"data": store.provision_external_user(username)}
 
     @app.get(f"{PREFIX}/auth/me")
     def me(current=Depends(user)):

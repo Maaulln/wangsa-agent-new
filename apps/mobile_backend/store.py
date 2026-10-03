@@ -300,6 +300,21 @@ class Store:
             )
         return dict(row)
 
+    def provision_external_user(self, username: str) -> dict:
+        """Create/find local control-plane identity for verified external auth."""
+        username = username.strip().lower()
+        if not _USERNAME.fullmatch(username):
+            raise StoreError(422, "VALIDATION_ERROR", "Identitas eksternal tidak valid.")
+        with self._db(write=True) as db:
+            row = db.execute("SELECT id,username FROM users WHERE username=?", (username,)).fetchone()
+            if row is None:
+                user = {"id": uuid.uuid4().hex, "username": username}
+                db.execute("INSERT INTO users VALUES(?,?,?,?)", (user["id"], username, _password_hash(secrets.token_urlsafe(32)), _now()))
+            else:
+                user = dict(row)
+            token = self._issue_session(db, user["id"])
+        return {"token": token, "user": user}
+
     def logout(self, token: str) -> None:
         with self._db(write=True) as db:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (_hash(token),))

@@ -5,18 +5,20 @@ import '../llm/llm_settings_controller.dart';
 import 'product_api.dart';
 import 'product_auth_page.dart';
 import 'product_session.dart';
-import 'product_shell.dart';
+import 'automation_workspace.dart';
 import 'product_widgets.dart';
 
 /// Mounted as MaterialApp.home so the existing Wangsa theme remains authority.
 class ProductApp extends StatefulWidget {
   final String apiBaseUrl;
+  final String? initialToken;
   final http.Client? httpClient;
   final KeyVault? vault;
   final Duration pollInterval;
   const ProductApp({
     super.key,
     required this.apiBaseUrl,
+    this.initialToken,
     this.httpClient,
     this.vault,
     this.pollInterval = const Duration(seconds: 5),
@@ -39,7 +41,11 @@ class _ProductAppState extends State<ProductApp> {
         ),
         vault: widget.vault ?? SecureKeyVault(),
       );
-      _session!.restore();
+      if (widget.initialToken != null) {
+        _session!.restoreFromExternalToken(widget.initialToken!);
+      } else {
+        _session!.restore();
+      }
     } on ProductApiException catch (error) {
       _configError = error.message;
     }
@@ -98,10 +104,7 @@ class _ProductAppState extends State<ProductApp> {
         return Navigator(
           key: ValueKey('${session.api.baseUrl}:${session.user!.id}'),
           onGenerateRoute: (_) => MaterialPageRoute<void>(
-            builder: (_) => ProductShell(
-              session: session,
-              pollInterval: widget.pollInterval,
-            ),
+            builder: (_) => AutomationWorkspace(session: session),
           ),
         );
       },

@@ -23,6 +23,13 @@ import 'wangsa_api_client.dart';
 /// Port bawaan plugin `wangsa_mobile` (lihat WANGSA_MOBILE_PORT di
 /// `plugins/platforms/wangsa_mobile/` dan `scripts/run_mobile_backend.py`).
 const int wangsaDefaultPort = 9901;
+const int wangsaProductPort = 9902;
+
+String productApiBaseUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null || uri.port != wangsaDefaultPort) return value;
+  return uri.replace(port: wangsaProductPort).toString().replaceFirst(RegExp(r'/$'), '');
+}
 
 /// URL generic yang tersimpan pada versi aplikasi sebelumnya bisa berasal
 /// dari mode pekerjaan API 9902, bukan dari gateway chat. Pertahankan URL

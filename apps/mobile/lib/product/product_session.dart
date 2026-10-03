@@ -40,6 +40,29 @@ class ProductSession extends ChangeNotifier {
       'wangsa_product_${base64Url.encode(utf8.encode(api.baseUrl))}_token';
   String get _pendingKey => '${tokenKey}_${user!.id}_pending';
 
+  Future<void> restoreFromExternalToken(String token) async {
+    final generation = ++_generation;
+    restoring = true;
+    restoreError = null;
+    notifyListeners();
+    try {
+      api.token = token;
+      final auth = await api.exchangeSession();
+      if (_disposed || generation != _generation) return;
+      await vault.write(tokenKey, auth.token);
+      api.token = auth.token;
+      user = auth.user;
+      provider = await api.provider();
+    } on ProductApiException catch (error) {
+      if (generation == _generation) restoreError = error.message;
+    } finally {
+      if (generation == _generation) {
+        restoring = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<void> restore() async {
     final generation = ++_generation;
     restoring = true;
@@ -48,7 +71,7 @@ class ProductSession extends ChangeNotifier {
     try {
       final token = await vault.read(tokenKey);
       if (_disposed || generation != _generation) return;
-      api.token = token;
+      if (token != null) api.token = token;
       if (api.token != null) {
         final restoredUser = await api.me();
         if (_disposed || generation != _generation) return;

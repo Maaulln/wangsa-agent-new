@@ -126,6 +126,14 @@ class ProductApi {
     }
   }
 
+  Future<({String token, ProductUser user})> exchangeSession() async {
+    final data = await _request('POST', '/auth/exchange');
+    return (
+      token: data['token'] as String,
+      user: ProductUser.fromJson(Map<String, dynamic>.from(data['user'])),
+    );
+  }
+
   Future<({String token, ProductUser user})> authenticate(
     String action,
     String username,
@@ -199,6 +207,7 @@ class ProductApi {
     String key, {
     String? skillId,
     Map<String, String> browserSecrets = const {},
+    bool approvalRequired = false,
   }) async => ProductJob.fromJson(
     Map<String, dynamic>.from(
       await _request(
@@ -209,6 +218,7 @@ class ProductApi {
           'prompt': prompt,
           'skill_id': ?skillId,
           'browser_secrets': browserSecrets,
+          'approval_required': approvalRequired,
         },
         idempotencyKey: key,
       ),
